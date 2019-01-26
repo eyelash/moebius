@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include <cstddef>
 
 class StringView {
@@ -48,10 +49,37 @@ public:
 	}
 };
 
+struct BinaryOperator {
+	const char* string;
+	using Create = Expression* (*)(Expression* left, Expression* right);
+	Create create;
+	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
+	constexpr BinaryOperator(): string(nullptr), create(nullptr) {}
+	constexpr operator bool() const {
+		return string != nullptr;
+	}
+};
+
+static constexpr BinaryOperator operators[][4] = {
+	{
+		BinaryOperator("+", Addition::create),
+		BinaryOperator("-", Subtraction::create)
+	},
+	{
+		BinaryOperator("*", Multiplication::create),
+		BinaryOperator("/", Division::create),
+		BinaryOperator("%", Remainder::create)
+	}
+};
+
 class Parser {
 	StringView string;
-public:
-	Parser(const char* string): string(string) {}
+	static constexpr bool white_space(char c) {
+		return c == ' ' || c == '\n' || c == '\t';
+	}
+	static constexpr bool numeric(char c) {
+		return c >= '0' && c <= '9';
+	}
 	template <class F> void parse_all(F f) {
 		std::size_t i = 0;
 		while (i < string.size() && f(string[i])) {
@@ -72,5 +100,52 @@ public:
 			return true;
 		}
 		return false;
+	}
+	Expression* parse_number() {
+		std::int32_t number = 0;
+		while (0 < string.size() && numeric(string[0])) {
+			number *= 10;
+			number += string[0] - '0';
+			string = string.substr(1);
+		}
+		return new Number(number);
+	}
+	BinaryOperator parse_operator(int level) {
+		for (int i = 0; operators[level][i]; ++i) {
+			if (parse(operators[level][i].string)) {
+				return operators[level][i];
+			}
+		}
+		return BinaryOperator();
+	}
+	Expression* parse_expression_last() {
+		if (parse("(")) {
+			parse_all(white_space);
+			Expression* expression = parse_expression();
+			parse_all(white_space);
+			parse(")");
+			return expression;
+		}
+		return parse_number();
+	}
+	Expression* parse_expression(int level = 0) {
+		if (level == 2) {
+			return parse_expression_last();
+		}
+		Expression* left = parse_expression(level + 1);
+		parse_all(white_space);
+		while (BinaryOperator op = parse_operator(level)) {
+			parse_all(white_space);
+			Expression* right = parse_expression(level + 1);
+			left = op.create(left, right);
+			parse_all(white_space);
+		}
+		return left;
+	}
+public:
+	Parser(const char* string): string(string) {}
+	Expression* parse() {
+		parse_all(white_space);
+		return parse_expression();
 	}
 };
