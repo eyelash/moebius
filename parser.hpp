@@ -84,6 +84,20 @@ class Parser {
 		}
 		return false;
 	}
+	void parse_white_space() {
+		parse_all(white_space);
+	}
+	template <class... T> void error(const char* s, const T&... t) {
+		Printer printer(stderr);
+		printer.print("error: ");
+		printer.print(s, t...);
+		printer.print("\n");
+	}
+	void expect(const StringView& s) {
+		if (!parse(s)) {
+			error("expected \"%\"", s);
+		}
+	}
 	Expression* parse_number() {
 		std::int32_t number = 0;
 		while (0 < string.size() && numeric(string[0])) {
@@ -108,7 +122,11 @@ class Parser {
 	}
 	Expression* parse_variable() {
 		StringView identifier = parse_identifier();
-		return current_scope->look_up(identifier);
+		Expression* expression = current_scope->look_up(identifier);
+		if (expression == nullptr) {
+			error("invalid identifier \"%\"", identifier);
+		}
+		return expression;
 	}
 	BinaryOperator parse_operator(int level) {
 		for (int i = 0; operators[level][i]; ++i) {
@@ -120,35 +138,39 @@ class Parser {
 	}
 	Expression* parse_expression_last() {
 		if (parse("{")) {
-			parse_all(white_space);
+			parse_white_space();
 			Expression* expression = parse_scope();
-			parse_all(white_space);
-			parse("}");
+			parse_white_space();
+			expect("}");
 			return expression;
 		}
 		if (parse("(")) {
-			parse_all(white_space);
+			parse_white_space();
 			Expression* expression = parse_expression();
-			parse_all(white_space);
-			parse(")");
+			parse_white_space();
+			expect(")");
 			return expression;
 		}
 		if (0 < string.size() && numeric(string[0])) {
 			return parse_number();
 		}
-		return parse_variable();
+		if (0 < string.size() && alphabetic(string[0])) {
+			return parse_variable();
+		}
+		error("unexpected character");
+		return nullptr;
 	}
 	Expression* parse_expression(int level = 0) {
 		if (level == 2) {
 			return parse_expression_last();
 		}
 		Expression* left = parse_expression(level + 1);
-		parse_all(white_space);
+		parse_white_space();
 		while (BinaryOperator op = parse_operator(level)) {
-			parse_all(white_space);
+			parse_white_space();
 			Expression* right = parse_expression(level + 1);
 			left = op.create(left, right);
-			parse_all(white_space);
+			parse_white_space();
 		}
 		return left;
 	}
@@ -156,21 +178,23 @@ class Parser {
 		Scope scope(current_scope);
 		current_scope = &scope;
 		Expression* result = nullptr;
-		while (string.size() > 0) {
+		while (true) {
 			if (parse("let")) {
-				parse_all(white_space);
+				parse_white_space();
 				StringView name = parse_identifier();
-				parse_all(white_space);
-				parse("=");
-				parse_all(white_space);
+				parse_white_space();
+				expect("=");
+				parse_white_space();
 				Expression* expression = parse_expression();
 				scope.add_variable(name, expression);
 			}
 			else if (parse("return")) {
-				parse_all(white_space);
+				parse_white_space();
 				result = parse_expression();
+				break;
 			}
 			else {
+				error("expected \"let\" or \"return\"");
 				break;
 			}
 		}
@@ -181,7 +205,7 @@ public:
 	Parser(const char* string): string(string), current_scope(nullptr) {}
 	Parser(const char* string, std::size_t length): string(string, length), current_scope(nullptr) {}
 	Expression* parse() {
-		parse_all(white_space);
+		parse_white_space();
 		return parse_scope();
 	}
 };
