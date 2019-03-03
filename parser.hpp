@@ -144,21 +144,61 @@ class Parser {
 			expect("}");
 			return expression;
 		}
-		if (parse("(")) {
+		else if (parse("(")) {
 			parse_white_space();
 			Expression* expression = parse_expression();
 			parse_white_space();
 			expect(")");
 			return expression;
 		}
-		if (0 < string.size() && numeric(string[0])) {
+		else if (parse("fn")) {
+			parse_white_space();
+			expect("(");
+			parse_white_space();
+			Scope scope(current_scope);
+			current_scope = &scope;
+			std::vector<StringView> argument_names;
+			while (0 < string.size() && string[0] != ')') {
+				const StringView name = parse_identifier();
+				argument_names.push_back(name);
+				scope.add_variable(name, new Argument(name));
+				parse_white_space();
+				if (parse(",")) {
+					parse_white_space();
+				}
+			}
+			expect(")");
+			parse_white_space();
+			Expression* expression = parse_expression();
+			current_scope = scope.get_parent();
+			return new Function(expression, argument_names);
+		}
+		else if (0 < string.size() && numeric(string[0])) {
 			return parse_number();
 		}
-		if (0 < string.size() && alphabetic(string[0])) {
-			return parse_variable();
+		else if (0 < string.size() && alphabetic(string[0])) {
+			Expression* expression = parse_variable();
+			parse_white_space();
+			while (parse("(")) {
+				std::vector<Expression*> arguments;
+				parse_white_space();
+				while (0 < string.size() && string[0] != ')') {
+					arguments.push_back(parse_expression());
+					parse_white_space();
+					if (parse(",")) {
+						parse_white_space();
+					}
+				}
+				expect(")");
+				expression = new Call(expression, arguments);
+				parse_white_space();
+			}
+			return expression;
 		}
-		error("unexpected character");
-		return nullptr;
+		else {
+			error("unexpected character");
+			return nullptr;
+		}
 	}
 	Expression* parse_expression(int level = 0) {
 		if (level == 2) {
