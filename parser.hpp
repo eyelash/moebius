@@ -177,10 +177,19 @@ class Parser {
 			return parse_number();
 		}
 		else if (0 < string.size() && alphabetic(string[0])) {
-			Expression* expression = parse_variable();
+			return parse_variable();
+		}
+		else {
+			error("unexpected character");
+			return nullptr;
+		}
+	}
+	Expression* parse_expression(int level = 0) {
+		if (level == 2) {
+			Expression* expression = parse_expression_last();
 			parse_white_space();
 			while (parse("(")) {
-				std::vector<Expression*> arguments;
+				std::vector<const Expression*> arguments;
 				parse_white_space();
 				while (0 < string.size() && string[0] != ')') {
 					arguments.push_back(parse_expression());
@@ -194,15 +203,6 @@ class Parser {
 				parse_white_space();
 			}
 			return expression;
-		}
-		else {
-			error("unexpected character");
-			return nullptr;
-		}
-	}
-	Expression* parse_expression(int level = 0) {
-		if (level == 2) {
-			return parse_expression_last();
 		}
 		Expression* left = parse_expression(level + 1);
 		parse_white_space();

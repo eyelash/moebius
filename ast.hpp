@@ -32,7 +32,7 @@ class Value;
 
 class Callable {
 public:
-	virtual Value* call(const std::vector<Value*>& arguments) = 0;
+	virtual Value* call(const std::vector<Value*>& arguments) const = 0;
 };
 
 class Value {
@@ -48,7 +48,7 @@ public:
 class Expression {
 public:
 	using Environment = Table<Value>;
-	virtual Value* evaluate(const Environment& environment) = 0;
+	virtual Value* evaluate(const Environment& environment) const = 0;
 	Value* evaluate() {
 		return evaluate(Environment());
 	}
@@ -58,7 +58,7 @@ class Number: public Expression, public Value {
 	std::int32_t value;
 public:
 	Number(std::int32_t value): value(value) {}
-	Value* evaluate(const Environment& environment) override {
+	Value* evaluate(const Environment& environment) const override {
 		return new Number(value);
 	}
 	std::int32_t get_int() override {
@@ -67,11 +67,11 @@ public:
 };
 
 class Addition: public Expression {
-	Expression* left;
-	Expression* right;
+	const Expression* left;
+	const Expression* right;
 public:
-	Addition(Expression* left, Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) override {
+	Addition(const Expression* left, const Expression* right): left(left), right(right) {}
+	Value* evaluate(const Environment& environment) const override {
 		return new Number(left->evaluate(environment)->get_int() + right->evaluate(environment)->get_int());
 	}
 	static Expression* create(Expression* left, Expression* right) {
@@ -80,11 +80,11 @@ public:
 };
 
 class Subtraction: public Expression {
-	Expression* left;
-	Expression* right;
+	const Expression* left;
+	const Expression* right;
 public:
-	Subtraction(Expression* left, Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) override {
+	Subtraction(const Expression* left, const Expression* right): left(left), right(right) {}
+	Value* evaluate(const Environment& environment) const override {
 		return new Number(left->evaluate(environment)->get_int() - right->evaluate(environment)->get_int());
 	}
 	static Expression* create(Expression* left, Expression* right) {
@@ -93,11 +93,11 @@ public:
 };
 
 class Multiplication: public Expression {
-	Expression* left;
-	Expression* right;
+	const Expression* left;
+	const Expression* right;
 public:
-	Multiplication(Expression* left, Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) override {
+	Multiplication(const Expression* left, const Expression* right): left(left), right(right) {}
+	Value* evaluate(const Environment& environment) const override {
 		return new Number(left->evaluate(environment)->get_int() * right->evaluate(environment)->get_int());
 	}
 	static Expression* create(Expression* left, Expression* right) {
@@ -106,11 +106,11 @@ public:
 };
 
 class Division: public Expression {
-	Expression* left;
-	Expression* right;
+	const Expression* left;
+	const Expression* right;
 public:
-	Division(Expression* left, Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) override {
+	Division(const Expression* left, const Expression* right): left(left), right(right) {}
+	Value* evaluate(const Environment& environment) const override {
 		return new Number(left->evaluate(environment)->get_int() / right->evaluate(environment)->get_int());
 	}
 	static Expression* create(Expression* left, Expression* right) {
@@ -119,11 +119,11 @@ public:
 };
 
 class Remainder: public Expression {
-	Expression* left;
-	Expression* right;
+	const Expression* left;
+	const Expression* right;
 public:
-	Remainder(Expression* left, Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) override {
+	Remainder(const Expression* left, const Expression* right): left(left), right(right) {}
+	Value* evaluate(const Environment& environment) const override {
 		return new Number(left->evaluate(environment)->get_int() % right->evaluate(environment)->get_int());
 	}
 	static Expression* create(Expression* left, Expression* right) {
@@ -132,25 +132,26 @@ public:
 };
 
 class Function: public Expression {
-	Expression* expression;
+	const Expression* expression;
 	std::vector<StringView> argument_names;
 public:
-	Function(Expression* expression, const std::vector<StringView>& argument_names): expression(expression), argument_names(argument_names) {}
-	Value* evaluate(const Environment& environment) override {
+	Function(const Expression* expression, const std::vector<StringView>& argument_names): expression(expression), argument_names(argument_names) {}
+	Value* evaluate(const Environment& environment) const override {
 		class Closure: public Value, public Callable {
-			Function* function;
+			const Function* function;
 			Environment environment;
 		public:
-			Closure(Function* function, const Environment& environment): function(function), environment(environment) {}
+			Closure(const Function* function, const Environment& environment): function(function), environment(environment) {}
 			Callable* get_callable() override {
 				return this;
 			}
-			Value* call(const std::vector<Value*>& arguments) override {
+			Value* call(const std::vector<Value*>& arguments) const override {
 				const std::vector<StringView>& argument_names = function->argument_names;
+				Environment new_environment(environment);
 				for (std::size_t i = 0; i < argument_names.size() && i < arguments.size(); ++i) {
-					environment.insert(argument_names[i], arguments[i]);
+					new_environment.insert(argument_names[i], arguments[i]);
 				}
-				return function->expression->evaluate(environment);
+				return function->expression->evaluate(new_environment);
 			}
 		};
 		return new Closure(this, environment);
@@ -161,20 +162,20 @@ class Argument: public Expression {
 	StringView name;
 public:
 	Argument(const StringView& name): name(name) {}
-	Value* evaluate(const Environment& environment) override {
+	Value* evaluate(const Environment& environment) const override {
 		return environment.look_up(name);
 	}
 };
 
 class Call: public Expression {
-	Expression* expression;
-	std::vector<Expression*> arguments;
+	const Expression* expression;
+	std::vector<const Expression*> arguments;
 public:
-	Call(Expression* expression, const std::vector<Expression*>& arguments): expression(expression), arguments(arguments) {}
-	Value* evaluate(const Environment& environment) override {
+	Call(const Expression* expression, const std::vector<const Expression*>& arguments): expression(expression), arguments(arguments) {}
+	Value* evaluate(const Environment& environment) const override {
 		Callable* callable = expression->evaluate(environment)->get_callable();
 		std::vector<Value*> argument_values;
-		for (Expression* argument: arguments) {
+		for (const Expression* argument: arguments) {
 			argument_values.push_back(argument->evaluate(environment));
 		}
 		return callable->call(argument_values);
