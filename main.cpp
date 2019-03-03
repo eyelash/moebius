@@ -12,7 +12,5 @@ int main(int argc, char** argv) {
 	std::vector<char> file = read_file(argv[1]);
 	Parser parser(file.data(), file.size());
 	Expression* expr = parser.parse();
-	std::int32_t value;
-	expr->evaluate(&value);
-	std::cout << value << std::endl;
+	std::cout << expr->evaluate()->get_int() << std::endl;
 }
