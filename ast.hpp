@@ -4,6 +4,29 @@
 #include <map>
 #include <vector>
 
+class Number;
+class Addition;
+class Subtraction;
+class Multiplication;
+class Division;
+class Remainder;
+class Function;
+class Argument;
+class Call;
+
+class Visitor {
+public:
+	virtual void visit_number(const Number* number) = 0;
+	virtual void visit_addition(const Addition* addition) = 0;
+	virtual void visit_subtraction(const Subtraction* subtraction) = 0;
+	virtual void visit_multiplication(const Multiplication* multiplication) = 0;
+	virtual void visit_division(const Division* division) = 0;
+	virtual void visit_remainder(const Remainder* remainder) = 0;
+	virtual void visit_function(const Function* function) = 0;
+	virtual void visit_argument(const Argument* argument) = 0;
+	virtual void visit_call(const Call* call) = 0;
+};
+
 class Type {
 public:
 };
@@ -52,6 +75,7 @@ public:
 	Value* evaluate() {
 		return evaluate(Environment());
 	}
+	virtual void accept(Visitor* visitor) const = 0;
 };
 
 class Number: public Expression, public Value {
@@ -63,6 +87,9 @@ public:
 	}
 	std::int32_t get_int() override {
 		return value;
+	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_number(this);
 	}
 };
 
@@ -77,6 +104,9 @@ public:
 	static Expression* create(Expression* left, Expression* right) {
 		return new Addition(left, right);
 	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_addition(this);
+	}
 };
 
 class Subtraction: public Expression {
@@ -89,6 +119,9 @@ public:
 	}
 	static Expression* create(Expression* left, Expression* right) {
 		return new Subtraction(left, right);
+	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_subtraction(this);
 	}
 };
 
@@ -103,6 +136,9 @@ public:
 	static Expression* create(Expression* left, Expression* right) {
 		return new Multiplication(left, right);
 	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_multiplication(this);
+	}
 };
 
 class Division: public Expression {
@@ -116,6 +152,9 @@ public:
 	static Expression* create(Expression* left, Expression* right) {
 		return new Division(left, right);
 	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_division(this);
+	}
 };
 
 class Remainder: public Expression {
@@ -128,6 +167,9 @@ public:
 	}
 	static Expression* create(Expression* left, Expression* right) {
 		return new Remainder(left, right);
+	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_remainder(this);
 	}
 };
 
@@ -156,6 +198,9 @@ public:
 		};
 		return new Closure(this, environment);
 	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_function(this);
+	}
 };
 
 class Argument: public Expression {
@@ -164,6 +209,9 @@ public:
 	Argument(const StringView& name): name(name) {}
 	Value* evaluate(const Environment& environment) const override {
 		return environment.look_up(name);
+	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_argument(this);
 	}
 };
 
@@ -179,5 +227,8 @@ public:
 			argument_values.push_back(argument->evaluate(environment));
 		}
 		return callable->call(argument_values);
+	}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_call(this);
 	}
 };
