@@ -1,7 +1,7 @@
 #pragma once
 
+#include "printer.hpp"
 #include <cstdint>
-#include <map>
 #include <vector>
 
 class Number;
@@ -27,147 +27,74 @@ public:
 	virtual void visit_call(const Call* call) = 0;
 };
 
-class Type {
-public:
-};
-
-class Int: public Type {
-public:
-	static const Type* get() {
-		static Int type;
-		return &type;
-	}
-};
-
-template <class T> class Table {
-	std::map<StringView, T*> table;
-public:
-	void insert(const StringView& name, T* value) {
-		table[name] = value;
-	}
-	T* look_up(const StringView& name) const {
-		auto iterator = table.find(name);
-		return iterator != table.end() ? iterator->second : nullptr;
-	}
-};
-
-class Value;
-
-class Callable {
-public:
-	virtual Value* call(const std::vector<Value*>& arguments) const = 0;
-};
-
-class Value {
-public:
-	virtual std::int32_t get_int() {
-		return 0;
-	}
-	virtual Callable* get_callable() {
-		return nullptr;
-	}
-};
-
 class Expression {
 public:
-	using Environment = Table<Value>;
-	virtual Value* evaluate(const Environment& environment) const = 0;
-	Value* evaluate() {
-		return evaluate(Environment());
-	}
 	virtual void accept(Visitor* visitor) const = 0;
 };
 
-class Number: public Expression, public Value {
-	std::int32_t value;
-public:
-	Number(std::int32_t value): value(value) {}
-	Value* evaluate(const Environment& environment) const override {
-		return new Number(value);
-	}
-	std::int32_t get_int() override {
-		return value;
-	}
-	void accept(Visitor* visitor) const override {
-		visitor->visit_number(this);
-	}
-};
-
-class Addition: public Expression {
+class BinaryExpression: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	Addition(const Expression* left, const Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) const override {
-		return new Number(left->evaluate(environment)->get_int() + right->evaluate(environment)->get_int());
+	BinaryExpression(const Expression* left, const Expression* right): left(left), right(right) {}
+	const Expression* get_left() const {
+		return left;
 	}
-	static Expression* create(Expression* left, Expression* right) {
-		return new Addition(left, right);
+	const Expression* get_right() const {
+		return right;
 	}
+	template <class T> static Expression* create(Expression* left, Expression* right) {
+		return new T(left, right);
+	}
+};
+
+class Number: public Expression {
+	std::int32_t value;
+public:
+	Number(std::int32_t value): value(value) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_number(this);
+	}
+	std::int32_t get_value() const {
+		return value;
+	}
+};
+
+class Addition: public BinaryExpression {
+public:
+	Addition(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_addition(this);
 	}
 };
 
-class Subtraction: public Expression {
-	const Expression* left;
-	const Expression* right;
+class Subtraction: public BinaryExpression {
 public:
-	Subtraction(const Expression* left, const Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) const override {
-		return new Number(left->evaluate(environment)->get_int() - right->evaluate(environment)->get_int());
-	}
-	static Expression* create(Expression* left, Expression* right) {
-		return new Subtraction(left, right);
-	}
+	Subtraction(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_subtraction(this);
 	}
 };
 
-class Multiplication: public Expression {
-	const Expression* left;
-	const Expression* right;
+class Multiplication: public BinaryExpression {
 public:
-	Multiplication(const Expression* left, const Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) const override {
-		return new Number(left->evaluate(environment)->get_int() * right->evaluate(environment)->get_int());
-	}
-	static Expression* create(Expression* left, Expression* right) {
-		return new Multiplication(left, right);
-	}
+	Multiplication(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_multiplication(this);
 	}
 };
 
-class Division: public Expression {
-	const Expression* left;
-	const Expression* right;
+class Division: public BinaryExpression {
 public:
-	Division(const Expression* left, const Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) const override {
-		return new Number(left->evaluate(environment)->get_int() / right->evaluate(environment)->get_int());
-	}
-	static Expression* create(Expression* left, Expression* right) {
-		return new Division(left, right);
-	}
+	Division(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_division(this);
 	}
 };
 
-class Remainder: public Expression {
-	const Expression* left;
-	const Expression* right;
+class Remainder: public BinaryExpression {
 public:
-	Remainder(const Expression* left, const Expression* right): left(left), right(right) {}
-	Value* evaluate(const Environment& environment) const override {
-		return new Number(left->evaluate(environment)->get_int() % right->evaluate(environment)->get_int());
-	}
-	static Expression* create(Expression* left, Expression* right) {
-		return new Remainder(left, right);
-	}
+	Remainder(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_remainder(this);
 	}
@@ -178,28 +105,14 @@ class Function: public Expression {
 	std::vector<StringView> argument_names;
 public:
 	Function(const Expression* expression, const std::vector<StringView>& argument_names): expression(expression), argument_names(argument_names) {}
-	Value* evaluate(const Environment& environment) const override {
-		class Closure: public Value, public Callable {
-			const Function* function;
-			Environment environment;
-		public:
-			Closure(const Function* function, const Environment& environment): function(function), environment(environment) {}
-			Callable* get_callable() override {
-				return this;
-			}
-			Value* call(const std::vector<Value*>& arguments) const override {
-				const std::vector<StringView>& argument_names = function->argument_names;
-				Environment new_environment(environment);
-				for (std::size_t i = 0; i < argument_names.size() && i < arguments.size(); ++i) {
-					new_environment.insert(argument_names[i], arguments[i]);
-				}
-				return function->expression->evaluate(new_environment);
-			}
-		};
-		return new Closure(this, environment);
-	}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_function(this);
+	}
+	const Expression* get_expression() const {
+		return expression;
+	}
+	const std::vector<StringView>& get_argument_names() const {
+		return argument_names;
 	}
 };
 
@@ -207,11 +120,11 @@ class Argument: public Expression {
 	StringView name;
 public:
 	Argument(const StringView& name): name(name) {}
-	Value* evaluate(const Environment& environment) const override {
-		return environment.look_up(name);
-	}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_argument(this);
+	}
+	StringView get_name() const {
+		return name;
 	}
 };
 
@@ -220,15 +133,13 @@ class Call: public Expression {
 	std::vector<const Expression*> arguments;
 public:
 	Call(const Expression* expression, const std::vector<const Expression*>& arguments): expression(expression), arguments(arguments) {}
-	Value* evaluate(const Environment& environment) const override {
-		Callable* callable = expression->evaluate(environment)->get_callable();
-		std::vector<Value*> argument_values;
-		for (const Expression* argument: arguments) {
-			argument_values.push_back(argument->evaluate(environment));
-		}
-		return callable->call(argument_values);
-	}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_call(this);
+	}
+	const Expression* get_expression() const {
+		return expression;
+	}
+	const std::vector<const Expression*>& get_arguments() const {
+		return arguments;
 	}
 };

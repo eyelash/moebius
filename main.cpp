@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include "codegen.hpp"
 #include <vector>
 #include <fstream>
 #include <iostream>
@@ -12,5 +13,5 @@ int main(int argc, char** argv) {
 	std::vector<char> file = read_file(argv[1]);
 	Parser parser(file.data(), file.size());
 	Expression* expr = parser.parse();
-	std::cout << expr->evaluate()->get_int() << std::endl;
+	std::cout << evaluate(expr)->get_int() << std::endl;
 }

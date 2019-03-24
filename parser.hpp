@@ -1,3 +1,5 @@
+#pragma once
+
 #include "printer.hpp"
 #include "ast.hpp"
 #include <map>
@@ -15,13 +17,13 @@ struct BinaryOperator {
 
 static constexpr BinaryOperator operators[][4] = {
 	{
-		BinaryOperator("+", Addition::create),
-		BinaryOperator("-", Subtraction::create)
+		BinaryOperator("+", BinaryExpression::create<Addition>),
+		BinaryOperator("-", BinaryExpression::create<Subtraction>)
 	},
 	{
-		BinaryOperator("*", Multiplication::create),
-		BinaryOperator("/", Division::create),
-		BinaryOperator("%", Remainder::create)
+		BinaryOperator("*", BinaryExpression::create<Multiplication>),
+		BinaryOperator("/", BinaryExpression::create<Division>),
+		BinaryOperator("%", BinaryExpression::create<Remainder>)
 	}
 };
 
