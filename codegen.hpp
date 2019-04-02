@@ -37,8 +37,6 @@ public:
 	}
 };
 
-Value* evaluate(const Expression* expression, const Environment& environment);
-
 class Closure: public Value {
 	const Function* function;
 	Environment environment;
@@ -50,51 +48,54 @@ public:
 	Closure* get_closure() override {
 		return this;
 	}
-	const Function* get_function() const {
-		return function;
+	const Expression* get_expression() const {
+		return function->get_expression();
 	}
-	Value* call(const std::vector<Value*>& arguments) const {
-		const std::vector<StringView>& argument_names = function->get_argument_names();
-		Environment new_environment(environment);
-		for (std::size_t i = 0; i < argument_names.size() && i < arguments.size(); ++i) {
-			new_environment.insert(argument_names[i], arguments[i]);
-		}
-		return evaluate(function->get_expression(), new_environment);
+	const std::vector<StringView>& get_argument_names() const {
+		return function->get_argument_names();
+	}
+	const Environment& get_environment() const {
+		return environment;
 	}
 };
 
-Value* evaluate(const Expression* expression, const Environment& environment) {
+Value* evaluate(const Expression* expression) {
 	class CodegenVisitor: public Visitor {
 		Value* value;
-		const Environment environment;
+		const Environment& environment;
 	public:
 		CodegenVisitor(const Environment& environment): value(nullptr), environment(environment) {}
+		Value* evaluate(const Expression* expression) {
+			value = nullptr;
+			expression->accept(this);
+			return value;
+		}
 		void visit_number(const Number* number) override {
 			value = new NumberValue(number->get_value());
 		}
 		void visit_addition(const Addition* addition) override {
-			Value* left = evaluate(addition->get_left(), environment);
-			Value* right = evaluate(addition->get_right(), environment);
+			Value* left = evaluate(addition->get_left());
+			Value* right = evaluate(addition->get_right());
 			value = new NumberValue(left->get_int() + right->get_int());
 		}
 		void visit_subtraction(const Subtraction* subtraction) override {
-			Value* left = evaluate(subtraction->get_left(), environment);
-			Value* right = evaluate(subtraction->get_right(), environment);
+			Value* left = evaluate(subtraction->get_left());
+			Value* right = evaluate(subtraction->get_right());
 			value = new NumberValue(left->get_int() - right->get_int());
 		}
 		void visit_multiplication(const Multiplication* multiplication) override {
-			Value* left = evaluate(multiplication->get_left(), environment);
-			Value* right = evaluate(multiplication->get_right(), environment);
+			Value* left = evaluate(multiplication->get_left());
+			Value* right = evaluate(multiplication->get_right());
 			value = new NumberValue(left->get_int() * right->get_int());
 		}
 		void visit_division(const Division* division) override {
-			Value* left = evaluate(division->get_left(), environment);
-			Value* right = evaluate(division->get_right(), environment);
+			Value* left = evaluate(division->get_left());
+			Value* right = evaluate(division->get_right());
 			value = new NumberValue(left->get_int() / right->get_int());
 		}
 		void visit_remainder(const Remainder* remainder) override {
-			Value* left = evaluate(remainder->get_left(), environment);
-			Value* right = evaluate(remainder->get_right(), environment);
+			Value* left = evaluate(remainder->get_left());
+			Value* right = evaluate(remainder->get_right());
 			value = new NumberValue(left->get_int() % right->get_int());
 		}
 		void visit_function(const Function* function) override {
@@ -104,22 +105,21 @@ Value* evaluate(const Expression* expression, const Environment& environment) {
 			value = environment.look_up(argument->get_name());
 		}
 		void visit_call(const Call* call) override {
-			Closure* closure = evaluate(call->get_expression(), environment)->get_closure();
+			Closure* closure = evaluate(call->get_expression())->get_closure();
 			std::vector<Value*> argument_values;
 			for (const Expression* argument: call->get_arguments()) {
-				argument_values.push_back(evaluate(argument, environment));
+				argument_values.push_back(evaluate(argument));
 			}
-			value = closure->call(argument_values);
-		}
-		Value* get_value() const {
-			return value;
+			const std::vector<StringView>& argument_names = closure->get_argument_names();
+			Environment new_environment(closure->get_environment());
+			for (std::size_t i = 0; i < argument_names.size() && i < argument_values.size(); ++i) {
+				new_environment.insert(argument_names[i], argument_values[i]);
+			}
+			CodegenVisitor visitor(new_environment);
+			value = visitor.evaluate(closure->get_expression());
 		}
 	};
+	Environment environment;
 	CodegenVisitor visitor(environment);
-	expression->accept(&visitor);
-	return visitor.get_value();
-}
-
-Value* evaluate(const Expression* expression) {
-	return evaluate(expression, Environment());
+	return visitor.evaluate(expression);
 }

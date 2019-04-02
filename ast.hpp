@@ -43,7 +43,7 @@ public:
 	const Expression* get_right() const {
 		return right;
 	}
-	template <class T> static Expression* create(Expression* left, Expression* right) {
+	template <class T> static Expression* create(const Expression* left, const Expression* right) {
 		return new T(left, right);
 	}
 };

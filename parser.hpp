@@ -6,7 +6,7 @@
 
 struct BinaryOperator {
 	const char* string;
-	using Create = Expression* (*)(Expression* left, Expression* right);
+	using Create = Expression* (*)(const Expression* left, const Expression* right);
 	Create create;
 	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
 	constexpr BinaryOperator(): string(nullptr), create(nullptr) {}
