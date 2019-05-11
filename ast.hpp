@@ -102,14 +102,18 @@ public:
 
 class Function: public Expression {
 	const Expression* expression;
+	std::vector<StringView> environment_names;
 	std::vector<StringView> argument_names;
 public:
-	Function(const Expression* expression, const std::vector<StringView>& argument_names): expression(expression), argument_names(argument_names) {}
+	Function(const Expression* expression, const std::vector<StringView>& environment_names, const std::vector<StringView>& argument_names): expression(expression), environment_names(environment_names), argument_names(argument_names) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_function(this);
 	}
 	const Expression* get_expression() const {
 		return expression;
+	}
+	const std::vector<StringView>& get_environment_names() const {
+		return environment_names;
 	}
 	const std::vector<StringView>& get_argument_names() const {
 		return argument_names;

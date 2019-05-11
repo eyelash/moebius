@@ -50,6 +50,55 @@ public:
 	}
 };
 
+class CaptureAnalysis: public Visitor {
+	std::vector<StringView>& environment_names;
+	const std::vector<StringView>& argument_names;
+	void add_name(const StringView& name) {
+		for (const StringView& argument: argument_names) {
+			if (argument == name) {
+				return;
+			}
+		}
+		environment_names.push_back(name);
+	}
+public:
+	CaptureAnalysis(std::vector<StringView>& environment_names, const std::vector<StringView>& argument_names): environment_names(environment_names), argument_names(argument_names) {}
+	void visit_binary_expression(const BinaryExpression* expression) {
+		expression->get_left()->accept(this);
+		expression->get_right()->accept(this);
+	}
+	void visit_number(const Number* number) override {}
+	void visit_addition(const Addition* addition) override {
+		visit_binary_expression(addition);
+	}
+	void visit_subtraction(const Subtraction* subtraction) override {
+		visit_binary_expression(subtraction);
+	}
+	void visit_multiplication(const Multiplication* multiplication) override {
+		visit_binary_expression(multiplication);
+	}
+	void visit_division(const Division* division) override {
+		visit_binary_expression(division);
+	}
+	void visit_remainder(const Remainder* remainder) override {
+		visit_binary_expression(remainder);
+	}
+	void visit_function(const Function* function) override {
+		for (const StringView& name: function->get_environment_names()) {
+			add_name(name);
+		}
+	}
+	void visit_argument(const Argument* argument) override {
+		add_name(argument->get_name());
+	}
+	void visit_call(const Call* call) override {
+		call->get_expression()->accept(this);
+		for (const Expression* argument: call->get_arguments()) {
+			argument->accept(this);
+		}
+	}
+};
+
 class Parser {
 	StringView string;
 	Scope* current_scope;
@@ -173,7 +222,10 @@ class Parser {
 			parse_white_space();
 			Expression* expression = parse_expression();
 			current_scope = scope.get_parent();
-			return new Function(expression, argument_names);
+			std::vector<StringView> environment_names;
+			CaptureAnalysis capture_analysis(environment_names, argument_names);
+			expression->accept(&capture_analysis);
+			return new Function(expression, environment_names, argument_names);
 		}
 		else if (0 < string.size() && numeric(string[0])) {
 			return parse_number();
