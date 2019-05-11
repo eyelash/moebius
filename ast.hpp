@@ -105,9 +105,19 @@ class Function: public Expression {
 	std::vector<StringView> environment_names;
 	std::vector<StringView> argument_names;
 public:
-	Function(const Expression* expression, const std::vector<StringView>& environment_names, const std::vector<StringView>& argument_names): expression(expression), environment_names(environment_names), argument_names(argument_names) {}
+	Function(const Expression* expression): expression(expression) {}
+	Function(): expression(nullptr) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_function(this);
+	}
+	void set_expression(const Expression* expression) {
+		this->expression = expression;
+	}
+	void add_environment_name(const StringView& name) {
+		environment_names.push_back(name);
+	}
+	void add_argument_name(const StringView& name) {
+		argument_names.push_back(name);
 	}
 	const Expression* get_expression() const {
 		return expression;
@@ -136,9 +146,12 @@ class Call: public Expression {
 	const Expression* expression;
 	std::vector<const Expression*> arguments;
 public:
-	Call(const Expression* expression, const std::vector<const Expression*>& arguments): expression(expression), arguments(arguments) {}
+	Call(const Expression* expression): expression(expression) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_call(this);
+	}
+	void add_argument(const Expression* expression) {
+		arguments.push_back(expression);
 	}
 	const Expression* get_expression() const {
 		return expression;

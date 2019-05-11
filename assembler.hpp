@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <fstream>
 
-enum Register: unsigned char {
+enum Register: std::uint8_t {
 	EAX,
 	ECX,
 	EDX,

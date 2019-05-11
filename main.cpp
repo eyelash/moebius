@@ -12,6 +12,6 @@ std::vector<char> read_file(const char* file_name) {
 int main(int argc, char** argv) {
 	std::vector<char> file = read_file(argv[1]);
 	Parser parser(file.data(), file.size());
-	Expression* expr = parser.parse();
+	const Expression* expr = parser.parse();
 	std::cout << evaluate(expr)->get_int() << std::endl;
 }

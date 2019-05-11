@@ -39,14 +39,17 @@ public:
 
 class Closure: public Value {
 	const Function* function;
-	Environment environment;
+	std::vector<Value*> environment_values;
 public:
-	Closure(const Function* function, const Environment& environment): function(function), environment(environment) {}
+	Closure(const Function* function): function(function) {}
 	std::int32_t get_int() override {
 		return 0;
 	}
 	Closure* get_closure() override {
 		return this;
+	}
+	void add_environment_value(Value* value) {
+		environment_values.push_back(value);
 	}
 	const Expression* get_expression() const {
 		return function->get_expression();
@@ -54,8 +57,11 @@ public:
 	const std::vector<StringView>& get_argument_names() const {
 		return function->get_argument_names();
 	}
-	const Environment& get_environment() const {
-		return environment;
+	const std::vector<StringView>& get_environment_names() const {
+		return function->get_environment_names();
+	}
+	const std::vector<Value*>& get_environment_values() const {
+		return environment_values;
 	}
 };
 
@@ -98,19 +104,28 @@ public:
 		value = new CompiletimeNumber(left->get_int() % right->get_int());
 	}
 	void visit_function(const Function* function) override {
-		value = new Closure(function, environment);
+		Closure* closure = new Closure(function);
+		for (const StringView& name: function->get_environment_names()) {
+			closure->add_environment_value(environment.look_up(name));
+		}
+		value = closure;
 	}
 	void visit_argument(const Argument* argument) override {
 		value = environment.look_up(argument->get_name());
 	}
 	void visit_call(const Call* call) override {
 		Closure* closure = evaluate(call->get_expression())->get_closure();
+		const std::vector<StringView>& environment_names = closure->get_environment_names();
+		const std::vector<StringView>& argument_names = closure->get_argument_names();
+		const std::vector<Value*>& environment_values = closure->get_environment_values();
 		std::vector<Value*> argument_values;
 		for (const Expression* argument: call->get_arguments()) {
 			argument_values.push_back(evaluate(argument));
 		}
-		const std::vector<StringView>& argument_names = closure->get_argument_names();
-		Environment new_environment(closure->get_environment());
+		Environment new_environment;
+		for (std::size_t i = 0; i < environment_names.size() && i < environment_values.size(); ++i) {
+			new_environment.insert(environment_names[i], environment_values[i]);
+		}
 		for (std::size_t i = 0; i < argument_names.size() && i < argument_values.size(); ++i) {
 			new_environment.insert(argument_names[i], argument_values[i]);
 		}

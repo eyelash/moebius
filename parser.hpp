@@ -29,16 +29,16 @@ static constexpr BinaryOperator operators[][4] = {
 
 class Scope {
 	Scope* parent;
-	std::map<StringView, Expression*> variables;
+	std::map<StringView, const Expression*> variables;
 public:
 	Scope(Scope* parent = nullptr): parent(parent) {}
 	Scope* get_parent() const {
 		return parent;
 	}
-	void add_variable(const StringView& name, Expression* value) {
+	void add_variable(const StringView& name, const Expression* value) {
 		variables[name] = value;
 	}
-	Expression* look_up(const StringView& name) const {
+	const Expression* look_up(const StringView& name) const {
 		auto iterator = variables.find(name);
 		if (iterator != variables.end()) {
 			return iterator->second;
@@ -51,18 +51,17 @@ public:
 };
 
 class CaptureAnalysis: public Visitor {
-	std::vector<StringView>& environment_names;
-	const std::vector<StringView>& argument_names;
+	Function* function;
 	void add_name(const StringView& name) {
-		for (const StringView& argument: argument_names) {
+		for (const StringView& argument: function->get_argument_names()) {
 			if (argument == name) {
 				return;
 			}
 		}
-		environment_names.push_back(name);
+		function->add_environment_name(name);
 	}
 public:
-	CaptureAnalysis(std::vector<StringView>& environment_names, const std::vector<StringView>& argument_names): environment_names(environment_names), argument_names(argument_names) {}
+	CaptureAnalysis(Function* function): function(function) {}
 	void visit_binary_expression(const BinaryExpression* expression) {
 		expression->get_left()->accept(this);
 		expression->get_right()->accept(this);
@@ -159,9 +158,8 @@ class Parser {
 		return new Number(number);
 	}
 	StringView parse_identifier() {
-		std::size_t i = 0;
-		if (i < string.size() && alphabetic(string[i])) {
-			++i;
+		if (0 < string.size() && alphabetic(string[0])) {
+			std::size_t i = 1;
 			while (i < string.size() && alphanumeric(string[i])) {
 				++i;
 			}
@@ -171,9 +169,9 @@ class Parser {
 		}
 		return StringView();
 	}
-	Expression* parse_variable() {
+	const Expression* parse_variable() {
 		StringView identifier = parse_identifier();
-		Expression* expression = current_scope->look_up(identifier);
+		const Expression* expression = current_scope->look_up(identifier);
 		if (expression == nullptr) {
 			error("invalid identifier \"%\"", identifier);
 		}
@@ -187,17 +185,17 @@ class Parser {
 		}
 		return BinaryOperator();
 	}
-	Expression* parse_expression_last() {
+	const Expression* parse_expression_last() {
 		if (parse("{")) {
 			parse_white_space();
-			Expression* expression = parse_scope();
+			const Expression* expression = parse_scope();
 			parse_white_space();
 			expect("}");
 			return expression;
 		}
 		else if (parse("(")) {
 			parse_white_space();
-			Expression* expression = parse_expression();
+			const Expression* expression = parse_expression();
 			parse_white_space();
 			expect(")");
 			return expression;
@@ -208,10 +206,10 @@ class Parser {
 			parse_white_space();
 			Scope scope(current_scope);
 			current_scope = &scope;
-			std::vector<StringView> argument_names;
+			Function* function = new Function();
 			while (0 < string.size() && string[0] != ')') {
 				const StringView name = parse_identifier();
-				argument_names.push_back(name);
+				function->add_argument_name(name);
 				scope.add_variable(name, new Argument(name));
 				parse_white_space();
 				if (parse(",")) {
@@ -220,12 +218,12 @@ class Parser {
 			}
 			expect(")");
 			parse_white_space();
-			Expression* expression = parse_expression();
+			const Expression* expression = parse_expression();
+			function->set_expression(expression);
 			current_scope = scope.get_parent();
-			std::vector<StringView> environment_names;
-			CaptureAnalysis capture_analysis(environment_names, argument_names);
+			CaptureAnalysis capture_analysis(function);
 			expression->accept(&capture_analysis);
-			return new Function(expression, environment_names, argument_names);
+			return function;
 		}
 		else if (0 < string.size() && numeric(string[0])) {
 			return parse_number();
@@ -238,40 +236,40 @@ class Parser {
 			return nullptr;
 		}
 	}
-	Expression* parse_expression(int level = 0) {
+	const Expression* parse_expression(int level = 0) {
 		if (level == 2) {
-			Expression* expression = parse_expression_last();
+			const Expression* expression = parse_expression_last();
 			parse_white_space();
 			while (parse("(")) {
-				std::vector<const Expression*> arguments;
 				parse_white_space();
+				Call* call = new Call(expression);
 				while (0 < string.size() && string[0] != ')') {
-					arguments.push_back(parse_expression());
+					call->add_argument(parse_expression());
 					parse_white_space();
 					if (parse(",")) {
 						parse_white_space();
 					}
 				}
 				expect(")");
-				expression = new Call(expression, arguments);
+				expression = call;
 				parse_white_space();
 			}
 			return expression;
 		}
-		Expression* left = parse_expression(level + 1);
+		const Expression* left = parse_expression(level + 1);
 		parse_white_space();
 		while (BinaryOperator op = parse_operator(level)) {
 			parse_white_space();
-			Expression* right = parse_expression(level + 1);
+			const Expression* right = parse_expression(level + 1);
 			left = op.create(left, right);
 			parse_white_space();
 		}
 		return left;
 	}
-	Expression* parse_scope() {
+	const Expression* parse_scope() {
 		Scope scope(current_scope);
 		current_scope = &scope;
-		Expression* result = nullptr;
+		const Expression* result = nullptr;
 		while (true) {
 			if (parse("let")) {
 				parse_white_space();
@@ -279,7 +277,7 @@ class Parser {
 				parse_white_space();
 				expect("=");
 				parse_white_space();
-				Expression* expression = parse_expression();
+				const Expression* expression = parse_expression();
 				scope.add_variable(name, expression);
 			}
 			else if (parse("return")) {
@@ -298,7 +296,7 @@ class Parser {
 public:
 	Parser(const char* string): string(string), current_scope(nullptr) {}
 	Parser(const char* string, std::size_t length): string(string, length), current_scope(nullptr) {}
-	Expression* parse() {
+	const Expression* parse() {
 		parse_white_space();
 		return parse_scope();
 	}
