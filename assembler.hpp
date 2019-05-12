@@ -160,6 +160,7 @@ public:
 		write<std::uint8_t>(0xF7);
 		write<std::uint8_t>(0xC0 | 0x7 << 3 | r);
 	}
+	// EDX:EAX = EAX
 	void CDQ() {
 		write<std::uint8_t>(0x99);
 	}
