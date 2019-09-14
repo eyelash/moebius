@@ -40,9 +40,6 @@ public:
 	constexpr StringView substr(std::size_t pos) const {
 		return substr(pos, length - pos);
 	}
-	constexpr bool starts_with(const StringView& s) const {
-		return length < s.length ? false : strncmp(string, s.string, s.length) == 0;
-	}
 	constexpr const char* begin() const {
 		return string;
 	}
@@ -82,3 +79,34 @@ public:
 		}
 	}
 };
+
+template <class... T> class PrintTuple;
+template <> class PrintTuple<> {
+public:
+	constexpr PrintTuple() {}
+	void print(Printer& p) const {}
+};
+template <class T0, class... T> class PrintTuple<T0, T...> {
+	const T0& t0;
+	PrintTuple<T...> t;
+public:
+	constexpr PrintTuple(const T0& t0, const T&... t): t0(t0), t(t...) {}
+	void print(Printer& p) const {
+		p.print(t0);
+		p.print(t);
+	}
+};
+template <class... T> PrintTuple(const T&...) -> PrintTuple<T...>;
+
+template <class T> auto bold(const T& t) {
+	return PrintTuple("\e[1m", t, "\e[m");
+}
+template <class T> auto red(const T& t) {
+	return PrintTuple("\e[31m", t, "\e[m");
+}
+template <class T> auto green(const T& t) {
+	return PrintTuple("\e[32m", t, "\e[m");
+}
+template <class T> auto yellow(const T& t) {
+	return PrintTuple("\e[33m", t, "\e[m");
+}

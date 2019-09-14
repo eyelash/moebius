@@ -98,8 +98,46 @@ public:
 	}
 };
 
+class Position {
+	const char* position;
+	const char* line_start;
+public:
+	constexpr Position(const char* position): position(position), line_start(position) {}
+	constexpr bool operator <(const char* end) const {
+		return position < end;
+	}
+	constexpr char operator *() const {
+		return *position;
+	}
+	Position& operator ++() {
+		if (*position == '\n') {
+			++position;
+			line_start = position;
+		}
+		else {
+			++position;
+		}
+		return *this;
+	}
+	constexpr StringView operator -(const Position& start) const {
+		return StringView(start.position, position - start.position);
+	}
+	void print(Printer& p, const char* end) const {
+		for (const char* c = line_start; c < end && *c != '\n'; ++c) {
+			p.print(*c);
+		}
+		p.print('\n');
+		for (const char* c = line_start; c < position; ++c) {
+			p.print(*c == '\t' ? '\t' : ' ');
+		}
+		p.print('^');
+		p.print('\n');
+	}
+};
+
 class Parser {
-	StringView string;
+	Position position;
+	const char* end;
 	Scope* current_scope;
 	static constexpr bool white_space(char c) {
 		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -114,34 +152,38 @@ class Parser {
 		return alphabetic(c) || numeric(c);
 	}
 	template <class F> void parse_all(F f) {
-		std::size_t i = 0;
-		while (i < string.size() && f(string[i])) {
-			++i;
+		while (position < end && f(*position)) {
+			++position;
 		}
-		string = string.substr(i);
 	}
 	bool parse(char c) {
-		if (0 < string.size() && string[0] == c) {
-			string = string.substr(1);
+		if (position < end && *position == c) {
+			++position;
 			return true;
 		}
 		return false;
 	}
 	bool parse(const StringView& s) {
-		if (string.starts_with(s)) {
-			string = string.substr(s.size());
-			return true;
+		const Position copy = position;
+		for (char c: s) {
+			if (position < end && *position == c) {
+				++position;
+				continue;
+			}
+			position = copy;
+			return false;
 		}
-		return false;
+		return true;
 	}
 	void parse_white_space() {
 		parse_all(white_space);
 	}
 	template <class... T> void error(const char* s, const T&... t) {
 		Printer printer(stderr);
-		printer.print("error: ");
+		printer.print(bold(red("error: ")));
 		printer.print(s, t...);
 		printer.print("\n");
+		position.print(printer, end);
 	}
 	void expect(const StringView& s) {
 		if (!parse(s)) {
@@ -150,22 +192,18 @@ class Parser {
 	}
 	Expression* parse_number() {
 		std::int32_t number = 0;
-		while (0 < string.size() && numeric(string[0])) {
+		while (position < end && numeric(*position)) {
 			number *= 10;
-			number += string[0] - '0';
-			string = string.substr(1);
+			number += *position - '0';
+			++position;
 		}
 		return new Number(number);
 	}
 	StringView parse_identifier() {
-		if (0 < string.size() && alphabetic(string[0])) {
-			std::size_t i = 1;
-			while (i < string.size() && alphanumeric(string[i])) {
-				++i;
-			}
-			StringView result = string.substr(0, i);
-			string = string.substr(i);
-			return result;
+		if (position < end && alphabetic(*position)) {
+			const Position start = position;
+			parse_all(alphanumeric);
+			return position - start;
 		}
 		return StringView();
 	}
@@ -207,7 +245,7 @@ class Parser {
 			Scope scope(current_scope);
 			current_scope = &scope;
 			Function* function = new Function();
-			while (0 < string.size() && string[0] != ')') {
+			while (position < end && *position != ')') {
 				const StringView name = parse_identifier();
 				function->add_argument_name(name);
 				scope.add_variable(name, new Argument(name));
@@ -225,10 +263,10 @@ class Parser {
 			expression->accept(&capture_analysis);
 			return function;
 		}
-		else if (0 < string.size() && numeric(string[0])) {
+		else if (position < end && numeric(*position)) {
 			return parse_number();
 		}
-		else if (0 < string.size() && alphabetic(string[0])) {
+		else if (position < end && alphabetic(*position)) {
 			return parse_variable();
 		}
 		else {
@@ -243,7 +281,7 @@ class Parser {
 			while (parse("(")) {
 				parse_white_space();
 				Call* call = new Call(expression);
-				while (0 < string.size() && string[0] != ')') {
+				while (position < end && *position != ')') {
 					call->add_argument(parse_expression());
 					parse_white_space();
 					if (parse(",")) {
@@ -294,8 +332,7 @@ class Parser {
 		return result;
 	}
 public:
-	Parser(const char* string): string(string), current_scope(nullptr) {}
-	Parser(const char* string, std::size_t length): string(string, length), current_scope(nullptr) {}
+	Parser(const StringView& string): position(string.begin()), end(string.end()), current_scope(nullptr) {}
 	const Expression* parse() {
 		parse_white_space();
 		return parse_scope();
