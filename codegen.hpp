@@ -2,7 +2,6 @@
 
 #include "ast.hpp"
 #include "assembler.hpp"
-#include <map>
 
 class Closure;
 
@@ -10,8 +9,12 @@ class Value {
 public:
 	virtual int get_type() = 0;
 	virtual std::uint32_t get_size() = 0;
-	virtual std::int32_t get_int() = 0;
-	virtual Closure* get_closure() = 0;
+	virtual std::int32_t get_int() {
+		return 0;
+	}
+	virtual Closure* get_closure() {
+		return nullptr;
+	}
 };
 
 class CompiletimeNumber: public Value {
@@ -27,9 +30,6 @@ public:
 	std::int32_t get_int() override {
 		return value;
 	}
-	Closure* get_closure() override {
-		return nullptr;
-	}
 };
 
 class RuntimeNumber: public Value {
@@ -40,12 +40,6 @@ public:
 	}
 	std::uint32_t get_size() override {
 		return 4;
-	}
-	std::int32_t get_int() override {
-		return 0;
-	}
-	Closure* get_closure() override {
-		return nullptr;
 	}
 };
 
@@ -63,9 +57,6 @@ public:
 			size += value->get_size();
 		}
 		return size;
-	}
-	std::int32_t get_int() override {
-		return 0;
 	}
 	Closure* get_closure() override {
 		return this;
@@ -111,7 +102,7 @@ class FunctionTable {
 			}
 			output_size = return_value->get_size();
 		}
-		Value* look_up(const StringView& name, std::uint32_t& location) {
+		Value* look_up(const StringView& name, std::uint32_t& location) const {
 			const std::vector<StringView>& environment_names = function->get_environment_names();
 			const std::vector<StringView>& argument_names = function->get_argument_names();
 			location = std::max(input_size, output_size);
@@ -130,13 +121,7 @@ class FunctionTable {
 			return nullptr;
 		}
 	};
-	struct DeferredCall {
-		Assembler::Jump jump;
-		std::size_t function_index;
-		DeferredCall(const Assembler::Jump& jump, std::size_t function_index): jump(jump), function_index(function_index) {}
-	};
 	std::vector<Entry> functions;
-	std::vector<DeferredCall> deferred_calls;
 	static bool equals(Value* value1, Value* value2) {
 		const int type1 = value1->get_type();
 		const int type2 = value2->get_type();
@@ -150,10 +135,11 @@ class FunctionTable {
 			return true;
 		}
 		if (type1 == 3) {
-			std::vector<Value*> values1 = value1->get_closure()->get_environment_values();
-			std::vector<Value*> values2 = value2->get_closure()->get_environment_values();
+			const std::vector<Value*>& values1 = value1->get_closure()->get_environment_values();
+			const std::vector<Value*>& values2 = value2->get_closure()->get_environment_values();
 			return equals(values1, values2);
 		}
+		return false;
 	}
 	static bool equals(const std::vector<Value*>& values1, const std::vector<Value*>& values2) {
 		if (values1.size() != values2.size()) {
@@ -185,12 +171,6 @@ public:
 	}
 	std::size_t size() const {
 		return functions.size();
-	}
-	void add_deferred_call(const Assembler::Jump& jump, std::size_t function_index) {
-		deferred_calls.emplace_back(jump, function_index);
-	}
-	const std::vector<DeferredCall>& get_deferred_calls() const {
-		return deferred_calls;
 	}
 };
 
@@ -292,13 +272,20 @@ public:
 	}
 };
 
+struct DeferredCall {
+	Assembler::Jump jump;
+	std::size_t function_index;
+	DeferredCall(const Assembler::Jump& jump, std::size_t function_index): jump(jump), function_index(function_index) {}
+};
+
 class Pass2: public Visitor {
 	Value* value;
 	FunctionTable& function_table;
+	std::vector<DeferredCall>& deferred_calls;
 	std::size_t index;
 	Assembler& assembler;
 public:
-	Pass2(FunctionTable& function_table, std::size_t index, Assembler& assembler): value(nullptr), function_table(function_table), index(index), assembler(assembler) {}
+	Pass2(FunctionTable& function_table, std::vector<DeferredCall>& deferred_calls, std::size_t index, Assembler& assembler): value(nullptr), function_table(function_table), deferred_calls(deferred_calls), index(index), assembler(assembler) {}
 	Value* evaluate(const Expression* expression) {
 		value = nullptr;
 		expression->accept(this);
@@ -423,7 +410,7 @@ public:
 		const std::size_t new_index = function_table.look_up(closure, argument_values);
 		printf("  CALL\n");
 		Assembler::Jump jump = assembler.CALL();
-		function_table.add_deferred_call(jump, new_index);
+		deferred_calls.emplace_back(jump, new_index);
 		value = function_table[new_index].return_value;
 		const std::uint32_t diff = function_table[new_index].input_size - function_table[new_index].output_size;
 		if (diff != 0) {
@@ -436,11 +423,12 @@ public:
 void codegen(const Expression* expression, const char* path) {
 	Assembler assembler;
 	FunctionTable function_table;
+	std::vector<DeferredCall> deferred_calls;
 	Pass1 pass1(function_table, 0);
 	pass1.evaluate(expression);
 	{
 		// the main function
-		Pass2 pass2(function_table, 0, assembler);
+		Pass2 pass2(function_table, deferred_calls, 0, assembler);
 		pass2.evaluate(expression);
 		printf("  EXIT\n");
 		assembler.POP(EBX);
@@ -456,7 +444,7 @@ void codegen(const Expression* expression, const char* path) {
 		assembler.MOV(EBP, ESP);
 		printf("  --\n");
 		const Expression* expression = function_table[index].function->get_expression();
-		Pass2 pass2(function_table, index, assembler);
+		Pass2 pass2(function_table, deferred_calls, index, assembler);
 		Value* value = pass2.evaluate(expression);
 		printf("  --\n");
 		const std::uint32_t output_size = value->get_size();
@@ -477,8 +465,8 @@ void codegen(const Expression* expression, const char* path) {
 		printf("  RET\n");
 		assembler.RET();
 	}
-	for (auto& deferred_call: function_table.get_deferred_calls()) {
-		std::size_t target = function_table[deferred_call.function_index].position;
+	for (const DeferredCall& deferred_call: deferred_calls) {
+		const std::size_t target = function_table[deferred_call.function_index].position;
 		deferred_call.jump.set_target(target);
 	}
 	assembler.write_file(path);
