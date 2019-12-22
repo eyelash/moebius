@@ -13,6 +13,7 @@ class Remainder;
 class Function;
 class Argument;
 class Call;
+class Builtin;
 
 class Visitor {
 public:
@@ -25,6 +26,7 @@ public:
 	virtual void visit_function(const Function* function) = 0;
 	virtual void visit_argument(const Argument* argument) = 0;
 	virtual void visit_call(const Call* call) = 0;
+	virtual void visit_builtin(const Builtin* builtin) = 0;
 };
 
 class Expression {
@@ -158,5 +160,17 @@ public:
 	}
 	const std::vector<const Expression*>& get_arguments() const {
 		return arguments;
+	}
+};
+
+class Builtin: public Expression {
+	StringView name;
+public:
+	Builtin(const StringView& name): name(name) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_builtin(this);
+	}
+	StringView get_name() const {
+		return name;
 	}
 };

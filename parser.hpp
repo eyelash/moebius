@@ -96,6 +96,7 @@ public:
 			argument->accept(this);
 		}
 	}
+	void visit_builtin(const Builtin* builtin) override {}
 };
 
 class Position {

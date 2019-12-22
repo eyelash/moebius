@@ -270,6 +270,9 @@ public:
 			value = function_table[new_index].return_value;
 		}
 	}
+	void visit_builtin(const Builtin* builtin) override {
+		
+	}
 };
 
 struct DeferredCall {
@@ -417,6 +420,9 @@ public:
 			printf("  ADD ESP, %d\n", diff);
 			assembler.ADD(ESP, diff);
 		}
+	}
+	void visit_builtin(const Builtin* builtin) override {
+		
 	}
 };
 
