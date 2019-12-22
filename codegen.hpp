@@ -3,17 +3,12 @@
 #include "ast.hpp"
 #include "assembler.hpp"
 
-class Closure;
-
 class Value {
 public:
 	virtual int get_type() = 0;
 	virtual std::uint32_t get_size() = 0;
-	virtual std::int32_t get_int() {
-		return 0;
-	}
-	virtual Closure* get_closure() {
-		return nullptr;
+	template <class T> T* get() {
+		return static_cast<T*>(this);
 	}
 };
 
@@ -21,13 +16,14 @@ class CompiletimeNumber: public Value {
 	std::int32_t value;
 public:
 	CompiletimeNumber(std::int32_t value): value(value) {}
+	static constexpr int type = 1;
 	int get_type() override {
-		return 1;
+		return type;
 	}
 	std::uint32_t get_size() override {
 		return 0;
 	}
-	std::int32_t get_int() override {
+	std::int32_t get_int() const {
 		return value;
 	}
 };
@@ -35,8 +31,9 @@ public:
 class RuntimeNumber: public Value {
 public:
 	RuntimeNumber() {}
+	static constexpr int type = 2;
 	int get_type() override {
-		return 2;
+		return type;
 	}
 	std::uint32_t get_size() override {
 		return 4;
@@ -48,8 +45,9 @@ class Closure: public Value {
 	std::vector<Value*> environment_values;
 public:
 	Closure(const Function* function): function(function) {}
+	static constexpr int type = 3;
 	int get_type() override {
-		return 3;
+		return type;
 	}
 	std::uint32_t get_size() override {
 		int size = 0;
@@ -57,9 +55,6 @@ public:
 			size += value->get_size();
 		}
 		return size;
-	}
-	Closure* get_closure() override {
-		return this;
 	}
 	void add_environment_value(Value* value) {
 		environment_values.push_back(value);
@@ -90,9 +85,7 @@ class FunctionTable {
 		std::size_t position;
 		std::uint32_t input_size;
 		std::uint32_t output_size;
-		Entry(const Function* function, const std::vector<Value*>& environment_values, const std::vector<Value*>& argument_values): function(function), environment_values(environment_values), argument_values(argument_values), return_value(nullptr), position(0) {}
-		void set_return_value(Value* return_value) {
-			this->return_value = return_value;
+		Entry(const Function* function, const std::vector<Value*>& environment_values, const std::vector<Value*>& argument_values): function(function), environment_values(environment_values), argument_values(argument_values), return_value(nullptr), position(0) {
 			input_size = 0;
 			for (Value* value: environment_values) {
 				input_size += value->get_size();
@@ -100,6 +93,9 @@ class FunctionTable {
 			for (Value* value: argument_values) {
 				input_size += value->get_size();
 			}
+		}
+		void set_return_value(Value* return_value) {
+			this->return_value = return_value;
 			output_size = return_value->get_size();
 		}
 		Value* look_up(const StringView& name, std::uint32_t& location) const {
@@ -128,15 +124,15 @@ class FunctionTable {
 		if (type1 != type2) {
 			return false;
 		}
-		if (type1 == 1) {
-			return value1->get_int() == value2->get_int();
+		if (type1 == CompiletimeNumber::type) {
+			return value1->get<CompiletimeNumber>()->get_int() == value2->get<CompiletimeNumber>()->get_int();
 		}
-		if (type1 == 2) {
+		if (type1 == RuntimeNumber::type) {
 			return true;
 		}
-		if (type1 == 3) {
-			const std::vector<Value*>& values1 = value1->get_closure()->get_environment_values();
-			const std::vector<Value*>& values2 = value2->get_closure()->get_environment_values();
+		if (type1 == Closure::type) {
+			const std::vector<Value*>& values1 = value1->get<Closure>()->get_environment_values();
+			const std::vector<Value*>& values2 = value2->get<Closure>()->get_environment_values();
 			return equals(values1, values2);
 		}
 		return false;
@@ -192,8 +188,8 @@ public:
 	void visit_addition(const Addition* addition) override {
 		Value* left = evaluate(addition->get_left());
 		Value* right = evaluate(addition->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() + right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() + right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			value = new RuntimeNumber();
@@ -202,8 +198,8 @@ public:
 	void visit_subtraction(const Subtraction* subtraction) override {
 		Value* left = evaluate(subtraction->get_left());
 		Value* right = evaluate(subtraction->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() - right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() - right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			value = new RuntimeNumber();
@@ -212,8 +208,8 @@ public:
 	void visit_multiplication(const Multiplication* multiplication) override {
 		Value* left = evaluate(multiplication->get_left());
 		Value* right = evaluate(multiplication->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() * right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() * right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			value = new RuntimeNumber();
@@ -222,8 +218,8 @@ public:
 	void visit_division(const Division* division) override {
 		Value* left = evaluate(division->get_left());
 		Value* right = evaluate(division->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() / right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() / right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			value = new RuntimeNumber();
@@ -232,8 +228,8 @@ public:
 	void visit_remainder(const Remainder* remainder) override {
 		Value* left = evaluate(remainder->get_left());
 		Value* right = evaluate(remainder->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() % right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() % right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			value = new RuntimeNumber();
@@ -253,7 +249,7 @@ public:
 		value = function_table[index].look_up(argument->get_name(), location);
 	}
 	void visit_call(const Call* call) override {
-		Closure* closure = evaluate(call->get_expression())->get_closure();
+		Closure* closure = evaluate(call->get_expression())->get<Closure>();
 		std::vector<Value*> argument_values;
 		for (const Expression* argument: call->get_arguments()) {
 			argument_values.push_back(evaluate(argument));
@@ -303,8 +299,8 @@ public:
 	void visit_addition(const Addition* addition) override {
 		Value* left = evaluate(addition->get_left());
 		Value* right = evaluate(addition->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() + right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() + right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			printf("  ADD\n");
@@ -318,8 +314,8 @@ public:
 	void visit_subtraction(const Subtraction* subtraction) override {
 		Value* left = evaluate(subtraction->get_left());
 		Value* right = evaluate(subtraction->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() - right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() - right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			printf("  SUB\n");
@@ -333,8 +329,8 @@ public:
 	void visit_multiplication(const Multiplication* multiplication) override {
 		Value* left = evaluate(multiplication->get_left());
 		Value* right = evaluate(multiplication->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() * right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() * right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			printf("  IMUL\n");
@@ -348,8 +344,8 @@ public:
 	void visit_division(const Division* division) override {
 		Value* left = evaluate(division->get_left());
 		Value* right = evaluate(division->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() / right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() / right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			printf("  IDIV\n");
@@ -364,8 +360,8 @@ public:
 	void visit_remainder(const Remainder* remainder) override {
 		Value* left = evaluate(remainder->get_left());
 		Value* right = evaluate(remainder->get_right());
-		if (left->get_type() == 1 && right->get_type() == 1) {
-			value = new CompiletimeNumber(left->get_int() % right->get_int());
+		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() % right->get<CompiletimeNumber>()->get_int());
 		}
 		else {
 			printf("  IDIV\n");
@@ -405,7 +401,7 @@ public:
 		}
 	}
 	void visit_call(const Call* call) override {
-		Closure* closure = evaluate(call->get_expression())->get_closure();
+		Closure* closure = evaluate(call->get_expression())->get<Closure>();
 		std::vector<Value*> argument_values;
 		for (const Expression* argument: call->get_arguments()) {
 			argument_values.push_back(evaluate(argument));
