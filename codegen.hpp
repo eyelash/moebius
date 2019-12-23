@@ -76,6 +76,33 @@ public:
 	}
 };
 
+class CompiletimeBuiltin: public Value {
+	StringView name;
+public:
+	CompiletimeBuiltin(const StringView& name): name(name) {}
+	static constexpr int type = 4;
+	int get_type() override {
+		return type;
+	}
+	std::uint32_t get_size() override {
+		return 0;
+	}
+	const StringView& get_name() const {
+		return name;
+	}
+};
+
+class Void: public Value {
+public:
+	static constexpr int type = 5;
+	int get_type() override {
+		return type;
+	}
+	std::uint32_t get_size() override {
+		return 0;
+	}
+};
+
 class FunctionTable {
 	struct Entry {
 		const Function* function;
@@ -134,6 +161,12 @@ class FunctionTable {
 			const std::vector<Value*>& values1 = value1->get<Closure>()->get_environment_values();
 			const std::vector<Value*>& values2 = value2->get<Closure>()->get_environment_values();
 			return equals(values1, values2);
+		}
+		if (type1 == CompiletimeBuiltin::type) {
+			return value1->get<CompiletimeBuiltin>()->get_name() == value2->get<CompiletimeBuiltin>()->get_name();
+		}
+		if (type1 == Void::type) {
+			return true;
 		}
 		return false;
 	}
@@ -249,25 +282,40 @@ public:
 		value = function_table[index].look_up(argument->get_name(), location);
 	}
 	void visit_call(const Call* call) override {
-		Closure* closure = evaluate(call->get_expression())->get<Closure>();
-		std::vector<Value*> argument_values;
-		for (const Expression* argument: call->get_arguments()) {
-			argument_values.push_back(evaluate(argument));
-		}
+		Value* function = evaluate(call->get_expression());
+		if (function->get_type() == Closure::type) {
+			Closure* closure = function->get<Closure>();
+			std::vector<Value*> argument_values;
+			for (const Expression* argument: call->get_arguments()) {
+				argument_values.push_back(evaluate(argument));
+			}
 
-		const std::size_t new_index = function_table.look_up(closure, argument_values);
-		if (new_index == function_table.size()) {
-			function_table.add_entry(closure, argument_values);
-			Pass1 pass1(function_table, new_index);
-			value = pass1.evaluate(closure->get_expression());
-			function_table[new_index].set_return_value(value);
+			const std::size_t new_index = function_table.look_up(closure, argument_values);
+			if (new_index == function_table.size()) {
+				function_table.add_entry(closure, argument_values);
+				Pass1 pass1(function_table, new_index);
+				value = pass1.evaluate(closure->get_expression());
+				function_table[new_index].set_return_value(value);
+			}
+			else {
+				value = function_table[new_index].return_value;
+			}
 		}
-		else {
-			value = function_table[new_index].return_value;
+		else if (function->get_type() == CompiletimeBuiltin::type) {
+			if (function->get<CompiletimeBuiltin>()->get_name() == "putChar") {
+				if (call->get_arguments().size() != 1) {
+					printf("error: call->get_arguments().size() != 1\n");
+				}
+				Value* argument_value = evaluate(call->get_arguments()[0]);
+				if (argument_value->get_type() != RuntimeNumber::type) {
+					printf("error: value->get_type != RuntimeNumber::type\n");
+				}
+				value = new Void();
+			}
 		}
 	}
 	void visit_builtin(const Builtin* builtin) override {
-		
+		value = new CompiletimeBuiltin(builtin->get_name());
 	}
 };
 
@@ -401,24 +449,40 @@ public:
 		}
 	}
 	void visit_call(const Call* call) override {
-		Closure* closure = evaluate(call->get_expression())->get<Closure>();
-		std::vector<Value*> argument_values;
-		for (const Expression* argument: call->get_arguments()) {
-			argument_values.push_back(evaluate(argument));
+		Value* function = evaluate(call->get_expression());
+		if (function->get_type() == Closure::type) {
+			Closure* closure = function->get<Closure>();
+			std::vector<Value*> argument_values;
+			for (const Expression* argument: call->get_arguments()) {
+				argument_values.push_back(evaluate(argument));
+			}
+			const std::size_t new_index = function_table.look_up(closure, argument_values);
+			printf("  CALL\n");
+			Assembler::Jump jump = assembler.CALL();
+			deferred_calls.emplace_back(jump, new_index);
+			value = function_table[new_index].return_value;
+			const std::uint32_t diff = function_table[new_index].input_size - function_table[new_index].output_size;
+			if (diff != 0) {
+				printf("  ADD ESP, %d\n", diff);
+				assembler.ADD(ESP, diff);
+			}
 		}
-		const std::size_t new_index = function_table.look_up(closure, argument_values);
-		printf("  CALL\n");
-		Assembler::Jump jump = assembler.CALL();
-		deferred_calls.emplace_back(jump, new_index);
-		value = function_table[new_index].return_value;
-		const std::uint32_t diff = function_table[new_index].input_size - function_table[new_index].output_size;
-		if (diff != 0) {
-			printf("  ADD ESP, %d\n", diff);
-			assembler.ADD(ESP, diff);
+		else if (function->get_type() == CompiletimeBuiltin::type) {
+			if (function->get<CompiletimeBuiltin>()->get_name() == "putChar") {
+				evaluate(call->get_arguments()[0]);
+				printf("  WRITE\n");
+				assembler.MOV(EAX, 0x04);
+				assembler.MOV(EBX, 1); // stdout
+				assembler.MOV(ECX, ESP);
+				assembler.MOV(EDX, 1);
+				assembler.INT(0x80);
+				assembler.POP(EAX);
+				value = new Void();
+			}
 		}
 	}
 	void visit_builtin(const Builtin* builtin) override {
-		
+		value = new CompiletimeBuiltin(builtin->get_name());
 	}
 };
 
@@ -433,8 +497,8 @@ void codegen(const Expression* expression, const char* path) {
 		Pass2 pass2(function_table, deferred_calls, 0, assembler);
 		pass2.evaluate(expression);
 		printf("  EXIT\n");
-		assembler.POP(EBX);
 		assembler.MOV(EAX, 0x01);
+		assembler.MOV(EBX, 0);
 		assembler.INT(0x80);
 	}
 	for (std::size_t index = 0; index < function_table.size(); ++index) {

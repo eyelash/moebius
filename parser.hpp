@@ -336,6 +336,9 @@ public:
 	Parser(const StringView& string): position(string.begin()), end(string.end()), current_scope(nullptr) {}
 	const Expression* parse() {
 		parse_white_space();
+		Scope scope(nullptr);
+		scope.add_variable("putChar", new Builtin("putChar"));
+		current_scope = &scope;
 		return parse_scope();
 	}
 };
