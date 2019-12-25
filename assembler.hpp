@@ -178,12 +178,24 @@ public:
 		write<std::uint8_t>(0x3B);
 		write<std::uint8_t>(0xC0 | r1 << 3 | r2);
 	}
+	void CMP(Register r, std::uint32_t value) {
+		write<std::uint8_t>(0x81);
+		write<std::uint8_t>(0xC0 | 0x7 << 3 | r);
+		write<std::uint32_t>(value);
+	}
 	void SETL(Register r) {
 		write<std::uint8_t>({0x0F, 0x9C});
 		write<std::uint8_t>(0xC0 | r);
 	}
 	Jump JMP() {
 		write<std::uint8_t>(0xE9);
+		const std::size_t position = data.size();
+		write<std::uint32_t>(0);
+		return Jump(this, position);
+	}
+	Jump JE() {
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(0x84);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
 		return Jump(this, position);

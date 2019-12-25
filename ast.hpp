@@ -6,6 +6,7 @@
 
 class Number;
 class BinaryExpression;
+class If;
 class Function;
 class Argument;
 class Call;
@@ -15,6 +16,7 @@ class Visitor {
 public:
 	virtual void visit_number(const Number* number) = 0;
 	virtual void visit_binary_expression(const BinaryExpression* binary_expression) = 0;
+	virtual void visit_if(const If* if_) = 0;
 	virtual void visit_function(const Function* function) = 0;
 	virtual void visit_argument(const Argument* argument) = 0;
 	virtual void visit_call(const Call* call) = 0;
@@ -64,6 +66,26 @@ public:
 	}
 	const Expression* get_right() const {
 		return right;
+	}
+};
+
+class If: public Expression {
+	const Expression* condition;
+	const Expression* then_expression;
+	const Expression* else_expression;
+public:
+	If(const Expression* condition, const Expression* then_expression, const Expression* else_expression): condition(condition), then_expression(then_expression), else_expression(else_expression) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_if(this);
+	}
+	const Expression* get_condition() const {
+		return condition;
+	}
+	const Expression* get_then_expression() const {
+		return then_expression;
+	}
+	const Expression* get_else_expression() const {
+		return else_expression;
 	}
 };
 

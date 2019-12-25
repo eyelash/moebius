@@ -249,6 +249,30 @@ public:
 			value = new RuntimeNumber();
 		}
 	}
+	void visit_if(const If* if_) override {
+		Value* condition = evaluate(if_->get_condition());
+		if (condition->get_type() == CompiletimeNumber::type) {
+			if (condition->get<CompiletimeNumber>()->get_int()) {
+				value = evaluate(if_->get_then_expression());
+			}
+			else {
+				value = evaluate(if_->get_then_expression());
+			}
+		}
+		else if (condition->get_type() == RuntimeNumber::type) {
+			Value* then_value = evaluate(if_->get_then_expression());
+			if (then_value->get_type() == CompiletimeNumber::type) {
+				then_value = new RuntimeNumber();
+			}
+			Value* else_value = evaluate(if_->get_else_expression());
+			if (else_value->get_type() == CompiletimeNumber::type) {
+				else_value = new RuntimeNumber();
+			}
+			if (then_value->get_type() == else_value->get_type()) {
+				value = then_value;
+			}
+		}
+	}
 	void visit_function(const Function* function) override {
 		Closure* closure = new Closure(function);
 		for (const StringView& name: function->get_environment_names()) {
@@ -393,14 +417,56 @@ public:
 					assembler.PUSH(EDX);
 					break;
 				case BinaryExpressionType::LT:
-					printf("  CMP\n");
-					printf("  SETL\n");
+					printf("  POP EBX\n");
 					assembler.POP(EBX);
+					printf("  POP EAX\n");
 					assembler.POP(EAX);
+					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
+					printf("  SETL EAX\n");
 					assembler.SETL(EAX);
+					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
+			}
+		}
+	}
+	void visit_if(const If* if_) override {
+		Value* condition = evaluate(if_->get_condition());
+		if (condition->get_type() == CompiletimeNumber::type) {
+			if (condition->get<CompiletimeNumber>()->get_int()) {
+				value = evaluate(if_->get_then_expression());
+			}
+			else {
+				value = evaluate(if_->get_then_expression());
+			}
+		}
+		else if (condition->get_type() == RuntimeNumber::type) {
+			printf("  POP EAX\n");
+			assembler.POP(EAX);
+			printf("  CMP EAX, 0\n");
+			assembler.CMP(EAX, 0);
+			printf("  JE\n;if\n");
+			const Assembler::Jump jump_else = assembler.JE();
+			Value* then_value = evaluate(if_->get_then_expression());
+			if (then_value->get_type() == CompiletimeNumber::type) {
+				printf("  PUSH %d\n", then_value->get<CompiletimeNumber>()->get_int());
+				assembler.PUSH(then_value->get<CompiletimeNumber>()->get_int());
+				then_value = new RuntimeNumber();
+			}
+			printf("  JMP\n;else\n");
+			const Assembler::Jump jump_end = assembler.JMP();
+			jump_else.set_target(assembler.get_position());
+			Value* else_value = evaluate(if_->get_else_expression());
+			if (else_value->get_type() == CompiletimeNumber::type) {
+				printf("  PUSH %d\n", else_value->get<CompiletimeNumber>()->get_int());
+				assembler.PUSH(else_value->get<CompiletimeNumber>()->get_int());
+				else_value = new RuntimeNumber();
+			}
+			printf(";end\n");
+			jump_end.set_target(assembler.get_position());
+			if (then_value->get_type() == else_value->get_type()) {
+				value = then_value;
 			}
 		}
 	}

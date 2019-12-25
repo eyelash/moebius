@@ -69,6 +69,11 @@ public:
 		expression->get_left()->accept(this);
 		expression->get_right()->accept(this);
 	}
+	void visit_if(const If* if_) override {
+		if_->get_condition()->accept(this);
+		if_->get_then_expression()->accept(this);
+		if_->get_else_expression()->accept(this);
+	}
 	void visit_function(const Function* function) override {
 		for (const StringView& name: function->get_environment_names()) {
 			add_name(name);
@@ -225,6 +230,21 @@ class Parser {
 			parse_white_space();
 			expect(")");
 			return expression;
+		}
+		else if (parse("if")) {
+			parse_white_space();
+			expect("(");
+			parse_white_space();
+			const Expression* condition = parse_expression();
+			parse_white_space();
+			expect(")");
+			parse_white_space();
+			const Expression* then_expression = parse_expression();
+			parse_white_space();
+			expect("else");
+			parse_white_space();
+			const Expression* else_expression = parse_expression();
+			return new If(condition, then_expression, else_expression);
 		}
 		else if (parse("fn")) {
 			parse_white_space();
