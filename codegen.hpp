@@ -240,6 +240,9 @@ public:
 				case BinaryExpressionType::REM:
 					value = new CompiletimeNumber(left_int % right_int);
 					break;
+				case BinaryExpressionType::LT:
+					value = new CompiletimeNumber(left_int < right_int);
+					break;
 			}
 		}
 		else {
@@ -344,6 +347,9 @@ public:
 				case BinaryExpressionType::REM:
 					value = new CompiletimeNumber(left_int % right_int);
 					break;
+				case BinaryExpressionType::LT:
+					value = new CompiletimeNumber(left_int < right_int);
+					break;
 			}
 		}
 		else {
@@ -385,6 +391,15 @@ public:
 					assembler.CDQ();
 					assembler.IDIV(EBX);
 					assembler.PUSH(EDX);
+					break;
+				case BinaryExpressionType::LT:
+					printf("  CMP\n");
+					printf("  SETL\n");
+					assembler.POP(EBX);
+					assembler.POP(EAX);
+					assembler.CMP(EAX, EBX);
+					assembler.SETL(EAX);
+					assembler.PUSH(EAX);
 					break;
 			}
 		}

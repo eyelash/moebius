@@ -16,6 +16,9 @@ struct BinaryOperator {
 
 static constexpr BinaryOperator operators[][4] = {
 	{
+		BinaryOperator("<", BinaryExpressionType::LT)
+	},
+	{
 		BinaryOperator("+", BinaryExpressionType::ADD),
 		BinaryOperator("-", BinaryExpressionType::SUB)
 	},
@@ -260,7 +263,7 @@ class Parser {
 		}
 	}
 	const Expression* parse_expression(int level = 0) {
-		if (level == 2) {
+		if (level == 3) {
 			const Expression* expression = parse_expression_last();
 			parse_white_space();
 			while (parse("(")) {

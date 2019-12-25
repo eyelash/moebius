@@ -43,7 +43,8 @@ enum class BinaryExpressionType {
 	SUB,
 	MUL,
 	DIV,
-	REM
+	REM,
+	LT
 };
 
 class BinaryExpression: public Expression {
