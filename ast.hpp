@@ -5,11 +5,7 @@
 #include <vector>
 
 class Number;
-class Addition;
-class Subtraction;
-class Multiplication;
-class Division;
-class Remainder;
+class BinaryExpression;
 class Function;
 class Argument;
 class Call;
@@ -18,11 +14,7 @@ class Builtin;
 class Visitor {
 public:
 	virtual void visit_number(const Number* number) = 0;
-	virtual void visit_addition(const Addition* addition) = 0;
-	virtual void visit_subtraction(const Subtraction* subtraction) = 0;
-	virtual void visit_multiplication(const Multiplication* multiplication) = 0;
-	virtual void visit_division(const Division* division) = 0;
-	virtual void visit_remainder(const Remainder* remainder) = 0;
+	virtual void visit_binary_expression(const BinaryExpression* binary_expression) = 0;
 	virtual void visit_function(const Function* function) = 0;
 	virtual void visit_argument(const Argument* argument) = 0;
 	virtual void visit_call(const Call* call) = 0;
@@ -32,22 +24,6 @@ public:
 class Expression {
 public:
 	virtual void accept(Visitor* visitor) const = 0;
-};
-
-class BinaryExpression: public Expression {
-	const Expression* left;
-	const Expression* right;
-public:
-	BinaryExpression(const Expression* left, const Expression* right): left(left), right(right) {}
-	const Expression* get_left() const {
-		return left;
-	}
-	const Expression* get_right() const {
-		return right;
-	}
-	template <class T> static Expression* create(const Expression* left, const Expression* right) {
-		return new T(left, right);
-	}
 };
 
 class Number: public Expression {
@@ -62,43 +38,31 @@ public:
 	}
 };
 
-class Addition: public BinaryExpression {
-public:
-	Addition(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
-	void accept(Visitor* visitor) const override {
-		visitor->visit_addition(this);
-	}
+enum class BinaryExpressionType {
+	ADD,
+	SUB,
+	MUL,
+	DIV,
+	REM
 };
 
-class Subtraction: public BinaryExpression {
+class BinaryExpression: public Expression {
+	BinaryExpressionType type;
+	const Expression* left;
+	const Expression* right;
 public:
-	Subtraction(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
+	BinaryExpression(BinaryExpressionType type, const Expression* left, const Expression* right): type(type), left(left), right(right) {}
 	void accept(Visitor* visitor) const override {
-		visitor->visit_subtraction(this);
+		visitor->visit_binary_expression(this);
 	}
-};
-
-class Multiplication: public BinaryExpression {
-public:
-	Multiplication(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
-	void accept(Visitor* visitor) const override {
-		visitor->visit_multiplication(this);
+	BinaryExpressionType get_type() const {
+		return type;
 	}
-};
-
-class Division: public BinaryExpression {
-public:
-	Division(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
-	void accept(Visitor* visitor) const override {
-		visitor->visit_division(this);
+	const Expression* get_left() const {
+		return left;
 	}
-};
-
-class Remainder: public BinaryExpression {
-public:
-	Remainder(const Expression* left, const Expression* right): BinaryExpression(left, right) {}
-	void accept(Visitor* visitor) const override {
-		visitor->visit_remainder(this);
+	const Expression* get_right() const {
+		return right;
 	}
 };
 

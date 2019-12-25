@@ -6,10 +6,9 @@
 
 struct BinaryOperator {
 	const char* string;
-	using Create = Expression* (*)(const Expression* left, const Expression* right);
-	Create create;
-	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
-	constexpr BinaryOperator(): string(nullptr), create(nullptr) {}
+	BinaryExpressionType type;
+	constexpr BinaryOperator(const char* string, BinaryExpressionType type): string(string), type(type) {}
+	constexpr BinaryOperator(): string(nullptr), type(BinaryExpressionType::ADD) {}
 	constexpr operator bool() const {
 		return string != nullptr;
 	}
@@ -17,13 +16,13 @@ struct BinaryOperator {
 
 static constexpr BinaryOperator operators[][4] = {
 	{
-		BinaryOperator("+", BinaryExpression::create<Addition>),
-		BinaryOperator("-", BinaryExpression::create<Subtraction>)
+		BinaryOperator("+", BinaryExpressionType::ADD),
+		BinaryOperator("-", BinaryExpressionType::SUB)
 	},
 	{
-		BinaryOperator("*", BinaryExpression::create<Multiplication>),
-		BinaryOperator("/", BinaryExpression::create<Division>),
-		BinaryOperator("%", BinaryExpression::create<Remainder>)
+		BinaryOperator("*", BinaryExpressionType::MUL),
+		BinaryOperator("/", BinaryExpressionType::DIV),
+		BinaryOperator("%", BinaryExpressionType::REM)
 	}
 };
 
@@ -62,25 +61,10 @@ class CaptureAnalysis: public Visitor {
 	}
 public:
 	CaptureAnalysis(Function* function): function(function) {}
-	void visit_binary_expression(const BinaryExpression* expression) {
+	void visit_number(const Number* number) override {}
+	void visit_binary_expression(const BinaryExpression* expression) override {
 		expression->get_left()->accept(this);
 		expression->get_right()->accept(this);
-	}
-	void visit_number(const Number* number) override {}
-	void visit_addition(const Addition* addition) override {
-		visit_binary_expression(addition);
-	}
-	void visit_subtraction(const Subtraction* subtraction) override {
-		visit_binary_expression(subtraction);
-	}
-	void visit_multiplication(const Multiplication* multiplication) override {
-		visit_binary_expression(multiplication);
-	}
-	void visit_division(const Division* division) override {
-		visit_binary_expression(division);
-	}
-	void visit_remainder(const Remainder* remainder) override {
-		visit_binary_expression(remainder);
 	}
 	void visit_function(const Function* function) override {
 		for (const StringView& name: function->get_environment_names()) {
@@ -300,7 +284,7 @@ class Parser {
 		while (BinaryOperator op = parse_operator(level)) {
 			parse_white_space();
 			const Expression* right = parse_expression(level + 1);
-			left = op.create(left, right);
+			left = new BinaryExpression(op.type, left, right);
 			parse_white_space();
 		}
 		return left;

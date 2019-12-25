@@ -218,51 +218,29 @@ public:
 		//value = new CompiletimeNumber(number->get_value());
 		value = new RuntimeNumber();
 	}
-	void visit_addition(const Addition* addition) override {
-		Value* left = evaluate(addition->get_left());
-		Value* right = evaluate(addition->get_right());
+	void visit_binary_expression(const BinaryExpression* binary_expression) override {
+		Value* left = evaluate(binary_expression->get_left());
+		Value* right = evaluate(binary_expression->get_right());
 		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() + right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_subtraction(const Subtraction* subtraction) override {
-		Value* left = evaluate(subtraction->get_left());
-		Value* right = evaluate(subtraction->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() - right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_multiplication(const Multiplication* multiplication) override {
-		Value* left = evaluate(multiplication->get_left());
-		Value* right = evaluate(multiplication->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() * right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_division(const Division* division) override {
-		Value* left = evaluate(division->get_left());
-		Value* right = evaluate(division->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() / right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_remainder(const Remainder* remainder) override {
-		Value* left = evaluate(remainder->get_left());
-		Value* right = evaluate(remainder->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() % right->get<CompiletimeNumber>()->get_int());
+			const std::int32_t left_int = left->get<CompiletimeNumber>()->get_int();
+			const std::int32_t right_int = right->get<CompiletimeNumber>()->get_int();
+			switch (binary_expression->get_type()) {
+				case BinaryExpressionType::ADD:
+					value = new CompiletimeNumber(left_int + right_int);
+					break;
+				case BinaryExpressionType::SUB:
+					value = new CompiletimeNumber(left_int - right_int);
+					break;
+				case BinaryExpressionType::MUL:
+					value = new CompiletimeNumber(left_int * right_int);
+					break;
+				case BinaryExpressionType::DIV:
+					value = new CompiletimeNumber(left_int / right_int);
+					break;
+				case BinaryExpressionType::REM:
+					value = new CompiletimeNumber(left_int % right_int);
+					break;
+			}
 		}
 		else {
 			value = new RuntimeNumber();
@@ -344,81 +322,71 @@ public:
 		//value = new CompiletimeNumber(number->get_value());
 		value = new RuntimeNumber();
 	}
-	void visit_addition(const Addition* addition) override {
-		Value* left = evaluate(addition->get_left());
-		Value* right = evaluate(addition->get_right());
+	void visit_binary_expression(const BinaryExpression* binary_expression) override {
+		Value* left = evaluate(binary_expression->get_left());
+		Value* right = evaluate(binary_expression->get_right());
 		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() + right->get<CompiletimeNumber>()->get_int());
+			const std::int32_t left_int = left->get<CompiletimeNumber>()->get_int();
+			const std::int32_t right_int = right->get<CompiletimeNumber>()->get_int();
+			switch (binary_expression->get_type()) {
+				case BinaryExpressionType::ADD:
+					value = new CompiletimeNumber(left_int + right_int);
+					break;
+				case BinaryExpressionType::SUB:
+					value = new CompiletimeNumber(left_int - right_int);
+					break;
+				case BinaryExpressionType::MUL:
+					value = new CompiletimeNumber(left_int * right_int);
+					break;
+				case BinaryExpressionType::DIV:
+					value = new CompiletimeNumber(left_int / right_int);
+					break;
+				case BinaryExpressionType::REM:
+					value = new CompiletimeNumber(left_int % right_int);
+					break;
+			}
 		}
 		else {
-			printf("  ADD\n");
-			assembler.POP(EBX);
-			assembler.POP(EAX);
-			assembler.ADD(EAX, EBX);
-			assembler.PUSH(EAX);
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_subtraction(const Subtraction* subtraction) override {
-		Value* left = evaluate(subtraction->get_left());
-		Value* right = evaluate(subtraction->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() - right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			printf("  SUB\n");
-			assembler.POP(EBX);
-			assembler.POP(EAX);
-			assembler.SUB(EAX, EBX);
-			assembler.PUSH(EAX);
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_multiplication(const Multiplication* multiplication) override {
-		Value* left = evaluate(multiplication->get_left());
-		Value* right = evaluate(multiplication->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() * right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			printf("  IMUL\n");
-			assembler.POP(EBX);
-			assembler.POP(EAX);
-			assembler.IMUL(EBX);
-			assembler.PUSH(EAX);
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_division(const Division* division) override {
-		Value* left = evaluate(division->get_left());
-		Value* right = evaluate(division->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() / right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			printf("  IDIV\n");
-			assembler.POP(EBX);
-			assembler.POP(EAX);
-			assembler.CDQ();
-			assembler.IDIV(EBX);
-			assembler.PUSH(EAX);
-			value = new RuntimeNumber();
-		}
-	}
-	void visit_remainder(const Remainder* remainder) override {
-		Value* left = evaluate(remainder->get_left());
-		Value* right = evaluate(remainder->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
-			value = new CompiletimeNumber(left->get<CompiletimeNumber>()->get_int() % right->get<CompiletimeNumber>()->get_int());
-		}
-		else {
-			printf("  IDIV\n");
-			assembler.POP(EBX);
-			assembler.POP(EAX);
-			assembler.CDQ();
-			assembler.IDIV(EBX);
-			assembler.PUSH(EDX);
-			value = new RuntimeNumber();
+			switch (binary_expression->get_type()) {
+				case BinaryExpressionType::ADD:
+					printf("  ADD\n");
+					assembler.POP(EBX);
+					assembler.POP(EAX);
+					assembler.ADD(EAX, EBX);
+					assembler.PUSH(EAX);
+					value = new RuntimeNumber();
+					break;
+				case BinaryExpressionType::SUB:
+					printf("  SUB\n");
+					assembler.POP(EBX);
+					assembler.POP(EAX);
+					assembler.SUB(EAX, EBX);
+					assembler.PUSH(EAX);
+					break;
+				case BinaryExpressionType::MUL:
+					printf("  IMUL\n");
+					assembler.POP(EBX);
+					assembler.POP(EAX);
+					assembler.IMUL(EBX);
+					assembler.PUSH(EAX);
+					break;
+				case BinaryExpressionType::DIV:
+					printf("  IDIV\n");
+					assembler.POP(EBX);
+					assembler.POP(EAX);
+					assembler.CDQ();
+					assembler.IDIV(EBX);
+					assembler.PUSH(EAX);
+					break;
+				case BinaryExpressionType::REM:
+					printf("  IDIV\n");
+					assembler.POP(EBX);
+					assembler.POP(EAX);
+					assembler.CDQ();
+					assembler.IDIV(EBX);
+					assembler.PUSH(EDX);
+					break;
+			}
 		}
 	}
 	void visit_function(const Function* function) override {
