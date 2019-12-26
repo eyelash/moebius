@@ -96,17 +96,19 @@ public:
 		p.print(t);
 	}
 };
-template <class... T> PrintTuple(const T&...) -> PrintTuple<T...>;
+template <class... T> PrintTuple<T...> print_tuple(const T&... t) {
+	return PrintTuple<T...>(t...);
+}
 
 template <class T> auto bold(const T& t) {
-	return PrintTuple("\e[1m", t, "\e[m");
+	return print_tuple("\e[1m", t, "\e[m");
 }
 template <class T> auto red(const T& t) {
-	return PrintTuple("\e[31m", t, "\e[m");
+	return print_tuple("\e[31m", t, "\e[m");
 }
 template <class T> auto green(const T& t) {
-	return PrintTuple("\e[32m", t, "\e[m");
+	return print_tuple("\e[32m", t, "\e[m");
 }
 template <class T> auto yellow(const T& t) {
-	return PrintTuple("\e[33m", t, "\e[m");
+	return print_tuple("\e[33m", t, "\e[m");
 }
