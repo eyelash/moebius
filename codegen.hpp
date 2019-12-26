@@ -566,9 +566,8 @@ void codegen(const Expression* expression, const char* path) {
 		if (value->get_size() != function_table[index].output_size) printf("error: output_size\n");
 		const std::uint32_t size = std::max(function_table[index].input_size, function_table[index].output_size);
 		for (std::uint32_t i = 0; i < output_size; i += 4) {
-			printf("  MOV EAX, [ESP + %u]\n", i);
+			printf("  MOV [EBP + %u], [ESP + %u]\n", 8 + size - output_size + i, i);
 			assembler.MOV(EAX, PTR(ESP, i));
-			printf("  MOV [EBP + %u], EAX\n", 8 + size - output_size + i);
 			assembler.MOV(PTR(EBP, 8 + size - output_size + i), EAX);
 		}
 		//printf("  ADD ESP, %d\n", output_size);

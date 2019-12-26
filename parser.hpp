@@ -144,10 +144,14 @@ class Parser {
 	static constexpr bool alphanumeric(char c) {
 		return alphabetic(c) || numeric(c);
 	}
-	template <class F> void parse_all(F f) {
-		while (position < end && f(*position)) {
-			++position;
+	template <class F> bool parse(F f, bool advance = true) {
+		if (position < end && f(*position)) {
+			if (advance) {
+				++position;
+			}
+			return true;
 		}
+		return false;
 	}
 	bool parse(char c) {
 		if (position < end && *position == c) {
@@ -156,20 +160,24 @@ class Parser {
 		}
 		return false;
 	}
-	bool parse(const StringView& s) {
-		const Position copy = position;
+	bool parse(const StringView& s, bool advance = true) {
+		Position copy = position;
 		for (char c: s) {
-			if (position < end && *position == c) {
-				++position;
-				continue;
+			if (!(copy < end && *copy == c)) {
+				return false;
 			}
+			++copy;
+		}
+		if (advance) {
 			position = copy;
-			return false;
 		}
 		return true;
 	}
-	void parse_white_space() {
-		parse_all(white_space);
+	bool parse(const char* s, bool advance = true) {
+		return parse(StringView(s), advance);
+	}
+	template <class T> void parse_all(T&& t) {
+		while (parse(std::forward<T>(t))) {}
 	}
 	template <class... T> void error(const char* s, const T&... t) {
 		Printer printer(stderr);
@@ -183,9 +191,12 @@ class Parser {
 			error("expected \"%\"", s);
 		}
 	}
-	Expression* parse_number() {
+	void parse_white_space() {
+		parse_all(white_space);
+	}
+	const Expression* parse_number() {
 		std::int32_t number = 0;
-		while (position < end && numeric(*position)) {
+		while (parse(numeric, false)) {
 			number *= 10;
 			number += *position - '0';
 			++position;
@@ -193,18 +204,18 @@ class Parser {
 		return new Number(number);
 	}
 	StringView parse_identifier() {
-		if (position < end && alphabetic(*position)) {
-			const Position start = position;
-			parse_all(alphanumeric);
-			return position - start;
+		if (!parse(alphabetic, false)) {
+			error("expected alphabetic character");
 		}
-		return StringView();
+		const Position start = position;
+		parse_all(alphanumeric);
+		return position - start;
 	}
 	const Expression* parse_variable() {
 		StringView identifier = parse_identifier();
 		const Expression* expression = current_scope->look_up(identifier);
 		if (expression == nullptr) {
-			error("invalid identifier \"%\"", identifier);
+			error("undefined variable \"%\"", identifier);
 		}
 		return expression;
 	}
@@ -250,9 +261,9 @@ class Parser {
 			parse_white_space();
 			expect("(");
 			parse_white_space();
+			Function* function = new Function();
 			Scope scope(current_scope);
 			current_scope = &scope;
-			Function* function = new Function();
 			while (position < end && *position != ')') {
 				const StringView name = parse_identifier();
 				function->add_argument_name(name);
@@ -280,10 +291,10 @@ class Parser {
 			expect("'");
 			return new Number(c);
 		}
-		else if (position < end && numeric(*position)) {
+		else if (parse(numeric, false)) {
 			return parse_number();
 		}
-		else if (position < end && alphabetic(*position)) {
+		else if (parse(alphabetic, false)) {
 			return parse_variable();
 		}
 		else {
