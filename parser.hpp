@@ -271,6 +271,15 @@ class Parser {
 			expression->accept(&capture_analysis);
 			return function;
 		}
+		else if (parse("'")) {
+			if (!(position < end)) {
+				error("unexpected end");
+			}
+			const char c = *position;
+			++position;
+			expect("'");
+			return new Number(c);
+		}
 		else if (position < end && numeric(*position)) {
 			return parse_number();
 		}
