@@ -32,22 +32,20 @@ let isPrime = fn(n) {
 	return inner(inner, n, 2)
 }
 
+// print the first 100 primes
 let printPrimes = fn() {
-	let lower = 1
-	let upper = 1000
-
-	let inner = fn(inner, n) {
-		return if (upper < n) {
-			return putChar(newline)
-		} else {
+	let inner = fn(inner, n, count) {
+		return if (count < 100) {
 			return if (isPrime(n)) {
-				return bind(printNum(n), inner(inner, n + 1))
+				return bind(printNum(n), inner(inner, n + 1, count + 1))
 			} else {
-				return inner(inner, n + 1)
+				return inner(inner, n + 1, count)
 			}
+		} else {
+			return putChar(newline)
 		}
 	}
-	return inner(inner, lower)
+	return inner(inner, 2, 0)
 }
 
 return printPrimes()

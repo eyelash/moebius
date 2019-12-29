@@ -33,7 +33,7 @@ class Scope {
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
 public:
-	Scope(Scope* parent = nullptr): parent(parent) {}
+	Scope(Scope* parent): parent(parent) {}
 	Scope* get_parent() const {
 		return parent;
 	}
@@ -129,9 +129,9 @@ public:
 };
 
 class Parser {
+public:
 	Position position;
 	const char* end;
-	Scope* current_scope;
 	static constexpr bool white_space(char c) {
 		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 	}
@@ -144,11 +144,9 @@ class Parser {
 	static constexpr bool alphanumeric(char c) {
 		return alphabetic(c) || numeric(c);
 	}
-	template <class F> bool parse(F f, bool advance = true) {
+	template <class F> bool parse(F f) {
 		if (position < end && f(*position)) {
-			if (advance) {
-				++position;
-			}
+			++position;
 			return true;
 		}
 		return false;
@@ -160,25 +158,32 @@ class Parser {
 		}
 		return false;
 	}
-	bool parse(const StringView& s, bool advance = true) {
-		Position copy = position;
+	bool parse(const StringView& s) {
+		const Position copy = position;
 		for (char c: s) {
-			if (!(copy < end && *copy == c)) {
+			if (!(position < end && *position == c)) {
+				position = copy;
 				return false;
 			}
-			++copy;
-		}
-		if (advance) {
-			position = copy;
+			++position;
 		}
 		return true;
 	}
-	bool parse(const char* s, bool advance = true) {
-		return parse(StringView(s), advance);
+	bool parse(const char* s) {
+		return parse(StringView(s));
 	}
 	template <class T> void parse_all(T&& t) {
 		while (parse(std::forward<T>(t))) {}
 	}
+	Parser(const StringView& source): position(source.begin()), end(source.end()) {}
+	Parser(const Position& position, const char* end): position(position), end(end) {}
+	Parser copy() const {
+		return Parser(position, end);
+	}
+};
+
+class MoebiusParser: private Parser {
+	Scope* current_scope;
 	template <class... T> void error(const char* s, const T&... t) {
 		Printer printer(stderr);
 		printer.print(bold(red("error: ")));
@@ -198,7 +203,7 @@ class Parser {
 			return true;
 		}
 		if (parse("/*")) {
-			while (position < end && !parse("*/", false)) {
+			while (position < end && !copy().parse("*/")) {
 				++position;
 			}
 			expect("*/");
@@ -214,7 +219,7 @@ class Parser {
 	}
 	const Expression* parse_number() {
 		std::int32_t number = 0;
-		while (parse(numeric, false)) {
+		while (copy().parse(numeric)) {
 			number *= 10;
 			number += *position - '0';
 			++position;
@@ -222,7 +227,7 @@ class Parser {
 		return new Number(number);
 	}
 	StringView parse_identifier() {
-		if (!parse(alphabetic, false)) {
+		if (!copy().parse(alphabetic)) {
 			error("expected alphabetic character");
 		}
 		const Position start = position;
@@ -309,10 +314,10 @@ class Parser {
 			expect("'");
 			return new Number(c);
 		}
-		else if (parse(numeric, false)) {
+		else if (copy().parse(numeric)) {
 			return parse_number();
 		}
-		else if (parse(alphabetic, false)) {
+		else if (copy().parse(alphabetic)) {
 			return parse_variable();
 		}
 		else {
@@ -378,8 +383,8 @@ class Parser {
 		return result;
 	}
 public:
-	Parser(const StringView& string): position(string.begin()), end(string.end()), current_scope(nullptr) {}
-	const Expression* parse() {
+	MoebiusParser(const StringView& source): Parser(source), current_scope(nullptr) {}
+	const Expression* parse_program() {
 		parse_white_space();
 		Scope scope(nullptr);
 		scope.add_variable("putChar", new Builtin("putChar"));
@@ -387,3 +392,8 @@ public:
 		return parse_scope();
 	}
 };
+
+const Expression* parse(const StringView& source) {
+	MoebiusParser parser(source);
+	return parser.parse_program();
+}

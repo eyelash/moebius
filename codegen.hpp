@@ -485,9 +485,8 @@ public:
 			closure->add_environment_value(value);
 			const std::uint32_t size = value->get_size();
 			for (std::uint32_t i = 0; i < size; i += 4) {
-				printf("  MOV EAX, [EBP + %d]\n", 8 + location + i);
+				printf("  PUSH [EBP + %d]\n", 8 + location + i);
 				assembler.MOV(EAX, PTR(EBP, 8 + location + i));
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 			}
 		}
@@ -498,9 +497,8 @@ public:
 		value = function_table[index].look_up(argument->get_name(), location);
 		const std::uint32_t size = value->get_size();
 		for (std::uint32_t i = 0; i < size; i += 4) {
-			printf("  MOV EAX, [EBP + %d]\n", 8 + location + i);
+			printf("  PUSH [EBP + %d]\n", 8 + location + i);
 			assembler.MOV(EAX, PTR(EBP, 8 + location + i));
-			printf("  PUSH EAX\n");
 			assembler.PUSH(EAX);
 		}
 	}

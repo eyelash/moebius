@@ -12,8 +12,7 @@ std::vector<char> read_file(const char* file_name) {
 
 int main(int argc, char** argv) {
 	std::vector<char> file = read_file(argv[1]);
-	Parser parser(StringView(file.data(), file.size()));
-	const Expression* expr = parser.parse();
+	const Expression* expr = parse(StringView(file.data(), file.size()));
 	if (expr) {
 		codegen(expr, (std::string(argv[1]) + ".exe").c_str());
 	}

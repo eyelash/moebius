@@ -41,18 +41,22 @@ static constexpr Addr PROGRAM_HEADER_SIZE = 32;
 
 class Assembler {
 	std::vector<std::uint8_t> data;
-	template <class T> void write(const T& t) {
-		const std::uint8_t* ptr = reinterpret_cast<const std::uint8_t*>(&t);
-		data.insert(data.end(), ptr, ptr + sizeof(T));
+	template <class T> void write(T t) {
+		for (std::size_t i = 0; i < sizeof(T); ++i) {
+			data.push_back(t & 0xFF);
+			t = t >> 8;
+		}
 	}
 	template <class T> void write(std::initializer_list<T> ts) {
 		for (const T& t: ts) {
 			write<T>(t);
 		}
 	}
-	template <class T> void write(std::size_t position, const T& t) {
-		const std::uint8_t* ptr = reinterpret_cast<const std::uint8_t*>(&t);
-		std::copy(ptr, ptr + sizeof(T), data.begin() + position);
+	template <class T> void write(std::size_t position, T t) {
+		for (std::size_t i = 0; i < sizeof(T); ++i) {
+			data[position + i] = t & 0xFF;
+			t = t >> 8;
+		}
 	}
 	void write_elf_header(std::size_t entry_point = 0) {
 		write<std::uint8_t>({0x7f, 'E', 'L', 'F'});
@@ -184,7 +188,8 @@ public:
 		write<std::uint32_t>(value);
 	}
 	void SETL(Register r) {
-		write<std::uint8_t>({0x0F, 0x9C});
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(0x9C);
 		write<std::uint8_t>(0xC0 | r);
 	}
 	Jump JMP() {
