@@ -424,11 +424,14 @@ public:
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETL EAX\n");
+					// SETL only sets the lower 8 bits of the register
+					assembler.MOV(EAX, 0);
 					assembler.SETL(EAX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 			}
+			value = new RuntimeNumber();
 		}
 	}
 	void visit_if(const If* if_) override {
