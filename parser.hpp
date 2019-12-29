@@ -191,8 +191,26 @@ class Parser {
 			error("expected \"%\"", s);
 		}
 	}
+	bool parse_comment() {
+		if (parse("//")) {
+			parse_all([](char c) { return c != '\n'; });
+			parse("\n");
+			return true;
+		}
+		if (parse("/*")) {
+			while (position < end && !parse("*/", false)) {
+				++position;
+			}
+			expect("*/");
+			return true;
+		}
+		return false;
+	}
 	void parse_white_space() {
 		parse_all(white_space);
+		while (parse_comment()) {
+			parse_all(white_space);
+		}
 	}
 	const Expression* parse_number() {
 		std::int32_t number = 0;
