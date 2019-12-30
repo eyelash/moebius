@@ -1,0 +1,53 @@
+let false = 0
+let true = 1
+let newline = 10
+let not = fn(x) (1 - x)
+let bind = fn(io1, io2) io2
+
+let printNum = fn(num) {
+	let inner = fn(inner, num) {
+		return if (9 < num) {
+			return bind(inner(inner, num / 10), putChar(48 + (num % 10)))
+		} else {
+			return putChar(48 + num)
+		}
+	}
+	return bind(inner(inner, num), putChar(newline))
+}
+
+let isPrime = fn(n) {
+	let divisible = fn(x, y) not(0 < x % y)
+
+	let inner = fn(inner, n, i) {
+		return if (n < i * i) {
+			return true
+		} else {
+			return if (divisible(n, i)) {
+				return false
+			} else {
+				return inner(inner, n, i + 1) + 0
+			}
+		}
+	}
+	return inner(inner, n, 2)
+}
+
+let printPrimes = fn() {
+	let lower = 1
+	let upper = 1000
+
+	let inner = fn(inner, n) {
+		return if (upper < n) {
+			return putChar(newline)
+		} else {
+			return if (isPrime(n)) {
+				return bind(printNum(n), inner(inner, n + 1))
+			} else {
+				return inner(inner, n + 1)
+			}
+		}
+	}
+	return inner(inner, lower)
+}
+
+return printPrimes()
