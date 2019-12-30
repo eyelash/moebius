@@ -304,6 +304,10 @@ public:
 			}
 			else {
 				value = function_table[new_index].return_value;
+				// recursion
+				if (value == nullptr) {
+					value = new Void();
+				}
 			}
 		}
 		else if (function->get_type() == CompiletimeBuiltin::type) {
