@@ -10,6 +10,12 @@ public:
 	template <class T> T* get() {
 		return static_cast<T*>(this);
 	}
+	template <class T> bool has_type() {
+		return get_type() == T::type;
+	}
+	template <class T0, class T1, class... T> bool has_type() {
+		return has_type<T0>() || has_type<T1, T...>();
+	}
 };
 
 class CompiletimeNumber: public Value {
@@ -73,6 +79,17 @@ public:
 	}
 	const std::vector<Value*>& get_environment_values() const {
 		return environment_values;
+	}
+};
+
+class Never: public Value {
+public:
+	static constexpr int type = 6;
+	int get_type() override {
+		return type;
+	}
+	std::uint32_t get_size() override {
+		return 0;
 	}
 };
 
@@ -165,7 +182,7 @@ class FunctionTable {
 		if (type1 == CompiletimeBuiltin::type) {
 			return value1->get<CompiletimeBuiltin>()->get_name() == value2->get<CompiletimeBuiltin>()->get_name();
 		}
-		if (type1 == Void::type) {
+		if (type1 == Void::type || type1 == Never::type) {
 			return true;
 		}
 		return false;
@@ -182,6 +199,7 @@ class FunctionTable {
 		return true;
 	}
 public:
+	std::size_t recursion = -1;
 	std::size_t look_up(const Closure* closure, const std::vector<Value*>& argument_values) const {
 		std::size_t index;
 		for (index = 0; index < functions.size(); ++index) {
@@ -201,6 +219,9 @@ public:
 	std::size_t size() const {
 		return functions.size();
 	}
+	void clear(std::size_t index) {
+		functions.erase(functions.begin() + index + 1, functions.end());
+	}
 };
 
 class Pass1: public Visitor {
@@ -212,7 +233,9 @@ public:
 	Value* evaluate(const Expression* expression) {
 		value = nullptr;
 		expression->accept(this);
-		return value;
+		Value* result = value;
+		value = nullptr;
+		return result;
 	}
 	void visit_number(const Number* number) override {
 		//value = new CompiletimeNumber(number->get_value());
@@ -221,7 +244,7 @@ public:
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
 		Value* left = evaluate(binary_expression->get_left());
 		Value* right = evaluate(binary_expression->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+		if (left->has_type<CompiletimeNumber>() && right->has_type<CompiletimeNumber>()) {
 			const std::int32_t left_int = left->get<CompiletimeNumber>()->get_int();
 			const std::int32_t right_int = right->get<CompiletimeNumber>()->get_int();
 			switch (binary_expression->get_type()) {
@@ -245,13 +268,16 @@ public:
 					break;
 			}
 		}
-		else {
+		else if (left->has_type<CompiletimeNumber, RuntimeNumber, Never>() && right->has_type<CompiletimeNumber, RuntimeNumber, Never>()) {
 			value = new RuntimeNumber();
+		}
+		else {
+			printf("error: binary expression of types %d and %d\n", left->get_type(), right->get_type());
 		}
 	}
 	void visit_if(const If* if_) override {
 		Value* condition = evaluate(if_->get_condition());
-		if (condition->get_type() == CompiletimeNumber::type) {
+		if (condition->has_type<CompiletimeNumber>()) {
 			if (condition->get<CompiletimeNumber>()->get_int()) {
 				value = evaluate(if_->get_then_expression());
 			}
@@ -259,18 +285,30 @@ public:
 				value = evaluate(if_->get_then_expression());
 			}
 		}
-		else if (condition->get_type() == RuntimeNumber::type) {
+		else if (condition->has_type<RuntimeNumber, Never>()) {
 			Value* then_value = evaluate(if_->get_then_expression());
-			if (then_value->get_type() == CompiletimeNumber::type) {
+			if (then_value->has_type<CompiletimeNumber>()) {
 				then_value = new RuntimeNumber();
 			}
 			Value* else_value = evaluate(if_->get_else_expression());
-			if (else_value->get_type() == CompiletimeNumber::type) {
+			if (else_value->has_type<CompiletimeNumber>()) {
 				else_value = new RuntimeNumber();
 			}
 			if (then_value->get_type() == else_value->get_type()) {
 				value = then_value;
 			}
+			else if (then_value->has_type<Never>()) {
+				value = else_value;
+			}
+			else if (else_value->has_type<Never>()) {
+				value = then_value;
+			}
+			else {
+				printf("error: if and else branches must return values of the same type\n");
+			}
+		}
+		else {
+			printf("error: type of condition must be a number\n");
 		}
 	}
 	void visit_function(const Function* function) override {
@@ -288,8 +326,11 @@ public:
 	}
 	void visit_call(const Call* call) override {
 		Value* function = evaluate(call->get_expression());
-		if (function->get_type() == Closure::type) {
+		if (function->has_type<Closure>()) {
 			Closure* closure = function->get<Closure>();
+			if (call->get_arguments().size() != closure->get_argument_names().size()) {
+				printf("error: call with %lu arguments to a function that accepts %lu arguments\n", call->get_arguments().size(), closure->get_argument_names().size());
+			}
 			std::vector<Value*> argument_values;
 			for (const Expression* argument: call->get_arguments()) {
 				argument_values.push_back(evaluate(argument));
@@ -301,26 +342,38 @@ public:
 				Pass1 pass1(function_table, new_index);
 				value = pass1.evaluate(closure->get_expression());
 				function_table[new_index].set_return_value(value);
+				if (function_table.recursion == new_index) {
+					// reevaluate the expression in case of recursion
+					function_table.recursion = -1;
+					function_table.clear(new_index);
+					pass1.evaluate(closure->get_expression());
+				}
 			}
 			else {
 				value = function_table[new_index].return_value;
-				// recursion
+				// detect recursion
 				if (value == nullptr) {
-					value = new Void();
+					if (new_index < function_table.recursion) {
+						function_table.recursion = new_index;
+					}
+					value = new Never();
 				}
 			}
 		}
-		else if (function->get_type() == CompiletimeBuiltin::type) {
+		else if (function->has_type<CompiletimeBuiltin>()) {
 			if (function->get<CompiletimeBuiltin>()->get_name() == "putChar") {
 				if (call->get_arguments().size() != 1) {
-					printf("error: call->get_arguments().size() != 1\n");
+					printf("error: call to putChar must have 1 argument\n");
 				}
 				Value* argument_value = evaluate(call->get_arguments()[0]);
 				if (argument_value->get_type() != RuntimeNumber::type) {
-					printf("error: value->get_type != RuntimeNumber::type\n");
+					printf("error: argument of putChar must be a number\n");
 				}
 				value = new Void();
 			}
+		}
+		else {
+			printf("error: call to a value that is not a function\n");
 		}
 	}
 	void visit_builtin(const Builtin* builtin) override {
@@ -345,7 +398,9 @@ public:
 	Value* evaluate(const Expression* expression) {
 		value = nullptr;
 		expression->accept(this);
-		return value;
+		Value* result = value;
+		value = nullptr;
+		return result;
 	}
 	void visit_number(const Number* number) override {
 		printf("  PUSH %d\n", number->get_value());
@@ -356,7 +411,7 @@ public:
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
 		Value* left = evaluate(binary_expression->get_left());
 		Value* right = evaluate(binary_expression->get_right());
-		if (left->get_type() == CompiletimeNumber::type && right->get_type() == CompiletimeNumber::type) {
+		if (left->has_type<CompiletimeNumber>() && right->has_type<CompiletimeNumber>()) {
 			const std::int32_t left_int = left->get<CompiletimeNumber>()->get_int();
 			const std::int32_t right_int = right->get<CompiletimeNumber>()->get_int();
 			switch (binary_expression->get_type()) {
@@ -380,7 +435,7 @@ public:
 					break;
 			}
 		}
-		else {
+		else if (left->has_type<CompiletimeNumber, RuntimeNumber, Never>() && right->has_type<CompiletimeNumber, RuntimeNumber, Never>()) {
 			switch (binary_expression->get_type()) {
 				case BinaryExpressionType::ADD:
 					printf("  ADD\n");
@@ -440,7 +495,7 @@ public:
 	}
 	void visit_if(const If* if_) override {
 		Value* condition = evaluate(if_->get_condition());
-		if (condition->get_type() == CompiletimeNumber::type) {
+		if (condition->has_type<CompiletimeNumber>()) {
 			if (condition->get<CompiletimeNumber>()->get_int()) {
 				value = evaluate(if_->get_then_expression());
 			}
@@ -448,7 +503,7 @@ public:
 				value = evaluate(if_->get_then_expression());
 			}
 		}
-		else if (condition->get_type() == RuntimeNumber::type) {
+		else if (condition->has_type<RuntimeNumber, Never>()) {
 			printf("  POP EAX\n");
 			assembler.POP(EAX);
 			printf("  CMP EAX, 0\n");
@@ -456,7 +511,7 @@ public:
 			printf("  JE\n;if\n");
 			const Assembler::Jump jump_else = assembler.JE();
 			Value* then_value = evaluate(if_->get_then_expression());
-			if (then_value->get_type() == CompiletimeNumber::type) {
+			if (then_value->has_type<CompiletimeNumber>()) {
 				printf("  PUSH %d\n", then_value->get<CompiletimeNumber>()->get_int());
 				assembler.PUSH(then_value->get<CompiletimeNumber>()->get_int());
 				then_value = new RuntimeNumber();
@@ -465,7 +520,7 @@ public:
 			const Assembler::Jump jump_end = assembler.JMP();
 			jump_else.set_target(assembler.get_position());
 			Value* else_value = evaluate(if_->get_else_expression());
-			if (else_value->get_type() == CompiletimeNumber::type) {
+			if (else_value->has_type<CompiletimeNumber>()) {
 				printf("  PUSH %d\n", else_value->get<CompiletimeNumber>()->get_int());
 				assembler.PUSH(else_value->get<CompiletimeNumber>()->get_int());
 				else_value = new RuntimeNumber();
@@ -504,7 +559,7 @@ public:
 	}
 	void visit_call(const Call* call) override {
 		Value* function = evaluate(call->get_expression());
-		if (function->get_type() == Closure::type) {
+		if (function->has_type<Closure>()) {
 			Closure* closure = function->get<Closure>();
 			std::vector<Value*> argument_values;
 			for (const Expression* argument: call->get_arguments()) {
@@ -521,7 +576,7 @@ public:
 				assembler.ADD(ESP, diff);
 			}
 		}
-		else if (function->get_type() == CompiletimeBuiltin::type) {
+		else if (function->has_type<CompiletimeBuiltin>()) {
 			if (function->get<CompiletimeBuiltin>()->get_name() == "putChar") {
 				evaluate(call->get_arguments()[0]);
 				printf("  WRITE\n");
