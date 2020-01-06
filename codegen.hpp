@@ -18,22 +18,6 @@ public:
 	}
 };
 
-class CompiletimeNumber: public Value {
-	std::int32_t value;
-public:
-	CompiletimeNumber(std::int32_t value): value(value) {}
-	static constexpr int type = 1;
-	int get_type() override {
-		return type;
-	}
-	std::uint32_t get_size() override {
-		return 0;
-	}
-	std::int32_t get_int() const {
-		return value;
-	}
-};
-
 class RuntimeNumber: public Value {
 public:
 	RuntimeNumber() {}
@@ -168,9 +152,6 @@ class FunctionTable {
 		if (type1 != type2) {
 			return false;
 		}
-		if (type1 == CompiletimeNumber::type) {
-			return value1->get<CompiletimeNumber>()->get_int() == value2->get<CompiletimeNumber>()->get_int();
-		}
 		if (type1 == RuntimeNumber::type) {
 			return true;
 		}
@@ -244,31 +225,7 @@ public:
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
 		Value* left = evaluate(binary_expression->get_left());
 		Value* right = evaluate(binary_expression->get_right());
-		if (left->has_type<CompiletimeNumber>() && right->has_type<CompiletimeNumber>()) {
-			const std::int32_t left_int = left->get<CompiletimeNumber>()->get_int();
-			const std::int32_t right_int = right->get<CompiletimeNumber>()->get_int();
-			switch (binary_expression->get_type()) {
-				case BinaryExpressionType::ADD:
-					value = new CompiletimeNumber(left_int + right_int);
-					break;
-				case BinaryExpressionType::SUB:
-					value = new CompiletimeNumber(left_int - right_int);
-					break;
-				case BinaryExpressionType::MUL:
-					value = new CompiletimeNumber(left_int * right_int);
-					break;
-				case BinaryExpressionType::DIV:
-					value = new CompiletimeNumber(left_int / right_int);
-					break;
-				case BinaryExpressionType::REM:
-					value = new CompiletimeNumber(left_int % right_int);
-					break;
-				case BinaryExpressionType::LT:
-					value = new CompiletimeNumber(left_int < right_int);
-					break;
-			}
-		}
-		else if (left->has_type<CompiletimeNumber, RuntimeNumber, Never>() && right->has_type<CompiletimeNumber, RuntimeNumber, Never>()) {
+		if (left->has_type<RuntimeNumber, Never>() && right->has_type<RuntimeNumber, Never>()) {
 			value = new RuntimeNumber();
 		}
 		else {
@@ -277,23 +234,9 @@ public:
 	}
 	void visit_if(const If* if_) override {
 		Value* condition = evaluate(if_->get_condition());
-		if (condition->has_type<CompiletimeNumber>()) {
-			if (condition->get<CompiletimeNumber>()->get_int()) {
-				value = evaluate(if_->get_then_expression());
-			}
-			else {
-				value = evaluate(if_->get_then_expression());
-			}
-		}
-		else if (condition->has_type<RuntimeNumber, Never>()) {
+		if (condition->has_type<RuntimeNumber, Never>()) {
 			Value* then_value = evaluate(if_->get_then_expression());
-			if (then_value->has_type<CompiletimeNumber>()) {
-				then_value = new RuntimeNumber();
-			}
 			Value* else_value = evaluate(if_->get_else_expression());
-			if (else_value->has_type<CompiletimeNumber>()) {
-				else_value = new RuntimeNumber();
-			}
 			if (then_value->get_type() == else_value->get_type()) {
 				value = then_value;
 			}
@@ -411,31 +354,7 @@ public:
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
 		Value* left = evaluate(binary_expression->get_left());
 		Value* right = evaluate(binary_expression->get_right());
-		if (left->has_type<CompiletimeNumber>() && right->has_type<CompiletimeNumber>()) {
-			const std::int32_t left_int = left->get<CompiletimeNumber>()->get_int();
-			const std::int32_t right_int = right->get<CompiletimeNumber>()->get_int();
-			switch (binary_expression->get_type()) {
-				case BinaryExpressionType::ADD:
-					value = new CompiletimeNumber(left_int + right_int);
-					break;
-				case BinaryExpressionType::SUB:
-					value = new CompiletimeNumber(left_int - right_int);
-					break;
-				case BinaryExpressionType::MUL:
-					value = new CompiletimeNumber(left_int * right_int);
-					break;
-				case BinaryExpressionType::DIV:
-					value = new CompiletimeNumber(left_int / right_int);
-					break;
-				case BinaryExpressionType::REM:
-					value = new CompiletimeNumber(left_int % right_int);
-					break;
-				case BinaryExpressionType::LT:
-					value = new CompiletimeNumber(left_int < right_int);
-					break;
-			}
-		}
-		else if (left->has_type<CompiletimeNumber, RuntimeNumber, Never>() && right->has_type<CompiletimeNumber, RuntimeNumber, Never>()) {
+		if (left->has_type<RuntimeNumber, Never>() && right->has_type<RuntimeNumber, Never>()) {
 			switch (binary_expression->get_type()) {
 				case BinaryExpressionType::ADD:
 					printf("  ADD\n");
@@ -495,15 +414,7 @@ public:
 	}
 	void visit_if(const If* if_) override {
 		Value* condition = evaluate(if_->get_condition());
-		if (condition->has_type<CompiletimeNumber>()) {
-			if (condition->get<CompiletimeNumber>()->get_int()) {
-				value = evaluate(if_->get_then_expression());
-			}
-			else {
-				value = evaluate(if_->get_then_expression());
-			}
-		}
-		else if (condition->has_type<RuntimeNumber, Never>()) {
+		if (condition->has_type<RuntimeNumber, Never>()) {
 			printf("  POP EAX\n");
 			assembler.POP(EAX);
 			printf("  CMP EAX, 0\n");
@@ -511,20 +422,10 @@ public:
 			printf("  JE\n;if\n");
 			const Assembler::Jump jump_else = assembler.JE();
 			Value* then_value = evaluate(if_->get_then_expression());
-			if (then_value->has_type<CompiletimeNumber>()) {
-				printf("  PUSH %d\n", then_value->get<CompiletimeNumber>()->get_int());
-				assembler.PUSH(then_value->get<CompiletimeNumber>()->get_int());
-				then_value = new RuntimeNumber();
-			}
 			printf("  JMP\n;else\n");
 			const Assembler::Jump jump_end = assembler.JMP();
 			jump_else.set_target(assembler.get_position());
 			Value* else_value = evaluate(if_->get_else_expression());
-			if (else_value->has_type<CompiletimeNumber>()) {
-				printf("  PUSH %d\n", else_value->get<CompiletimeNumber>()->get_int());
-				assembler.PUSH(else_value->get<CompiletimeNumber>()->get_int());
-				else_value = new RuntimeNumber();
-			}
 			printf(";end\n");
 			jump_end.set_target(assembler.get_position());
 			if (then_value->get_type() == else_value->get_type()) {
