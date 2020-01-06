@@ -92,6 +92,7 @@ public:
 class Function: public Expression {
 	const Expression* expression;
 	std::vector<StringView> environment_names;
+	std::vector<const Expression*> environment_expressions;
 	std::vector<StringView> argument_names;
 public:
 	Function(const Expression* expression): expression(expression) {}
@@ -102,8 +103,9 @@ public:
 	void set_expression(const Expression* expression) {
 		this->expression = expression;
 	}
-	void add_environment_name(const StringView& name) {
+	void add_environment_expression(const StringView& name, const Expression* expression) {
 		environment_names.push_back(name);
+		environment_expressions.push_back(expression);
 	}
 	void add_argument_name(const StringView& name) {
 		argument_names.push_back(name);
@@ -113,6 +115,9 @@ public:
 	}
 	const std::vector<StringView>& get_environment_names() const {
 		return environment_names;
+	}
+	const std::vector<const Expression*>& get_environment_expressions() const {
+		return environment_expressions;
 	}
 	const std::vector<StringView>& get_argument_names() const {
 		return argument_names;

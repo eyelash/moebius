@@ -32,8 +32,9 @@ static constexpr BinaryOperator operators[][4] = {
 class Scope {
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
+	Function* function;
 public:
-	Scope(Scope* parent): parent(parent) {}
+	Scope(Scope* parent, Function* function = nullptr): parent(parent), function(function) {}
 	Scope* get_parent() const {
 		return parent;
 	}
@@ -45,50 +46,29 @@ public:
 		if (iterator != variables.end()) {
 			return iterator->second;
 		}
-		if (parent) {
+		if (function) {
+			for (const StringView& argument_name: function->get_argument_names()) {
+				if (argument_name == name) {
+					return new Argument(name);
+				}
+			}
+			for (const StringView& environment_name: function->get_environment_names()) {
+				if (environment_name == name) {
+					return new Argument(name);
+				}
+			}
+			if (parent) {
+				if (const Expression* expression = parent->look_up(name)) {
+					function->add_environment_expression(name, expression);
+					return new Argument(name);
+				}
+			}
+		}
+		else if (parent) {
 			return parent->look_up(name);
 		}
 		return nullptr;
 	}
-};
-
-class CaptureAnalysis: public Visitor {
-	Function* function;
-	void add_name(const StringView& name) {
-		for (const StringView& argument: function->get_argument_names()) {
-			if (argument == name) {
-				return;
-			}
-		}
-		function->add_environment_name(name);
-	}
-public:
-	CaptureAnalysis(Function* function): function(function) {}
-	void visit_number(const Number* number) override {}
-	void visit_binary_expression(const BinaryExpression* expression) override {
-		expression->get_left()->accept(this);
-		expression->get_right()->accept(this);
-	}
-	void visit_if(const If* if_) override {
-		if_->get_condition()->accept(this);
-		if_->get_then_expression()->accept(this);
-		if_->get_else_expression()->accept(this);
-	}
-	void visit_function(const Function* function) override {
-		for (const StringView& name: function->get_environment_names()) {
-			add_name(name);
-		}
-	}
-	void visit_argument(const Argument* argument) override {
-		add_name(argument->get_name());
-	}
-	void visit_call(const Call* call) override {
-		call->get_expression()->accept(this);
-		for (const Expression* argument: call->get_arguments()) {
-			argument->accept(this);
-		}
-	}
-	void visit_builtin(const Builtin* builtin) override {}
 };
 
 class Position {
@@ -285,12 +265,11 @@ class MoebiusParser: private Parser {
 			expect("(");
 			parse_white_space();
 			Function* function = new Function();
-			Scope scope(current_scope);
+			Scope scope(current_scope, function);
 			current_scope = &scope;
 			while (position < end && *position != ')') {
 				const StringView name = parse_identifier();
 				function->add_argument_name(name);
-				scope.add_variable(name, new Argument(name));
 				parse_white_space();
 				if (parse(",")) {
 					parse_white_space();
@@ -301,8 +280,6 @@ class MoebiusParser: private Parser {
 			const Expression* expression = parse_expression();
 			function->set_expression(expression);
 			current_scope = scope.get_parent();
-			CaptureAnalysis capture_analysis(function);
-			expression->accept(&capture_analysis);
 			return function;
 		}
 		else if (parse("'")) {
