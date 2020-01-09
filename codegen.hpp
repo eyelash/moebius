@@ -152,10 +152,10 @@ class FunctionTable {
 		if (type1 != type2) {
 			return false;
 		}
-		if (type1 == RuntimeNumber::type) {
-			return true;
-		}
 		if (type1 == Closure::type) {
+			if (value1->get<Closure>()->get_function() != value2->get<Closure>()->get_function()) {
+				return false;
+			}
 			const std::vector<Value*>& values1 = value1->get<Closure>()->get_environment_values();
 			const std::vector<Value*>& values2 = value2->get<Closure>()->get_environment_values();
 			return equals(values1, values2);
@@ -163,10 +163,7 @@ class FunctionTable {
 		if (type1 == CompiletimeBuiltin::type) {
 			return value1->get<CompiletimeBuiltin>()->get_name() == value2->get<CompiletimeBuiltin>()->get_name();
 		}
-		if (type1 == Void::type || type1 == Never::type) {
-			return true;
-		}
-		return false;
+		return true;
 	}
 	static bool equals(const std::vector<Value*>& values1, const std::vector<Value*>& values2) {
 		if (values1.size() != values2.size()) {
@@ -360,7 +357,6 @@ public:
 					assembler.POP(EAX);
 					assembler.ADD(EAX, EBX);
 					assembler.PUSH(EAX);
-					value = new RuntimeNumber();
 					break;
 				case BinaryExpressionType::SUB:
 					printf("  SUB\n");
@@ -400,9 +396,8 @@ public:
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETL EAX\n");
-					// SETL only sets the lower 8 bits of the register
-					assembler.MOV(EAX, 0);
 					assembler.SETL(EAX);
+					assembler.MOVZX(EAX, EAX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
@@ -443,8 +438,8 @@ public:
 		value = function_table[index].look_up(argument->get_name(), location);
 		const std::uint32_t size = value->get_size();
 		for (std::uint32_t i = 0; i < size; i += 4) {
-			printf("  PUSH [EBP + %d]\n", 8 + location + i);
-			assembler.MOV(EAX, PTR(EBP, 8 + location + i));
+			printf("  PUSH [EBP + %d]\n", 8 + location + size - 4 - i);
+			assembler.MOV(EAX, PTR(EBP, 8 + location + size - 4 - i));
 			assembler.PUSH(EAX);
 		}
 	}
@@ -457,14 +452,20 @@ public:
 				argument_values.push_back(evaluate(argument));
 			}
 			const std::size_t new_index = function_table.look_up(closure, argument_values);
+			const std::uint32_t input_size = function_table[new_index].input_size;
+			const std::uint32_t output_size = function_table[new_index].output_size;
+			if (output_size > input_size) {
+				// negative in order to grow the stack
+				printf("  ADD ESP, %d\n", input_size - output_size);
+				assembler.ADD(ESP, input_size - output_size);
+			}
 			printf("  CALL\n");
 			Assembler::Jump jump = assembler.CALL();
 			deferred_calls.emplace_back(jump, new_index);
 			value = function_table[new_index].return_value;
-			const std::uint32_t diff = function_table[new_index].input_size - function_table[new_index].output_size;
-			if (diff != 0) {
-				printf("  ADD ESP, %d\n", diff);
-				assembler.ADD(ESP, diff);
+			if (output_size < input_size) {
+				printf("  ADD ESP, %d\n", input_size - output_size);
+				assembler.ADD(ESP, input_size - output_size);
 			}
 		}
 		else if (function->has_type<CompiletimeBuiltin>()) {
@@ -517,8 +518,8 @@ void codegen(const Expression* expression, const char* path) {
 		if (value->get_size() != function_table[index].output_size) printf("error: output_size\n");
 		const std::uint32_t size = std::max(function_table[index].input_size, function_table[index].output_size);
 		for (std::uint32_t i = 0; i < output_size; i += 4) {
-			printf("  MOV [EBP + %u], [ESP + %u]\n", 8 + size - output_size + i, i);
-			assembler.MOV(EAX, PTR(ESP, i));
+			printf("  POP [EBP + %d]\n", 8 + size - output_size + i);
+			assembler.POP(EAX);
 			assembler.MOV(PTR(EBP, 8 + size - output_size + i), EAX);
 		}
 		//printf("  ADD ESP, %d\n", output_size);

@@ -44,7 +44,7 @@ class Assembler {
 	template <class T> void write(T t) {
 		for (std::size_t i = 0; i < sizeof(T); ++i) {
 			data.push_back(t & 0xFF);
-			t = t >> 8;
+			t >>= 8;
 		}
 	}
 	template <class T> void write(std::initializer_list<T> ts) {
@@ -53,9 +53,10 @@ class Assembler {
 		}
 	}
 	template <class T> void write(std::size_t position, T t) {
+		auto iterator = data.begin() + position;
 		for (std::size_t i = 0; i < sizeof(T); ++i) {
-			data[position + i] = t & 0xFF;
-			t = t >> 8;
+			*iterator++ = t & 0xFF;
+			t >>= 8;
 		}
 	}
 	void write_elf_header(std::size_t entry_point = 0) {
@@ -116,13 +117,13 @@ public:
 		std::ofstream file(path);
 		std::copy(data.begin(), data.end(), std::ostreambuf_iterator<char>(file));
 	}
-	void MOV(Register r, std::uint32_t value) {
-		write<std::uint8_t>(0xB8 | r);
-		write<std::uint32_t>(value);
-	}
 	void MOV(Register dst, Register src) {
 		write<std::uint8_t>(0x8B);
 		write<std::uint8_t>(0xC0 | dst << 3 | src);
+	}
+	void MOV(Register dst, std::uint32_t value) {
+		write<std::uint8_t>(0xB8 | dst);
+		write<std::uint32_t>(value);
 	}
 	void MOV(Register dst, Ptr src) {
 		write<std::uint8_t>(0x8B);
@@ -139,6 +140,11 @@ public:
 			write<std::uint8_t>(0x24);
 		}
 		write<std::uint32_t>(dst.get_offset());
+	}
+	void MOVZX(Register dst, Register src) {
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(0xB6);
+		write<std::uint8_t>(0xC0 | dst << 3 | src);
 	}
 	void ADD(Register dst, Register src) {
 		write<std::uint8_t>(0x03);
@@ -186,6 +192,16 @@ public:
 		write<std::uint8_t>(0x81);
 		write<std::uint8_t>(0xC0 | 0x7 << 3 | r);
 		write<std::uint32_t>(value);
+	}
+	void SETE(Register r) {
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(0x94);
+		write<std::uint8_t>(0xC0 | r);
+	}
+	void SETNE(Register r) {
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(0x95);
+		write<std::uint8_t>(0xC0 | r);
 	}
 	void SETL(Register r) {
 		write<std::uint8_t>(0x0F);
