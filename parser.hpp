@@ -16,6 +16,7 @@ struct BinaryOperator {
 
 static constexpr BinaryOperator operators[][4] = {
 	{
+		BinaryOperator("<=", BinaryExpressionType::LE),
 		BinaryOperator("<", BinaryExpressionType::LT)
 	},
 	{

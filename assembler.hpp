@@ -208,6 +208,11 @@ public:
 		write<std::uint8_t>(0x9C);
 		write<std::uint8_t>(0xC0 | r);
 	}
+	void SETLE(Register r) {
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(0x9E);
+		write<std::uint8_t>(0xC0 | r);
+	}
 	Jump JMP() {
 		write<std::uint8_t>(0xE9);
 		const std::size_t position = data.size();
