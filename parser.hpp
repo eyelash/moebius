@@ -16,6 +16,9 @@ struct BinaryOperator {
 
 static constexpr BinaryOperator operators[][4] = {
 	{
+		BinaryOperator("==", BinaryExpressionType::EQ)
+	},
+	{
 		BinaryOperator("<=", BinaryExpressionType::LE),
 		BinaryOperator("<", BinaryExpressionType::LT)
 	},
@@ -304,7 +307,7 @@ class MoebiusParser: private Parser {
 		}
 	}
 	const Expression* parse_expression(int level = 0) {
-		if (level == 3) {
+		if (level == 4) {
 			const Expression* expression = parse_expression_last();
 			parse_white_space();
 			while (parse("(")) {

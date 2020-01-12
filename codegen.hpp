@@ -388,6 +388,19 @@ public:
 					assembler.IDIV(EBX);
 					assembler.PUSH(EDX);
 					break;
+				case BinaryExpressionType::EQ:
+					printf("  POP EBX\n");
+					assembler.POP(EBX);
+					printf("  POP EAX\n");
+					assembler.POP(EAX);
+					printf("  CMP EAX, EBX\n");
+					assembler.CMP(EAX, EBX);
+					printf("  SETE EAX\n");
+					assembler.SETE(EAX);
+					assembler.MOVZX(EAX, EAX);
+					printf("  PUSH EAX\n");
+					assembler.PUSH(EAX);
+					break;
 				case BinaryExpressionType::LT:
 					printf("  POP EBX\n");
 					assembler.POP(EBX);
