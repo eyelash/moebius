@@ -47,6 +47,7 @@ enum class BinaryExpressionType {
 	DIV,
 	REM,
 	EQ,
+	NE,
 	LT,
 	LE
 };

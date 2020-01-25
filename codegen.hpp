@@ -401,6 +401,19 @@ public:
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
+				case BinaryExpressionType::NE:
+					printf("  POP EBX\n");
+					assembler.POP(EBX);
+					printf("  POP EAX\n");
+					assembler.POP(EAX);
+					printf("  CMP EAX, EBX\n");
+					assembler.CMP(EAX, EBX);
+					printf("  SETNE EAX\n");
+					assembler.SETNE(EAX);
+					assembler.MOVZX(EAX, EAX);
+					printf("  PUSH EAX\n");
+					assembler.PUSH(EAX);
+					break;
 				case BinaryExpressionType::LT:
 					printf("  POP EBX\n");
 					assembler.POP(EBX);
