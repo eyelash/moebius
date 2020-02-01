@@ -366,10 +366,17 @@ class MoebiusParser: private Parser {
 	}
 public:
 	MoebiusParser(const StringView& source): Parser(source), current_scope(nullptr) {}
+	const Expression* create_putChar() {
+		Intrinsic* intrinsic = new Intrinsic("putChar");
+		intrinsic->add_argument("c");
+		Function* function = new Function(intrinsic);
+		function->add_argument_name("c");
+		return function;
+	}
 	const Expression* parse_program() {
 		parse_white_space();
 		Scope scope(nullptr);
-		scope.add_variable("putChar", new Builtin("putChar"));
+		scope.add_variable("putChar", create_putChar());
 		current_scope = &scope;
 		return parse_scope();
 	}

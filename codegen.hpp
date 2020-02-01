@@ -77,22 +77,6 @@ public:
 	}
 };
 
-class CompiletimeBuiltin: public Value {
-	StringView name;
-public:
-	CompiletimeBuiltin(const StringView& name): name(name) {}
-	static constexpr int type = 4;
-	int get_type() override {
-		return type;
-	}
-	std::uint32_t get_size() override {
-		return 0;
-	}
-	const StringView& get_name() const {
-		return name;
-	}
-};
-
 class Void: public Value {
 public:
 	static constexpr int type = 5;
@@ -159,9 +143,6 @@ class FunctionTable {
 			const std::vector<Value*>& values1 = value1->get<Closure>()->get_environment_values();
 			const std::vector<Value*>& values2 = value2->get<Closure>()->get_environment_values();
 			return equals(values1, values2);
-		}
-		if (type1 == CompiletimeBuiltin::type) {
-			return value1->get<CompiletimeBuiltin>()->get_name() == value2->get<CompiletimeBuiltin>()->get_name();
 		}
 		return true;
 	}
@@ -298,24 +279,18 @@ public:
 				}
 			}
 		}
-		else if (function->has_type<CompiletimeBuiltin>()) {
-			if (function->get<CompiletimeBuiltin>()->get_name() == "putChar") {
-				if (call->get_arguments().size() != 1) {
-					printf("error: call to putChar must have 1 argument\n");
-				}
-				Value* argument_value = evaluate(call->get_arguments()[0]);
-				if (argument_value->get_type() != RuntimeNumber::type) {
-					printf("error: argument of putChar must be a number\n");
-				}
-				value = new Void();
-			}
-		}
 		else {
 			printf("error: call to a value that is not a function\n");
 		}
 	}
-	void visit_builtin(const Builtin* builtin) override {
-		value = new CompiletimeBuiltin(builtin->get_name());
+	void visit_intrinsic(const Intrinsic* intrinsic) override {
+		if (intrinsic->get_name() == "putChar") {
+			Value* argument_value = evaluate(intrinsic->get_arguments()[0]);
+			if (argument_value->get_type() != RuntimeNumber::type) {
+				printf("error: argument of putChar must be a number\n");
+			}
+			value = new Void();
+		}
 	}
 };
 
@@ -507,22 +482,19 @@ public:
 				assembler.ADD(ESP, input_size - output_size);
 			}
 		}
-		else if (function->has_type<CompiletimeBuiltin>()) {
-			if (function->get<CompiletimeBuiltin>()->get_name() == "putChar") {
-				evaluate(call->get_arguments()[0]);
-				printf("  WRITE\n");
-				assembler.MOV(EAX, 0x04);
-				assembler.MOV(EBX, 1); // stdout
-				assembler.MOV(ECX, ESP);
-				assembler.MOV(EDX, 1);
-				assembler.INT(0x80);
-				assembler.POP(EAX);
-				value = new Void();
-			}
-		}
 	}
-	void visit_builtin(const Builtin* builtin) override {
-		value = new CompiletimeBuiltin(builtin->get_name());
+	void visit_intrinsic(const Intrinsic* intrinsic) override {
+		if (intrinsic->get_name() == "putChar") {
+			evaluate(intrinsic->get_arguments()[0]);
+			printf("  WRITE\n");
+			assembler.MOV(EAX, 0x04);
+			assembler.MOV(EBX, 1); // stdout
+			assembler.MOV(ECX, ESP);
+			assembler.MOV(EDX, 1);
+			assembler.INT(0x80);
+			assembler.POP(EAX);
+			value = new Void();
+		}
 	}
 };
 

@@ -10,7 +10,7 @@ class If;
 class Function;
 class Argument;
 class Call;
-class Builtin;
+class Intrinsic;
 
 class Visitor {
 public:
@@ -20,7 +20,7 @@ public:
 	virtual void visit_function(const Function* function) = 0;
 	virtual void visit_argument(const Argument* argument) = 0;
 	virtual void visit_call(const Call* call) = 0;
-	virtual void visit_builtin(const Builtin* builtin) = 0;
+	virtual void visit_intrinsic(const Intrinsic* intrinsic) = 0;
 };
 
 class Expression {
@@ -158,14 +158,21 @@ public:
 	}
 };
 
-class Builtin: public Expression {
+class Intrinsic: public Expression {
 	StringView name;
+	std::vector<const Expression*> arguments;
 public:
-	Builtin(const StringView& name): name(name) {}
+	Intrinsic(const StringView& name): name(name) {}
 	void accept(Visitor* visitor) const override {
-		visitor->visit_builtin(this);
+		visitor->visit_intrinsic(this);
+	}
+	void add_argument(const StringView& argument_name) {
+		arguments.push_back(new Argument(argument_name));
 	}
 	StringView get_name() const {
 		return name;
+	}
+	const std::vector<const Expression*>& get_arguments() const {
+		return arguments;
 	}
 };
