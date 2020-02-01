@@ -197,7 +197,6 @@ public:
 		return result;
 	}
 	void visit_number(const Number* number) override {
-		//value = new CompiletimeNumber(number->get_value());
 		value = new RuntimeNumber();
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
@@ -318,99 +317,87 @@ public:
 	void visit_number(const Number* number) override {
 		printf("  PUSH %d\n", number->get_value());
 		assembler.PUSH(number->get_value());
-		//value = new CompiletimeNumber(number->get_value());
 		value = new RuntimeNumber();
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
 		Value* left = evaluate(binary_expression->get_left());
 		Value* right = evaluate(binary_expression->get_right());
 		if (left->has_type<RuntimeNumber, Never>() && right->has_type<RuntimeNumber, Never>()) {
+			printf("  POP EBX\n");
+			assembler.POP(EBX);
+			printf("  POP EAX\n");
+			assembler.POP(EAX);
 			switch (binary_expression->get_type()) {
 				case BinaryExpressionType::ADD:
-					printf("  ADD\n");
-					assembler.POP(EBX);
-					assembler.POP(EAX);
+					printf("  ADD EAX, EBX\n");
 					assembler.ADD(EAX, EBX);
+					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 				case BinaryExpressionType::SUB:
-					printf("  SUB\n");
-					assembler.POP(EBX);
-					assembler.POP(EAX);
+					printf("  SUB EAX, EBX\n");
 					assembler.SUB(EAX, EBX);
+					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 				case BinaryExpressionType::MUL:
-					printf("  IMUL\n");
-					assembler.POP(EBX);
-					assembler.POP(EAX);
+					printf("  IMUL EBX\n");
 					assembler.IMUL(EBX);
+					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 				case BinaryExpressionType::DIV:
-					printf("  IDIV\n");
-					assembler.POP(EBX);
-					assembler.POP(EAX);
+					printf("  CDQ\n");
 					assembler.CDQ();
+					printf("  IDIV EBX\n");
 					assembler.IDIV(EBX);
+					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 				case BinaryExpressionType::REM:
-					printf("  IDIV\n");
-					assembler.POP(EBX);
-					assembler.POP(EAX);
+					printf("  CDQ\n");
 					assembler.CDQ();
+					printf("  IDIV EBX\n");
 					assembler.IDIV(EBX);
+					printf("  PUSH EDX\n");
 					assembler.PUSH(EDX);
 					break;
 				case BinaryExpressionType::EQ:
-					printf("  POP EBX\n");
-					assembler.POP(EBX);
-					printf("  POP EAX\n");
-					assembler.POP(EAX);
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETE EAX\n");
 					assembler.SETE(EAX);
+					printf("  MOVZX EAX, EAX\n");
 					assembler.MOVZX(EAX, EAX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 				case BinaryExpressionType::NE:
-					printf("  POP EBX\n");
-					assembler.POP(EBX);
-					printf("  POP EAX\n");
-					assembler.POP(EAX);
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETNE EAX\n");
 					assembler.SETNE(EAX);
+					printf("  MOVZX EAX, EAX\n");
 					assembler.MOVZX(EAX, EAX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 				case BinaryExpressionType::LT:
-					printf("  POP EBX\n");
-					assembler.POP(EBX);
-					printf("  POP EAX\n");
-					assembler.POP(EAX);
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETL EAX\n");
 					assembler.SETL(EAX);
+					printf("  MOVZX EAX, EAX\n");
 					assembler.MOVZX(EAX, EAX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
 				case BinaryExpressionType::LE:
-					printf("  POP EBX\n");
-					assembler.POP(EBX);
-					printf("  POP EAX\n");
-					assembler.POP(EAX);
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETLE EAX\n");
 					assembler.SETLE(EAX);
+					printf("  MOVZX EAX, EAX\n");
 					assembler.MOVZX(EAX, EAX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
