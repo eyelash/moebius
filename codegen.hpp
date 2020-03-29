@@ -175,6 +175,9 @@ public:
 	Entry& operator [](std::size_t index) {
 		return functions[index];
 	}
+	const Entry& operator [](std::size_t index) const {
+		return functions[index];
+	}
 	std::size_t size() const {
 		return functions.size();
 	}
@@ -301,12 +304,12 @@ struct DeferredCall {
 
 class Pass2: public Visitor {
 	Value* value;
-	FunctionTable& function_table;
+	const FunctionTable& function_table;
 	std::vector<DeferredCall>& deferred_calls;
 	std::size_t index;
 	Assembler& assembler;
 public:
-	Pass2(FunctionTable& function_table, std::vector<DeferredCall>& deferred_calls, std::size_t index, Assembler& assembler): value(nullptr), function_table(function_table), deferred_calls(deferred_calls), index(index), assembler(assembler) {}
+	Pass2(const FunctionTable& function_table, std::vector<DeferredCall>& deferred_calls, std::size_t index, Assembler& assembler): value(nullptr), function_table(function_table), deferred_calls(deferred_calls), index(index), assembler(assembler) {}
 	Value* evaluate(const Expression* expression) {
 		value = nullptr;
 		expression->accept(this);
@@ -327,26 +330,26 @@ public:
 			assembler.POP(EBX);
 			printf("  POP EAX\n");
 			assembler.POP(EAX);
-			switch (binary_expression->get_type()) {
-				case BinaryExpressionType::ADD:
+			switch (binary_expression->get_operation()) {
+				case BinaryOperation::ADD:
 					printf("  ADD EAX, EBX\n");
 					assembler.ADD(EAX, EBX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
-				case BinaryExpressionType::SUB:
+				case BinaryOperation::SUB:
 					printf("  SUB EAX, EBX\n");
 					assembler.SUB(EAX, EBX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
-				case BinaryExpressionType::MUL:
+				case BinaryOperation::MUL:
 					printf("  IMUL EBX\n");
 					assembler.IMUL(EBX);
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
-				case BinaryExpressionType::DIV:
+				case BinaryOperation::DIV:
 					printf("  CDQ\n");
 					assembler.CDQ();
 					printf("  IDIV EBX\n");
@@ -354,7 +357,7 @@ public:
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
-				case BinaryExpressionType::REM:
+				case BinaryOperation::REM:
 					printf("  CDQ\n");
 					assembler.CDQ();
 					printf("  IDIV EBX\n");
@@ -362,7 +365,7 @@ public:
 					printf("  PUSH EDX\n");
 					assembler.PUSH(EDX);
 					break;
-				case BinaryExpressionType::EQ:
+				case BinaryOperation::EQ:
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETE EAX\n");
@@ -372,7 +375,7 @@ public:
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
-				case BinaryExpressionType::NE:
+				case BinaryOperation::NE:
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETNE EAX\n");
@@ -382,7 +385,7 @@ public:
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
-				case BinaryExpressionType::LT:
+				case BinaryOperation::LT:
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETL EAX\n");
@@ -392,7 +395,7 @@ public:
 					printf("  PUSH EAX\n");
 					assembler.PUSH(EAX);
 					break;
-				case BinaryExpressionType::LE:
+				case BinaryOperation::LE:
 					printf("  CMP EAX, EBX\n");
 					assembler.CMP(EAX, EBX);
 					printf("  SETLE EAX\n");

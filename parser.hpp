@@ -6,9 +6,10 @@
 
 struct BinaryOperator {
 	const char* string;
-	BinaryExpressionType type;
-	constexpr BinaryOperator(const char* string, BinaryExpressionType type): string(string), type(type) {}
-	constexpr BinaryOperator(): string(nullptr), type(BinaryExpressionType::ADD) {}
+	using Create = Expression* (*)(const Expression* left, const Expression* right);
+	Create create;
+	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
+	constexpr BinaryOperator(): string(nullptr), create(nullptr) {}
 	constexpr operator bool() const {
 		return string != nullptr;
 	}
@@ -16,21 +17,21 @@ struct BinaryOperator {
 
 static constexpr BinaryOperator operators[][4] = {
 	{
-		BinaryOperator("==", BinaryExpressionType::EQ),
-		BinaryOperator("!=", BinaryExpressionType::NE)
+		BinaryOperator("==", BinaryExpression::create<BinaryOperation::EQ>),
+		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
 	},
 	{
-		BinaryOperator("<=", BinaryExpressionType::LE),
-		BinaryOperator("<", BinaryExpressionType::LT)
+		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
+		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>)
 	},
 	{
-		BinaryOperator("+", BinaryExpressionType::ADD),
-		BinaryOperator("-", BinaryExpressionType::SUB)
+		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
+		BinaryOperator("-", BinaryExpression::create<BinaryOperation::SUB>)
 	},
 	{
-		BinaryOperator("*", BinaryExpressionType::MUL),
-		BinaryOperator("/", BinaryExpressionType::DIV),
-		BinaryOperator("%", BinaryExpressionType::REM)
+		BinaryOperator("*", BinaryExpression::create<BinaryOperation::MUL>),
+		BinaryOperator("/", BinaryExpression::create<BinaryOperation::DIV>),
+		BinaryOperator("%", BinaryExpression::create<BinaryOperation::REM>)
 	}
 };
 
@@ -332,7 +333,7 @@ class MoebiusParser: private Parser {
 		while (BinaryOperator op = parse_operator(level)) {
 			parse_white_space();
 			const Expression* right = parse_expression(level + 1);
-			left = new BinaryExpression(op.type, left, right);
+			left = op.create(left, right);
 			parse_white_space();
 		}
 		return left;

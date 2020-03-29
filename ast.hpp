@@ -40,7 +40,7 @@ public:
 	}
 };
 
-enum class BinaryExpressionType {
+enum class BinaryOperation {
 	ADD,
 	SUB,
 	MUL,
@@ -53,22 +53,25 @@ enum class BinaryExpressionType {
 };
 
 class BinaryExpression: public Expression {
-	BinaryExpressionType type;
+	BinaryOperation operation;
 	const Expression* left;
 	const Expression* right;
 public:
-	BinaryExpression(BinaryExpressionType type, const Expression* left, const Expression* right): type(type), left(left), right(right) {}
+	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): operation(operation), left(left), right(right) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_binary_expression(this);
 	}
-	BinaryExpressionType get_type() const {
-		return type;
+	BinaryOperation get_operation() const {
+		return operation;
 	}
 	const Expression* get_left() const {
 		return left;
 	}
 	const Expression* get_right() const {
 		return right;
+	}
+	template <BinaryOperation operation> static Expression* create(const Expression* left, const Expression* right) {
+		return new BinaryExpression(operation, left, right);
 	}
 };
 
