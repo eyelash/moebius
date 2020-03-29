@@ -368,7 +368,7 @@ class MoebiusParser: private Parser {
 public:
 	MoebiusParser(const StringView& source): Parser(source), current_scope(nullptr) {}
 	const Expression* create_putChar() {
-		Intrinsic* intrinsic = new Intrinsic("putChar");
+		Intrinsic* intrinsic = new Intrinsic("putChar", new Void());
 		intrinsic->add_argument("c");
 		Function* function = new Function(intrinsic);
 		function->add_argument_name("c");

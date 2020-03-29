@@ -3,101 +3,16 @@
 #include "ast.hpp"
 #include "assembler.hpp"
 
-class Value {
-public:
-	virtual int get_type() = 0;
-	virtual std::uint32_t get_size() = 0;
-	template <class T> T* get() {
-		return static_cast<T*>(this);
-	}
-	template <class T> bool has_type() {
-		return get_type() == T::type;
-	}
-	template <class T0, class T1, class... T> bool has_type() {
-		return has_type<T0>() || has_type<T1, T...>();
-	}
-};
-
-class RuntimeNumber: public Value {
-public:
-	RuntimeNumber() {}
-	static constexpr int type = 2;
-	int get_type() override {
-		return type;
-	}
-	std::uint32_t get_size() override {
-		return 4;
-	}
-};
-
-class Closure: public Value {
-	const Function* function;
-	std::vector<Value*> environment_values;
-public:
-	Closure(const Function* function): function(function) {}
-	static constexpr int type = 3;
-	int get_type() override {
-		return type;
-	}
-	std::uint32_t get_size() override {
-		int size = 0;
-		for (Value* value: environment_values) {
-			size += value->get_size();
-		}
-		return size;
-	}
-	void add_environment_value(Value* value) {
-		environment_values.push_back(value);
-	}
-	const Function* get_function() const {
-		return function;
-	}
-	const Expression* get_expression() const {
-		return function->get_expression();
-	}
-	const std::vector<StringView>& get_argument_names() const {
-		return function->get_argument_names();
-	}
-	const std::vector<StringView>& get_environment_names() const {
-		return function->get_environment_names();
-	}
-	const std::vector<Value*>& get_environment_values() const {
-		return environment_values;
-	}
-};
-
-class Never: public Value {
-public:
-	static constexpr int type = 6;
-	int get_type() override {
-		return type;
-	}
-	std::uint32_t get_size() override {
-		return 0;
-	}
-};
-
-class Void: public Value {
-public:
-	static constexpr int type = 5;
-	int get_type() override {
-		return type;
-	}
-	std::uint32_t get_size() override {
-		return 0;
-	}
-};
-
 class FunctionTable {
 	struct Entry {
 		const Function* function;
 		std::vector<Value*> environment_values;
 		std::vector<Value*> argument_values;
-		Value* return_value;
+		const Expression* expression;
 		std::size_t position;
 		std::uint32_t input_size;
 		std::uint32_t output_size;
-		Entry(const Function* function, const std::vector<Value*>& environment_values, const std::vector<Value*>& argument_values): function(function), environment_values(environment_values), argument_values(argument_values), return_value(nullptr), position(0) {
+		Entry(const Function* function, const std::vector<Value*>& environment_values, const std::vector<Value*>& argument_values): function(function), environment_values(environment_values), argument_values(argument_values), expression(nullptr), position(0) {
 			input_size = 0;
 			for (Value* value: environment_values) {
 				input_size += value->get_size();
@@ -106,9 +21,9 @@ class FunctionTable {
 				input_size += value->get_size();
 			}
 		}
-		void set_return_value(Value* return_value) {
-			this->return_value = return_value;
-			output_size = return_value->get_size();
+		void set_expression(const Expression* expression) {
+			this->expression = expression;
+			output_size = expression->get_type()->get_size();
 		}
 		Value* look_up(const StringView& name, std::uint32_t& location) const {
 			const std::vector<StringView>& environment_names = function->get_environment_names();
@@ -131,12 +46,12 @@ class FunctionTable {
 	};
 	std::vector<Entry> functions;
 	static bool equals(Value* value1, Value* value2) {
-		const int type1 = value1->get_type();
-		const int type2 = value2->get_type();
+		const int type1 = value1->get_id();
+		const int type2 = value2->get_id();
 		if (type1 != type2) {
 			return false;
 		}
-		if (type1 == Closure::type) {
+		if (type1 == Closure::id) {
 			if (value1->get<Closure>()->get_function() != value2->get<Closure>()->get_function()) {
 				return false;
 			}
@@ -186,45 +101,47 @@ public:
 	}
 };
 
+// type checking and monomorphization
 class Pass1: public Visitor {
-	Value* value;
+	const Expression* expression;
 	FunctionTable& function_table;
 	std::size_t index;
 public:
-	Pass1(FunctionTable& function_table, std::size_t index): value(nullptr), function_table(function_table), index(index) {}
-	Value* evaluate(const Expression* expression) {
-		value = nullptr;
+	Pass1(FunctionTable& function_table, std::size_t index): expression(nullptr), function_table(function_table), index(index) {}
+	const Expression* evaluate(const Expression* expression) {
+		this->expression = nullptr;
 		expression->accept(this);
-		Value* result = value;
-		value = nullptr;
+		const Expression* result = this->expression;
+		this->expression = nullptr;
 		return result;
 	}
 	void visit_number(const Number* number) override {
-		value = new RuntimeNumber();
+		expression = number;
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
-		Value* left = evaluate(binary_expression->get_left());
-		Value* right = evaluate(binary_expression->get_right());
+		const Expression* left = evaluate(binary_expression->get_left());
+		const Expression* right = evaluate(binary_expression->get_right());
 		if (left->has_type<RuntimeNumber, Never>() && right->has_type<RuntimeNumber, Never>()) {
-			value = new RuntimeNumber();
+			expression = new BinaryExpression(binary_expression->get_operation(), left, right);
 		}
 		else {
-			printf("error: binary expression of types %d and %d\n", left->get_type(), right->get_type());
+			printf("error: binary expression of types %d and %d\n", left->get_type_id(), right->get_type_id());
 		}
 	}
 	void visit_if(const If* if_) override {
-		Value* condition = evaluate(if_->get_condition());
+		const Expression* condition = evaluate(if_->get_condition());
 		if (condition->has_type<RuntimeNumber, Never>()) {
-			Value* then_value = evaluate(if_->get_then_expression());
-			Value* else_value = evaluate(if_->get_else_expression());
-			if (then_value->get_type() == else_value->get_type()) {
-				value = then_value;
+			const Expression* then_value = evaluate(if_->get_then_expression());
+			const Expression* else_value = evaluate(if_->get_else_expression());
+			// TODO: compare types properly
+			if (then_value->get_type_id() == else_value->get_type_id()) {
+				expression = new If(condition, then_value, else_value, then_value->get_type());
 			}
 			else if (then_value->has_type<Never>()) {
-				value = else_value;
+				expression = new If(condition, then_value, else_value, else_value->get_type());
 			}
 			else if (else_value->has_type<Never>()) {
-				value = then_value;
+				expression = new If(condition, then_value, else_value, then_value->get_type());
 			}
 			else {
 				printf("error: if and else branches must return values of the same type\n");
@@ -236,49 +153,62 @@ public:
 	}
 	void visit_function(const Function* function) override {
 		Closure* closure = new Closure(function);
+		Function* new_function = new Function(nullptr, closure);
 		for (const Expression* expression: function->get_environment_expressions()) {
-			closure->add_environment_value(evaluate(expression));
+			const Expression* new_expression = evaluate(expression);
+			closure->add_environment_value(new_expression->get_type());
+			new_function->add_environment_expression(new_expression);
 		}
-		value = closure;
+		expression = new_function;
 	}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
-		value = function_table[index].look_up(argument->get_name(), location);
+		Value* value = function_table[index].look_up(argument->get_name(), location);
+		expression = new Argument(argument->get_name(), value);
 	}
 	void visit_call(const Call* call) override {
-		Value* function = evaluate(call->get_expression());
+		const Expression* function = evaluate(call->get_expression());
 		if (function->has_type<Closure>()) {
-			Closure* closure = function->get<Closure>();
-			if (call->get_arguments().size() != closure->get_argument_names().size()) {
-				printf("error: call with %lu arguments to a function that accepts %lu arguments\n", call->get_arguments().size(), closure->get_argument_names().size());
+			Closure* closure = function->get_type()->get<Closure>();
+			if (call->get_arguments().size() != closure->get_function()->get_argument_names().size()) {
+				printf("error: call with %lu arguments to a function that accepts %lu arguments\n", call->get_arguments().size(), closure->get_function()->get_argument_names().size());
 			}
 			std::vector<Value*> argument_values;
+			Call* new_call = new Call(function);
 			for (const Expression* argument: call->get_arguments()) {
-				argument_values.push_back(evaluate(argument));
+				const Expression* new_argument = evaluate(argument);
+				argument_values.push_back(new_argument->get_type());
+				new_call->add_argument(new_argument);
 			}
 
 			const std::size_t new_index = function_table.look_up(closure, argument_values);
 			if (new_index == function_table.size()) {
 				function_table.add_entry(closure, argument_values);
 				Pass1 pass1(function_table, new_index);
-				value = pass1.evaluate(closure->get_expression());
-				function_table[new_index].set_return_value(value);
+				const Expression* e = pass1.evaluate(closure->get_function()->get_expression());
+				function_table[new_index].set_expression(e);
 				if (function_table.recursion == new_index) {
 					// reevaluate the expression in case of recursion
 					function_table.recursion = -1;
 					function_table.clear(new_index);
-					pass1.evaluate(closure->get_expression());
+					e = pass1.evaluate(closure->get_function()->get_expression());
+					function_table[new_index].set_expression(e);
 				}
+				new_call->set_type(e->get_type());
+				expression = new_call;
 			}
 			else {
-				value = function_table[new_index].return_value;
 				// detect recursion
-				if (value == nullptr) {
+				if (function_table[new_index].expression == nullptr) {
 					if (new_index < function_table.recursion) {
 						function_table.recursion = new_index;
 					}
-					value = new Never();
+					new_call->set_type(new Never());
 				}
+				else {
+					new_call->set_type(function_table[new_index].expression->get_type());
+				}
+				expression = new_call;
 			}
 		}
 		else {
@@ -287,11 +217,11 @@ public:
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
 		if (intrinsic->get_name() == "putChar") {
-			Value* argument_value = evaluate(intrinsic->get_arguments()[0]);
-			if (argument_value->get_type() != RuntimeNumber::type) {
+			const Expression* argument_value = evaluate(intrinsic->get_arguments()[0]);
+			if (argument_value->get_type_id() != RuntimeNumber::id) {
 				printf("error: argument of putChar must be a number\n");
 			}
-			value = new Void();
+			expression = intrinsic;
 		}
 	}
 };
@@ -302,29 +232,26 @@ struct DeferredCall {
 	DeferredCall(const Assembler::Jump& jump, std::size_t function_index): jump(jump), function_index(function_index) {}
 };
 
+// code generation
 class Pass2: public Visitor {
-	Value* value;
 	const FunctionTable& function_table;
 	std::vector<DeferredCall>& deferred_calls;
 	std::size_t index;
 	Assembler& assembler;
 public:
-	Pass2(const FunctionTable& function_table, std::vector<DeferredCall>& deferred_calls, std::size_t index, Assembler& assembler): value(nullptr), function_table(function_table), deferred_calls(deferred_calls), index(index), assembler(assembler) {}
-	Value* evaluate(const Expression* expression) {
-		value = nullptr;
+	Pass2(const FunctionTable& function_table, std::vector<DeferredCall>& deferred_calls, std::size_t index, Assembler& assembler): function_table(function_table), deferred_calls(deferred_calls), index(index), assembler(assembler) {}
+	void evaluate(const Expression* expression) {
 		expression->accept(this);
-		Value* result = value;
-		value = nullptr;
-		return result;
 	}
 	void visit_number(const Number* number) override {
 		printf("  PUSH %d\n", number->get_value());
 		assembler.PUSH(number->get_value());
-		value = new RuntimeNumber();
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
-		Value* left = evaluate(binary_expression->get_left());
-		Value* right = evaluate(binary_expression->get_right());
+		const Expression* left = binary_expression->get_left();
+		const Expression* right = binary_expression->get_right();
+		evaluate(left);
+		evaluate(right);
 		if (left->has_type<RuntimeNumber, Never>() && right->has_type<RuntimeNumber, Never>()) {
 			printf("  POP EBX\n");
 			assembler.POP(EBX);
@@ -406,11 +333,11 @@ public:
 					assembler.PUSH(EAX);
 					break;
 			}
-			value = new RuntimeNumber();
 		}
 	}
 	void visit_if(const If* if_) override {
-		Value* condition = evaluate(if_->get_condition());
+		const Expression* condition = if_->get_condition();
+		evaluate(condition);
 		if (condition->has_type<RuntimeNumber, Never>()) {
 			printf("  POP EAX\n");
 			assembler.POP(EAX);
@@ -418,28 +345,23 @@ public:
 			assembler.CMP(EAX, 0);
 			printf("  JE\n;if\n");
 			const Assembler::Jump jump_else = assembler.JE();
-			Value* then_value = evaluate(if_->get_then_expression());
+			evaluate(if_->get_then_expression());
 			printf("  JMP\n;else\n");
 			const Assembler::Jump jump_end = assembler.JMP();
 			jump_else.set_target(assembler.get_position());
-			Value* else_value = evaluate(if_->get_else_expression());
+			evaluate(if_->get_else_expression());
 			printf(";end\n");
 			jump_end.set_target(assembler.get_position());
-			if (then_value->get_type() == else_value->get_type()) {
-				value = then_value;
-			}
 		}
 	}
 	void visit_function(const Function* function) override {
-		Closure* closure = new Closure(function);
 		for (const Expression* expression: function->get_environment_expressions()) {
-			closure->add_environment_value(evaluate(expression));
+			evaluate(expression);
 		}
-		value = closure;
 	}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
-		value = function_table[index].look_up(argument->get_name(), location);
+		Value* value = function_table[index].look_up(argument->get_name(), location);
 		const std::uint32_t size = value->get_size();
 		for (std::uint32_t i = 0; i < size; i += 4) {
 			printf("  PUSH [EBP + %d]\n", 8 + location + size - 4 - i);
@@ -448,12 +370,14 @@ public:
 		}
 	}
 	void visit_call(const Call* call) override {
-		Value* function = evaluate(call->get_expression());
-		if (function->has_type<Closure>()) {
-			Closure* closure = function->get<Closure>();
+		const Expression* function = call->get_expression();
+		evaluate(function);
+		if (function->get_type_id() == Closure::id) {
+			Closure* closure = function->get_type()->get<Closure>();
 			std::vector<Value*> argument_values;
 			for (const Expression* argument: call->get_arguments()) {
-				argument_values.push_back(evaluate(argument));
+				evaluate(argument);
+				argument_values.push_back(argument->get_type());
 			}
 			const std::size_t new_index = function_table.look_up(closure, argument_values);
 			const std::uint32_t input_size = function_table[new_index].input_size;
@@ -466,7 +390,6 @@ public:
 			printf("  CALL\n");
 			Assembler::Jump jump = assembler.CALL();
 			deferred_calls.emplace_back(jump, new_index);
-			value = function_table[new_index].return_value;
 			if (output_size < input_size) {
 				printf("  ADD ESP, %d\n", input_size - output_size);
 				assembler.ADD(ESP, input_size - output_size);
@@ -483,7 +406,6 @@ public:
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
 			assembler.POP(EAX);
-			value = new Void();
 		}
 	}
 };
@@ -493,7 +415,7 @@ void codegen(const Expression* expression, const char* path) {
 	FunctionTable function_table;
 	std::vector<DeferredCall> deferred_calls;
 	Pass1 pass1(function_table, 0);
-	pass1.evaluate(expression);
+	expression = pass1.evaluate(expression);
 	{
 		// the main function
 		Pass2 pass2(function_table, deferred_calls, 0, assembler);
@@ -511,12 +433,12 @@ void codegen(const Expression* expression, const char* path) {
 		printf("  MOV EBP, ESP\n");
 		assembler.MOV(EBP, ESP);
 		printf("  --\n");
-		const Expression* expression = function_table[index].function->get_expression();
+		const Expression* expression = function_table[index].expression;
 		Pass2 pass2(function_table, deferred_calls, index, assembler);
-		Value* value = pass2.evaluate(expression);
+		pass2.evaluate(expression);
 		printf("  --\n");
-		const std::uint32_t output_size = value->get_size();
-		if (value->get_size() != function_table[index].output_size) printf("error: output_size\n");
+		const std::uint32_t output_size = expression->get_type()->get_size();
+		if (output_size != function_table[index].output_size) printf("error: output_size\n");
 		const std::uint32_t size = std::max(function_table[index].input_size, function_table[index].output_size);
 		for (std::uint32_t i = 0; i < output_size; i += 4) {
 			printf("  POP [EBP + %d]\n", 8 + size - output_size + i);
