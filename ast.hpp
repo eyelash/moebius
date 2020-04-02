@@ -12,72 +12,69 @@ class Argument;
 class Call;
 class Intrinsic;
 
-class Value {
+class Type {
 public:
-	virtual int get_id() = 0;
-	virtual std::uint32_t get_size() = 0;
-	template <class T> T* get() {
-		return static_cast<T*>(this);
-	}
+	virtual int get_id() const = 0;
+	virtual std::uint32_t get_size() const = 0;
 };
 
-class RuntimeNumber: public Value {
+class NumberType: public Type {
 public:
-	RuntimeNumber() {}
+	NumberType() {}
 	static constexpr int id = 2;
-	int get_id() override {
+	int get_id() const override {
 		return id;
 	}
-	std::uint32_t get_size() override {
+	std::uint32_t get_size() const override {
 		return 4;
 	}
 };
 
-class Closure: public Value {
+class FunctionType: public Type {
 	const Function* function;
-	std::vector<Value*> environment_values;
+	std::vector<const Type*> environment_types;
 public:
-	Closure(const Function* function): function(function) {}
+	FunctionType(const Function* function): function(function) {}
 	static constexpr int id = 3;
-	int get_id() override {
+	int get_id() const override {
 		return id;
 	}
-	std::uint32_t get_size() override {
+	std::uint32_t get_size() const override {
 		int size = 0;
-		for (Value* value: environment_values) {
-			size += value->get_size();
+		for (const Type* type: environment_types) {
+			size += type->get_size();
 		}
 		return size;
 	}
-	void add_environment_value(Value* value) {
-		environment_values.push_back(value);
+	void add_environment_type(const Type* type) {
+		environment_types.push_back(type);
 	}
 	const Function* get_function() const {
 		return function;
 	}
-	const std::vector<Value*>& get_environment_values() const {
-		return environment_values;
+	const std::vector<const Type*>& get_environment_types() const {
+		return environment_types;
 	}
 };
 
-class Never: public Value {
+class NeverType: public Type {
 public:
 	static constexpr int id = 6;
-	int get_id() override {
+	int get_id() const override {
 		return id;
 	}
-	std::uint32_t get_size() override {
+	std::uint32_t get_size() const override {
 		return 0;
 	}
 };
 
-class Void: public Value {
+class VoidType: public Type {
 public:
 	static constexpr int id = 5;
-	int get_id() override {
+	int get_id() const override {
 		return id;
 	}
-	std::uint32_t get_size() override {
+	std::uint32_t get_size() const override {
 		return 0;
 	}
 };
@@ -94,31 +91,25 @@ public:
 };
 
 class Expression {
-	Value* type;
+	const Type* type;
 public:
-	Expression(Value* type = nullptr): type(type) {}
+	Expression(const Type* type = nullptr): type(type) {}
 	virtual void accept(Visitor* visitor) const = 0;
-	Value* get_type() const {
+	const Type* get_type() const {
 		return type;
 	}
-	void set_type(Value* type) {
+	void set_type(const Type* type) {
 		this->type = type;
 	}
 	int get_type_id() const {
 		return get_type()->get_id();
-	}
-	template <class T> bool has_type() const {
-		return get_type_id() == T::id;
-	}
-	template <class T0, class T1, class... T> bool has_type() const {
-		return has_type<T0>() || has_type<T1, T...>();
 	}
 };
 
 class Number: public Expression {
 	std::int32_t value;
 public:
-	Number(std::int32_t value): Expression(new RuntimeNumber()), value(value) {}
+	Number(std::int32_t value): Expression(new NumberType()), value(value) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_number(this);
 	}
@@ -144,7 +135,7 @@ class BinaryExpression: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(new RuntimeNumber()), operation(operation), left(left), right(right) {}
+	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(new NumberType()), operation(operation), left(left), right(right) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_binary_expression(this);
 	}
@@ -167,7 +158,7 @@ class If: public Expression {
 	const Expression* then_expression;
 	const Expression* else_expression;
 public:
-	If(const Expression* condition, const Expression* then_expression, const Expression* else_expression, Value* type = nullptr): Expression(type), condition(condition), then_expression(then_expression), else_expression(else_expression) {}
+	If(const Expression* condition, const Expression* then_expression, const Expression* else_expression, const Type* type = nullptr): Expression(type), condition(condition), then_expression(then_expression), else_expression(else_expression) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_if(this);
 	}
@@ -188,7 +179,7 @@ class Function: public Expression {
 	std::vector<const Expression*> environment_expressions;
 	std::vector<StringView> argument_names;
 public:
-	Function(const Expression* expression, Value* value = nullptr): Expression(value), expression(expression) {}
+	Function(const Expression* expression, const Type* type = nullptr): Expression(type), expression(expression) {}
 	Function(): expression(nullptr) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_function(this);
@@ -224,7 +215,7 @@ public:
 class Argument: public Expression {
 	StringView name;
 public:
-	Argument(const StringView& name, Value* type = nullptr): Expression(type), name(name) {}
+	Argument(const StringView& name, const Type* type = nullptr): Expression(type), name(name) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_argument(this);
 	}
@@ -256,7 +247,7 @@ class Intrinsic: public Expression {
 	StringView name;
 	std::vector<const Expression*> arguments;
 public:
-	Intrinsic(const StringView& name, Value* value): Expression(value), name(name) {}
+	Intrinsic(const StringView& name, const Type* type): Expression(type), name(name) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_intrinsic(this);
 	}
