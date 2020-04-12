@@ -127,7 +127,9 @@ enum class BinaryOperation {
 	EQ,
 	NE,
 	LT,
-	LE
+	LE,
+	GT,
+	GE
 };
 
 class BinaryExpression: public Expression {

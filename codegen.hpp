@@ -330,6 +330,26 @@ public:
 				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
+			case BinaryOperation::GT:
+				printf("  CMP EAX, EBX\n");
+				assembler.CMP(EAX, EBX);
+				printf("  SETG EAX\n");
+				assembler.SETG(EAX);
+				printf("  MOVZX EAX, EAX\n");
+				assembler.MOVZX(EAX, EAX);
+				printf("  PUSH EAX\n");
+				assembler.PUSH(EAX);
+				break;
+			case BinaryOperation::GE:
+				printf("  CMP EAX, EBX\n");
+				assembler.CMP(EAX, EBX);
+				printf("  SETGE EAX\n");
+				assembler.SETGE(EAX);
+				printf("  MOVZX EAX, EAX\n");
+				assembler.MOVZX(EAX, EAX);
+				printf("  PUSH EAX\n");
+				assembler.PUSH(EAX);
+				break;
 		}
 	}
 	void visit_if(const If* if_) override {

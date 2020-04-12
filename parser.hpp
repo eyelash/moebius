@@ -15,14 +15,16 @@ struct BinaryOperator {
 	}
 };
 
-static constexpr BinaryOperator operators[][4] = {
+static constexpr BinaryOperator operators[][5] = {
 	{
 		BinaryOperator("==", BinaryExpression::create<BinaryOperation::EQ>),
 		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
 	},
 	{
 		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
-		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>)
+		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>),
+		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>),
+		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>)
 	},
 	{
 		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
