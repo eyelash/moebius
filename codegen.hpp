@@ -2,6 +2,17 @@
 
 #include "ast.hpp"
 #include "assembler.hpp"
+#include <cstdlib>
+
+template <class T> [[noreturn]] void error(const T& t) {
+	Printer printer(stderr);
+
+	printer.print(bold(red("error: ")));
+	printer.print(t);
+	printer.print("\n");
+
+	std::exit(EXIT_FAILURE);
+}
 
 class FunctionTable {
 	struct Entry {
@@ -125,7 +136,7 @@ public:
 			expression = new BinaryExpression(binary_expression->get_operation(), left, right);
 		}
 		else {
-			printf("error: binary expression of types %d and %d\n", left->get_type_id(), right->get_type_id());
+			error(format("binary expression of types % and %", print_number(left->get_type_id()), print_number(right->get_type_id())));
 		}
 	}
 	void visit_if(const If* if_) override {
@@ -144,11 +155,11 @@ public:
 				expression = new If(condition, then_expression, else_expression, then_expression->get_type());
 			}
 			else {
-				printf("error: if and else branches must return values of the same type\n");
+				error("if and else branches must return values of the same type");
 			}
 		}
 		else {
-			printf("error: type of condition must be a number\n");
+			error("type of condition must be a number");
 		}
 	}
 	void visit_function(const Function* function) override {
@@ -171,7 +182,7 @@ public:
 		if (call_expression->get_type_id() == FunctionType::id) {
 			const FunctionType* type = static_cast<const FunctionType*>(call_expression->get_type());
 			if (call->get_arguments().size() != type->get_function()->get_argument_names().size()) {
-				printf("error: call with %lu arguments to a function that accepts %lu arguments\n", call->get_arguments().size(), type->get_function()->get_argument_names().size());
+				error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(type->get_function()->get_argument_names().size())));
 			}
 			std::vector<const Type*> argument_types;
 			Call* new_call = new Call(call_expression);
@@ -211,14 +222,14 @@ public:
 			expression = new_call;
 		}
 		else {
-			printf("error: call to a value that is not a function\n");
+			error("call to a value that is not a function");
 		}
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
 		if (intrinsic->get_name() == "putChar") {
 			const Expression* argument = evaluate(intrinsic->get_arguments()[0]);
 			if (argument->get_type_id() != NumberType::id) {
-				printf("error: argument of putChar must be a number\n");
+				error("argument of putChar must be a number");
 			}
 			expression = intrinsic;
 		}
@@ -452,7 +463,6 @@ void codegen(const Expression* expression, const char* path) {
 		pass2.evaluate(expression);
 		printf("  --\n");
 		const std::uint32_t output_size = expression->get_type()->get_size();
-		if (output_size != function_table[index].output_size) printf("error: output_size\n");
 		const std::uint32_t size = std::max(function_table[index].input_size, function_table[index].output_size);
 		for (std::uint32_t i = 0; i < output_size; i += 4) {
 			printf("  POP [EBP + %d]\n", 8 + size - output_size + i);

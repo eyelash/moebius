@@ -2,7 +2,11 @@
 
 #include "printer.hpp"
 #include "ast.hpp"
+#include <vector>
+#include <fstream>
+#include <iterator>
 #include <map>
+#include <cstdlib>
 
 struct BinaryOperator {
 	const char* string;
@@ -79,47 +83,93 @@ public:
 	}
 };
 
-class Position {
-	const char* position;
-	const char* line_start;
+class SourceFile {
+	const char* file_name;
+	std::vector<char> content;
 public:
-	constexpr Position(const char* position): position(position), line_start(position) {}
-	constexpr bool operator <(const char* end) const {
-		return position < end;
+	SourceFile(const char* file_name): file_name(file_name) {
+		std::ifstream file(file_name);
+		content.insert(content.end(), std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+	}
+	StringView get_name() const {
+		return StringView(file_name);
+	}
+	const char* begin() const {
+		return content.data();
+	}
+	const char* end() const {
+		return content.data() + content.size();
+	}
+};
+
+class SourcePosition {
+	const SourceFile* file;
+	const char* position;
+public:
+	SourcePosition(const SourceFile* file): file(file), position(file->begin()) {}
+	constexpr SourcePosition(const SourceFile* file, const char* position): file(file), position(position) {}
+	operator bool() const {
+		return position < file->end();
+	}
+	constexpr bool operator <(const SourcePosition& rhs) const {
+		return position < rhs.position;
 	}
 	constexpr char operator *() const {
 		return *position;
 	}
-	Position& operator ++() {
-		if (*position == '\n') {
-			++position;
-			line_start = position;
-		}
-		else {
-			++position;
-		}
+	SourcePosition& operator ++() {
+		++position;
 		return *this;
 	}
-	constexpr StringView operator -(const Position& start) const {
+	constexpr StringView operator -(const SourcePosition& start) const {
 		return StringView(start.position, position - start.position);
 	}
-	void print(Printer& p, const char* end) const {
-		for (const char* c = line_start; c < end && *c != '\n'; ++c) {
-			p.print(*c);
+	std::tuple<StringView, unsigned int, SourcePosition> get_info() const {
+		unsigned int line_number = 1;
+		const char* c = file->begin();
+		const char* line_start = c;
+		while (c < position) {
+			if (*c == '\n') {
+				++c;
+				++line_number;
+				line_start = c;
+			}
+			else {
+				++c;
+			}
 		}
-		p.print('\n');
-		for (const char* c = line_start; c < position; ++c) {
-			p.print(*c == '\t' ? '\t' : ' ');
-		}
-		p.print('^');
-		p.print('\n');
+		return std::make_tuple(file->get_name(), line_number, SourcePosition(file, line_start));
 	}
 };
 
+template <class T> [[noreturn]] void error(const SourcePosition& position, const T& t) {
+	Printer printer(stderr);
+	const auto info = position.get_info();
+	const StringView& file_name = std::get<0>(info);
+	const unsigned int line_number = std::get<1>(info);
+	const SourcePosition& line_start = std::get<2>(info);
+
+	printer.print(format("%:%: ", file_name, print_number(line_number)));
+	printer.print(bold(red("error: ")));
+	printer.print(t);
+	printer.print("\n");
+
+	for (SourcePosition c = line_start; c && *c != '\n'; ++c) {
+		printer.print(*c);
+	}
+	printer.print("\n");
+
+	for (SourcePosition c = line_start; c < position; ++c) {
+		printer.print(*c == '\t' ? '\t' : ' ');
+	}
+	printer.print("^\n");
+
+	std::exit(EXIT_FAILURE);
+}
+
 class Parser {
 public:
-	Position position;
-	const char* end;
+	SourcePosition position;
 	static constexpr bool white_space(char c) {
 		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 	}
@@ -133,23 +183,23 @@ public:
 		return alphabetic(c) || numeric(c);
 	}
 	template <class F> bool parse(F f) {
-		if (position < end && f(*position)) {
+		if (position && f(*position)) {
 			++position;
 			return true;
 		}
 		return false;
 	}
 	bool parse(char c) {
-		if (position < end && *position == c) {
+		if (position && *position == c) {
 			++position;
 			return true;
 		}
 		return false;
 	}
 	bool parse(const StringView& s) {
-		const Position copy = position;
+		const SourcePosition copy = position;
 		for (char c: s) {
-			if (!(position < end && *position == c)) {
+			if (!(position && *position == c)) {
 				position = copy;
 				return false;
 			}
@@ -163,25 +213,18 @@ public:
 	template <class T> void parse_all(T&& t) {
 		while (parse(std::forward<T>(t))) {}
 	}
-	Parser(const StringView& source): position(source.begin()), end(source.end()) {}
-	Parser(const Position& position, const char* end): position(position), end(end) {}
+	Parser(const SourceFile* file): position(file) {}
+	Parser(const SourcePosition& position): position(position) {}
 	Parser copy() const {
-		return Parser(position, end);
+		return Parser(position);
 	}
 };
 
 class MoebiusParser: private Parser {
 	Scope* current_scope;
-	template <class... T> void error(const char* s, const T&... t) {
-		Printer printer(stderr);
-		printer.print(bold(red("error: ")));
-		printer.print(s, t...);
-		printer.print("\n");
-		position.print(printer, end);
-	}
 	void expect(const StringView& s) {
 		if (!parse(s)) {
-			error("expected \"%\"", s);
+			error(position, format("expected \"%\"", s));
 		}
 	}
 	bool parse_comment() {
@@ -191,7 +234,7 @@ class MoebiusParser: private Parser {
 			return true;
 		}
 		if (parse("/*")) {
-			while (position < end && !copy().parse("*/")) {
+			while (position && !copy().parse("*/")) {
 				++position;
 			}
 			expect("*/");
@@ -216,9 +259,9 @@ class MoebiusParser: private Parser {
 	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
-			error("expected alphabetic character");
+			error(position, "expected alphabetic character");
 		}
-		const Position start = position;
+		const SourcePosition start = position;
 		parse_all(alphanumeric);
 		return position - start;
 	}
@@ -226,7 +269,7 @@ class MoebiusParser: private Parser {
 		StringView identifier = parse_identifier();
 		const Expression* expression = current_scope->look_up(identifier);
 		if (expression == nullptr) {
-			error("undefined variable \"%\"", identifier);
+			error(position, format("undefined variable \"%\"", identifier));
 		}
 		return expression;
 	}
@@ -275,7 +318,7 @@ class MoebiusParser: private Parser {
 			Function* function = new Function();
 			Scope scope(current_scope, function);
 			current_scope = &scope;
-			while (position < end && *position != ')') {
+			while (position && *position != ')') {
 				const StringView name = parse_identifier();
 				function->add_argument_name(name);
 				parse_white_space();
@@ -291,8 +334,8 @@ class MoebiusParser: private Parser {
 			return function;
 		}
 		else if (parse("'")) {
-			if (!(position < end)) {
-				error("unexpected end");
+			if (!position) {
+				error(position, "unexpected end");
 			}
 			const char c = *position;
 			++position;
@@ -306,8 +349,7 @@ class MoebiusParser: private Parser {
 			return parse_variable();
 		}
 		else {
-			error("unexpected character");
-			return nullptr;
+			error(position, "unexpected character");
 		}
 	}
 	const Expression* parse_expression(int level = 0) {
@@ -317,7 +359,7 @@ class MoebiusParser: private Parser {
 			while (parse("(")) {
 				parse_white_space();
 				Call* call = new Call(expression);
-				while (position < end && *position != ')') {
+				while (position && *position != ')') {
 					call->add_argument(parse_expression());
 					parse_white_space();
 					if (parse(",")) {
@@ -360,7 +402,7 @@ class MoebiusParser: private Parser {
 				break;
 			}
 			else {
-				error("expected \"let\" or \"return\"");
+				error(position, "expected \"let\" or \"return\"");
 				break;
 			}
 		}
@@ -368,7 +410,7 @@ class MoebiusParser: private Parser {
 		return result;
 	}
 public:
-	MoebiusParser(const StringView& source): Parser(source), current_scope(nullptr) {}
+	MoebiusParser(const SourceFile* file): Parser(file), current_scope(nullptr) {}
 	const Expression* create_putChar() {
 		Intrinsic* intrinsic = new Intrinsic("putChar", new VoidType());
 		intrinsic->add_argument("c");
@@ -385,7 +427,7 @@ public:
 	}
 };
 
-const Expression* parse(const StringView& source) {
-	MoebiusParser parser(source);
+const Expression* parse(const SourceFile& file) {
+	MoebiusParser parser(&file);
 	return parser.parse_program();
 }

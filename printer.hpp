@@ -34,12 +34,6 @@ public:
 	constexpr bool operator <(const StringView& s) const {
 		return length != s.length ? length < s.length : strncmp(string, s.string, length) < 0;
 	}
-	constexpr StringView substr(std::size_t pos, std::size_t length) const {
-		return StringView(string + pos, length);
-	}
-	constexpr StringView substr(std::size_t pos) const {
-		return substr(pos, length - pos);
-	}
 	constexpr const char* begin() const {
 		return string;
 	}
@@ -64,20 +58,6 @@ public:
 	template <class T> void print(const T& t) {
 		t.print(*this);
 	}
-	template <class T0, class... T> void print(const char* s, const T0& t0, const T&... t) {
-		while (*s) {
-			if (*s == '%') {
-				++s;
-				if (*s != '%') {
-					print(t0);
-					print(s, t...);
-					return;
-				}
-			}
-			print(*s);
-			++s;
-		}
-	}
 };
 
 template <class... T> class PrintTuple;
@@ -85,6 +65,9 @@ template <> class PrintTuple<> {
 public:
 	constexpr PrintTuple() {}
 	void print(Printer& p) const {}
+	void print_formatted(Printer& p, const char* s) const {
+		p.print(s);
+	}
 };
 template <class T0, class... T> class PrintTuple<T0, T...> {
 	const T0& t0;
@@ -95,9 +78,36 @@ public:
 		p.print(t0);
 		p.print(t);
 	}
+	void print_formatted(Printer& p, const char* s) const {
+		while (*s) {
+			if (*s == '%') {
+				++s;
+				if (*s != '%') {
+					p.print(t0);
+					t.print_formatted(p, s);
+					return;
+				}
+			}
+			p.print(*s);
+			++s;
+		}
+	}
 };
-template <class... T> PrintTuple<T...> print_tuple(const T&... t) {
+template <class... T> constexpr PrintTuple<T...> print_tuple(const T&... t) {
 	return PrintTuple<T...>(t...);
+}
+
+template <class... T> class Format {
+	PrintTuple<T...> t;
+	const char* s;
+public:
+	constexpr Format(const char* s, const T&... t): t(t...), s(s) {}
+	void print(Printer& p) const {
+		t.print_formatted(p, s);
+	}
+};
+template <class... T> constexpr Format<T...> format(const char* s, const T&... t) {
+	return Format<T...>(s, t...);
 }
 
 template <class T> auto bold(const T& t) {
@@ -111,4 +121,19 @@ template <class T> auto green(const T& t) {
 }
 template <class T> auto yellow(const T& t) {
 	return print_tuple("\e[33m", t, "\e[m");
+}
+
+class PrintNumber {
+	unsigned int n;
+public:
+	constexpr PrintNumber(unsigned int n): n(n) {}
+	void print(Printer& p) const {
+		if (n >= 10) {
+			p.print(PrintNumber(n / 10));
+		}
+		p.print(static_cast<char>('0' + n % 10));
+	}
+};
+inline PrintNumber print_number(unsigned int n) {
+	return PrintNumber(n);
 }
