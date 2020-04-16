@@ -236,25 +236,26 @@ public:
 	}
 };
 
-struct DeferredCall {
-	Assembler::Jump jump;
+template <class A> struct DeferredCall {
+	using Jump = typename A::Jump;
+	Jump jump;
 	std::size_t function_index;
-	DeferredCall(const Assembler::Jump& jump, std::size_t function_index): jump(jump), function_index(function_index) {}
+	DeferredCall(const Jump& jump, std::size_t function_index): jump(jump), function_index(function_index) {}
 };
 
 // code generation
-class Pass2: public Visitor {
+template <class A> class Pass2: public Visitor {
+	using Jump = typename A::Jump;
 	const FunctionTable& function_table;
-	std::vector<DeferredCall>& deferred_calls;
+	std::vector<DeferredCall<A>>& deferred_calls;
 	const std::size_t index;
-	Assembler& assembler;
+	A& assembler;
 public:
-	Pass2(const FunctionTable& function_table, std::vector<DeferredCall>& deferred_calls, std::size_t index, Assembler& assembler): function_table(function_table), deferred_calls(deferred_calls), index(index), assembler(assembler) {}
+	Pass2(const FunctionTable& function_table, std::vector<DeferredCall<A>>& deferred_calls, std::size_t index, A& assembler): function_table(function_table), deferred_calls(deferred_calls), index(index), assembler(assembler) {}
 	void evaluate(const Expression* expression) {
 		expression->accept(this);
 	}
 	void visit_number(const Number* number) override {
-		printf("  PUSH %d\n", number->get_value());
 		assembler.PUSH(number->get_value());
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
@@ -262,103 +263,65 @@ public:
 		const Expression* right = binary_expression->get_right();
 		evaluate(left);
 		evaluate(right);
-		printf("  POP EBX\n");
 		assembler.POP(EBX);
-		printf("  POP EAX\n");
 		assembler.POP(EAX);
 		switch (binary_expression->get_operation()) {
 			case BinaryOperation::ADD:
-				printf("  ADD EAX, EBX\n");
 				assembler.ADD(EAX, EBX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::SUB:
-				printf("  SUB EAX, EBX\n");
 				assembler.SUB(EAX, EBX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::MUL:
-				printf("  IMUL EBX\n");
 				assembler.IMUL(EBX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::DIV:
-				printf("  CDQ\n");
 				assembler.CDQ();
-				printf("  IDIV EBX\n");
 				assembler.IDIV(EBX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::REM:
-				printf("  CDQ\n");
 				assembler.CDQ();
-				printf("  IDIV EBX\n");
 				assembler.IDIV(EBX);
-				printf("  PUSH EDX\n");
 				assembler.PUSH(EDX);
 				break;
 			case BinaryOperation::EQ:
-				printf("  CMP EAX, EBX\n");
 				assembler.CMP(EAX, EBX);
-				printf("  SETE EAX\n");
 				assembler.SETE(EAX);
-				printf("  MOVZX EAX, EAX\n");
 				assembler.MOVZX(EAX, EAX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::NE:
-				printf("  CMP EAX, EBX\n");
 				assembler.CMP(EAX, EBX);
-				printf("  SETNE EAX\n");
 				assembler.SETNE(EAX);
-				printf("  MOVZX EAX, EAX\n");
 				assembler.MOVZX(EAX, EAX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::LT:
-				printf("  CMP EAX, EBX\n");
 				assembler.CMP(EAX, EBX);
-				printf("  SETL EAX\n");
 				assembler.SETL(EAX);
-				printf("  MOVZX EAX, EAX\n");
 				assembler.MOVZX(EAX, EAX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::LE:
-				printf("  CMP EAX, EBX\n");
 				assembler.CMP(EAX, EBX);
-				printf("  SETLE EAX\n");
 				assembler.SETLE(EAX);
-				printf("  MOVZX EAX, EAX\n");
 				assembler.MOVZX(EAX, EAX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::GT:
-				printf("  CMP EAX, EBX\n");
 				assembler.CMP(EAX, EBX);
-				printf("  SETG EAX\n");
 				assembler.SETG(EAX);
-				printf("  MOVZX EAX, EAX\n");
 				assembler.MOVZX(EAX, EAX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 			case BinaryOperation::GE:
-				printf("  CMP EAX, EBX\n");
 				assembler.CMP(EAX, EBX);
-				printf("  SETGE EAX\n");
 				assembler.SETGE(EAX);
-				printf("  MOVZX EAX, EAX\n");
 				assembler.MOVZX(EAX, EAX);
-				printf("  PUSH EAX\n");
 				assembler.PUSH(EAX);
 				break;
 		}
@@ -366,18 +329,16 @@ public:
 	void visit_if(const If* if_) override {
 		const Expression* condition = if_->get_condition();
 		evaluate(condition);
-		printf("  POP EAX\n");
 		assembler.POP(EAX);
-		printf("  CMP EAX, 0\n");
 		assembler.CMP(EAX, 0);
-		printf("  JE\n;if\n");
-		const Assembler::Jump jump_else = assembler.JE();
+		const Jump jump_else = assembler.JE();
+		assembler.comment("if");
 		evaluate(if_->get_then_expression());
-		printf("  JMP\n;else\n");
-		const Assembler::Jump jump_end = assembler.JMP();
+		const Jump jump_end = assembler.JMP();
+		assembler.comment("else");
 		jump_else.set_target(assembler.get_position());
 		evaluate(if_->get_else_expression());
-		printf(";end\n");
+		assembler.comment("end");
 		jump_end.set_target(assembler.get_position());
 	}
 	void visit_function(const Function* function) override {
@@ -390,7 +351,6 @@ public:
 		const Type* type = function_table[index].look_up(argument->get_name(), location);
 		const std::uint32_t size = type->get_size();
 		for (std::uint32_t i = 0; i < size; i += 4) {
-			printf("  PUSH [EBP + %d]\n", 8 + location + size - 4 - i);
 			assembler.MOV(EAX, PTR(EBP, 8 + location + size - 4 - i));
 			assembler.PUSH(EAX);
 		}
@@ -410,21 +370,18 @@ public:
 		const std::uint32_t output_size = function_table[new_index].output_size;
 		if (output_size > input_size) {
 			// negative in order to grow the stack
-			printf("  ADD ESP, %d\n", input_size - output_size);
 			assembler.ADD(ESP, input_size - output_size);
 		}
-		printf("  CALL\n");
-		Assembler::Jump jump = assembler.CALL();
+		Jump jump = assembler.CALL();
 		deferred_calls.emplace_back(jump, new_index);
 		if (output_size < input_size) {
-			printf("  ADD ESP, %d\n", input_size - output_size);
 			assembler.ADD(ESP, input_size - output_size);
 		}
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
 		if (intrinsic->get_name() == "putChar") {
 			evaluate(intrinsic->get_arguments()[0]);
-			printf("  WRITE\n");
+			assembler.comment("putChar");
 			assembler.MOV(EAX, 0x04);
 			assembler.MOV(EBX, 1); // stdout
 			assembler.MOV(ECX, ESP);
@@ -436,49 +393,43 @@ public:
 };
 
 void codegen(const Expression* expression, const char* path) {
-	Assembler assembler;
+	using A = Assembler;
+	A assembler;
 	FunctionTable function_table;
-	std::vector<DeferredCall> deferred_calls;
+	std::vector<DeferredCall<A>> deferred_calls;
 	Pass1 pass1(function_table, 0);
 	expression = pass1.evaluate(expression);
 	{
 		// the main function
-		Pass2 pass2(function_table, deferred_calls, 0, assembler);
+		Pass2<A> pass2(function_table, deferred_calls, 0, assembler);
 		pass2.evaluate(expression);
-		printf("  EXIT\n");
+		assembler.comment("exit");
 		assembler.MOV(EAX, 0x01);
 		assembler.MOV(EBX, 0);
 		assembler.INT(0x80);
 	}
 	for (std::size_t index = 0; index < function_table.size(); ++index) {
-		printf("function:\n");
+		assembler.comment("function");
 		function_table[index].position = assembler.get_position();
-		printf("  PUSH EBP\n");
 		assembler.PUSH(EBP);
-		printf("  MOV EBP, ESP\n");
 		assembler.MOV(EBP, ESP);
-		printf("  --\n");
+		assembler.comment("--");
 		const Expression* expression = function_table[index].expression;
-		Pass2 pass2(function_table, deferred_calls, index, assembler);
+		Pass2<A> pass2(function_table, deferred_calls, index, assembler);
 		pass2.evaluate(expression);
-		printf("  --\n");
+		assembler.comment("--");
 		const std::uint32_t output_size = expression->get_type()->get_size();
 		const std::uint32_t size = std::max(function_table[index].input_size, function_table[index].output_size);
 		for (std::uint32_t i = 0; i < output_size; i += 4) {
-			printf("  POP [EBP + %d]\n", 8 + size - output_size + i);
 			assembler.POP(EAX);
 			assembler.MOV(PTR(EBP, 8 + size - output_size + i), EAX);
 		}
-		//printf("  ADD ESP, %d\n", output_size);
 		//assembler.ADD(ESP, output_size);
-		printf("  MOV ESP, EBP\n");
 		assembler.MOV(ESP, EBP);
-		printf("  POP EBP\n");
 		assembler.POP(EBP);
-		printf("  RET\n");
 		assembler.RET();
 	}
-	for (const DeferredCall& deferred_call: deferred_calls) {
+	for (const DeferredCall<A>& deferred_call: deferred_calls) {
 		const std::size_t target = function_table[deferred_call.function_index].position;
 		deferred_call.jump.set_target(target);
 	}

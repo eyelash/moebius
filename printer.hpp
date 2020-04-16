@@ -58,6 +58,10 @@ public:
 	template <class T> void print(const T& t) {
 		t.print(*this);
 	}
+	template <class T> void println(const T& t) {
+		print(t);
+		print('\n');
+	}
 };
 
 template <class... T> class PrintTuple;

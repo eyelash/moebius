@@ -1,5 +1,6 @@
 #pragma once
 
+#include "printer.hpp"
 #include <cstdint>
 #include <initializer_list>
 #include <vector>
@@ -255,5 +256,138 @@ public:
 	void INT(std::uint8_t x) {
 		write<std::uint8_t>(0xCD);
 		write<std::uint8_t>(x);
+	}
+	template <class T> void comment(const T& t) {}
+};
+
+class TextAssembler {
+	Printer printer;
+	static StringView print_register(Register r) {
+		switch (r) {
+		case EAX: return "EAX";
+		case ECX: return "ECX";
+		case EDX: return "EDX";
+		case EBX: return "EBX";
+		case ESP: return "ESP";
+		case EBP: return "EBP";
+		case ESI: return "ESI";
+		case EDI: return "EDI";
+		default: return StringView();
+		}
+	}
+	class PrintPtr {
+		Ptr ptr;
+	public:
+		constexpr PrintPtr(Ptr ptr): ptr(ptr) {}
+		void print(Printer& p) const {
+			p.print(format("[% + %]", print_register(ptr.get_register()), print_number(ptr.get_offset())));
+		}
+	};
+	static PrintPtr print_ptr(Ptr ptr) {
+		return PrintPtr(ptr);
+	}
+public:
+	class Jump {
+	public:
+		void set_target(std::size_t target) const {}
+	};
+	std::size_t get_position() const {
+		return 0;
+	}
+	void write_file(const char* path) {}
+	void MOV(Register dst, Register src) {
+		printer.println(format("  MOV %, %", print_register(dst), print_register(src)));
+	}
+	void MOV(Register dst, std::uint32_t value) {
+		printer.println(format("  MOV %, %", print_register(dst), print_number(value)));
+	}
+	void MOV(Register dst, Ptr src) {
+		printer.println(format("  MOV %, %", print_register(dst), print_ptr(src)));
+	}
+	void MOV(Ptr dst, Register src) {
+		printer.println(format("  MOV %, %", print_ptr(dst), print_register(src)));
+	}
+	void MOVZX(Register dst, Register src) {
+		printer.println(format("  MOVZX %, %", print_register(dst), print_register(src)));
+	}
+	void ADD(Register dst, Register src) {
+		printer.println(format("  ADD %, %", print_register(dst), print_register(src)));
+	}
+	void ADD(Register dst, std::uint32_t value) {
+		printer.println(format("  ADD %, %", print_register(dst), print_number(value)));
+	}
+	void SUB(Register dst, Register src) {
+		printer.println(format("  SUB %, %", print_register(dst), print_register(src)));
+	}
+	// EDX:EAX = EAX * r
+	void IMUL(Register r) {
+		printer.println(format("  IMUL %", print_register(r)));
+	}
+	// EAX = EDX:EAX / r
+	// EDX = EDX:EAX % r
+	void IDIV(Register r) {
+		printer.println(format("  IDIV %", print_register(r)));
+	}
+	// EDX:EAX = EAX
+	void CDQ() {
+		printer.println("  CDQ");
+	}
+	void PUSH(Register r) {
+		printer.println(format("  PUSH %", print_register(r)));
+	}
+	void PUSH(std::uint32_t value) {
+		printer.println(format("  PUSH %", print_number(value)));
+	}
+	void POP(Register r) {
+		printer.println(format("  POP %", print_register(r)));
+	}
+	void CMP(Register r1, Register r2) {
+		printer.println(format("  CMP %, %", print_register(r1), print_register(r2)));
+	}
+	void CMP(Register r, std::uint32_t value) {
+		printer.println(format("  CMP %, %", print_register(r), print_number(value)));
+	}
+	void SETE(Register r) {
+		printer.println(format("  SETE %", print_register(r)));
+	}
+	void SETNE(Register r) {
+		printer.println(format("  SETNE %", print_register(r)));
+	}
+	void SETL(Register r) {
+		printer.println(format("  SETL %", print_register(r)));
+	}
+	void SETLE(Register r) {
+		printer.println(format("  SETLE %", print_register(r)));
+	}
+	void SETG(Register r) {
+		printer.println(format("  SETG %", print_register(r)));
+	}
+	void SETGE(Register r) {
+		printer.println(format("  SETGE %", print_register(r)));
+	}
+	Jump JMP() {
+		printer.println("  JMP");
+		return Jump();
+	}
+	Jump JE() {
+		printer.println("  JE");
+		return Jump();
+	}
+	Jump JNE() {
+		printer.println("  JNE");
+		return Jump();
+	}
+	Jump CALL() {
+		printer.println("  CALL");
+		return Jump();
+	}
+	void RET() {
+		printer.println("  RET");
+	}
+	void INT(std::uint8_t x) {
+		printer.println(format("  INT %", print_number(x)));
+	}
+	template <class T> void comment(const T& t) {
+		printer.println(format("  ; %", t));
 	}
 };
