@@ -233,6 +233,9 @@ public:
 			}
 			expression = intrinsic;
 		}
+		else if (intrinsic->get_name() == "getChar") {
+			expression = intrinsic;
+		}
 	}
 };
 
@@ -388,6 +391,16 @@ public:
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
 			assembler.POP(EAX);
+		}
+		else if (intrinsic->get_name() == "getChar") {
+			assembler.comment("getChar");
+			assembler.PUSH(0);
+			assembler.MOV(EAX, 0x03);
+			assembler.MOV(EBX, 0); // stdin
+			assembler.MOV(ECX, ESP);
+			assembler.MOV(EDX, 1);
+			assembler.INT(0x80);
+			assembler.MOVZX(EAX, EAX);
 		}
 	}
 };

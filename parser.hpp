@@ -418,10 +418,16 @@ public:
 		function->add_argument_name("c");
 		return function;
 	}
+	const Expression* create_getChar() {
+		Intrinsic* intrinsic = new Intrinsic("getChar", new NumberType());
+		Function* function = new Function(intrinsic);
+		return function;
+	}
 	const Expression* parse_program() {
 		parse_white_space();
 		Scope scope(nullptr);
 		scope.add_variable("putChar", create_putChar());
+		scope.add_variable("getChar", create_getChar());
 		current_scope = &scope;
 		return parse_scope();
 	}
