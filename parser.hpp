@@ -91,8 +91,8 @@ public:
 		std::ifstream file(file_name);
 		content.insert(content.end(), std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 	}
-	StringView get_name() const {
-		return StringView(file_name);
+	const char* get_name() const {
+		return file_name;
 	}
 	const char* begin() const {
 		return content.data();
@@ -103,30 +103,16 @@ public:
 };
 
 class SourcePosition {
-	const SourceFile* file;
-	const char* position;
+	const char* file_name;
+	std::size_t position;
 public:
-	SourcePosition(const SourceFile* file): file(file), position(file->begin()) {}
-	constexpr SourcePosition(const SourceFile* file, const char* position): file(file), position(position) {}
-	operator bool() const {
-		return position < file->end();
-	}
-	constexpr bool operator <(const SourcePosition& rhs) const {
-		return position < rhs.position;
-	}
-	constexpr char operator *() const {
-		return *position;
-	}
-	SourcePosition& operator ++() {
-		++position;
-		return *this;
-	}
-	constexpr StringView operator -(const SourcePosition& start) const {
-		return StringView(start.position, position - start.position);
-	}
-	std::tuple<StringView, unsigned int, SourcePosition> get_info() const {
+	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
+	template <class T> void print_error(Printer& printer, const T& t) const {
+		SourceFile file(file_name);
 		unsigned int line_number = 1;
-		const char* c = file->begin();
+		const char* c = file.begin();
+		const char* end = file.end();
+		const char* position = std::min(c + this->position, end);
 		const char* line_start = c;
 		while (c < position) {
 			if (*c == '\n') {
@@ -138,38 +124,59 @@ public:
 				++c;
 			}
 		}
-		return std::make_tuple(file->get_name(), line_number, SourcePosition(file, line_start));
+
+		printer.print(format("%:%: ", file_name, print_number(line_number)));
+		printer.print(bold(red("error: ")));
+		printer.print(t);
+		printer.print('\n');
+
+		c = line_start;
+		while (c < end && *c != '\n') {
+			printer.print(*c);
+			++c;
+		}
+		printer.print('\n');
+
+		c = line_start;
+		while (c < position) {
+			printer.print(*c == '\t' ? '\t' : ' ');
+			++c;
+		}
+		printer.print('^');
+		printer.print('\n');
 	}
 };
 
-template <class T> [[noreturn]] void error(const SourcePosition& position, const T& t) {
-	Printer printer(stderr);
-	const auto info = position.get_info();
-	const StringView& file_name = std::get<0>(info);
-	const unsigned int line_number = std::get<1>(info);
-	const SourcePosition& line_start = std::get<2>(info);
-
-	printer.print(format("%:%: ", file_name, print_number(line_number)));
-	printer.print(bold(red("error: ")));
-	printer.print(t);
-	printer.print("\n");
-
-	for (SourcePosition c = line_start; c && *c != '\n'; ++c) {
-		printer.print(*c);
+class Cursor {
+	const SourceFile* file;
+	const char* position;
+public:
+	Cursor(const SourceFile* file): file(file), position(file->begin()) {}
+	constexpr Cursor(const SourceFile* file, const char* position): file(file), position(position) {}
+	operator bool() const {
+		return position < file->end();
 	}
-	printer.print("\n");
-
-	for (SourcePosition c = line_start; c < position; ++c) {
-		printer.print(*c == '\t' ? '\t' : ' ');
+	constexpr bool operator <(const Cursor& rhs) const {
+		return position < rhs.position;
 	}
-	printer.print("^\n");
-
-	std::exit(EXIT_FAILURE);
-}
+	constexpr char operator *() const {
+		return *position;
+	}
+	Cursor& operator ++() {
+		++position;
+		return *this;
+	}
+	constexpr StringView operator -(const Cursor& start) const {
+		return StringView(start.position, position - start.position);
+	}
+	SourcePosition get_position() const {
+		return SourcePosition(file->get_name(), static_cast<std::size_t>(position - file->begin()));
+	}
+};
 
 class Parser {
 public:
-	SourcePosition position;
+	Cursor cursor;
 	static constexpr bool white_space(char c) {
 		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 	}
@@ -183,27 +190,27 @@ public:
 		return alphabetic(c) || numeric(c);
 	}
 	template <class F> bool parse(F f) {
-		if (position && f(*position)) {
-			++position;
+		if (cursor && f(*cursor)) {
+			++cursor;
 			return true;
 		}
 		return false;
 	}
 	bool parse(char c) {
-		if (position && *position == c) {
-			++position;
+		if (cursor && *cursor == c) {
+			++cursor;
 			return true;
 		}
 		return false;
 	}
 	bool parse(const StringView& s) {
-		const SourcePosition copy = position;
+		const Cursor copy = cursor;
 		for (char c: s) {
-			if (!(position && *position == c)) {
-				position = copy;
+			if (!(cursor && *cursor == c)) {
+				cursor = copy;
 				return false;
 			}
-			++position;
+			++cursor;
 		}
 		return true;
 	}
@@ -213,18 +220,23 @@ public:
 	template <class T> void parse_all(T&& t) {
 		while (parse(std::forward<T>(t))) {}
 	}
-	Parser(const SourceFile* file): position(file) {}
-	Parser(const SourcePosition& position): position(position) {}
+	Parser(const SourceFile* file): cursor(file) {}
+	Parser(const Cursor& cursor): cursor(cursor) {}
 	Parser copy() const {
-		return Parser(position);
+		return Parser(cursor);
 	}
 };
 
 class MoebiusParser: private Parser {
 	Scope* current_scope;
+	template <class T> [[noreturn]] void error(const T& t) {
+		Printer printer(stderr);
+		cursor.get_position().print_error(printer, t);
+		std::exit(EXIT_FAILURE);
+	}
 	void expect(const StringView& s) {
 		if (!parse(s)) {
-			error(position, format("expected \"%\"", s));
+			error(format("expected \"%\"", s));
 		}
 	}
 	bool parse_comment() {
@@ -234,8 +246,8 @@ class MoebiusParser: private Parser {
 			return true;
 		}
 		if (parse("/*")) {
-			while (position && !copy().parse("*/")) {
-				++position;
+			while (cursor && !copy().parse("*/")) {
+				++cursor;
 			}
 			expect("*/");
 			return true;
@@ -252,24 +264,24 @@ class MoebiusParser: private Parser {
 		std::int32_t number = 0;
 		while (copy().parse(numeric)) {
 			number *= 10;
-			number += *position - '0';
-			++position;
+			number += *cursor - '0';
+			++cursor;
 		}
 		return new Number(number);
 	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
-			error(position, "expected alphabetic character");
+			error("expected alphabetic character");
 		}
-		const SourcePosition start = position;
+		const Cursor start = cursor;
 		parse_all(alphanumeric);
-		return position - start;
+		return cursor - start;
 	}
 	const Expression* parse_variable() {
 		StringView identifier = parse_identifier();
 		const Expression* expression = current_scope->look_up(identifier);
 		if (expression == nullptr) {
-			error(position, format("undefined variable \"%\"", identifier));
+			error(format("undefined variable \"%\"", identifier));
 		}
 		return expression;
 	}
@@ -318,7 +330,7 @@ class MoebiusParser: private Parser {
 			Function* function = new Function();
 			Scope scope(current_scope, function);
 			current_scope = &scope;
-			while (position && *position != ')') {
+			while (cursor && *cursor != ')') {
 				const StringView name = parse_identifier();
 				function->add_argument_name(name);
 				parse_white_space();
@@ -334,11 +346,11 @@ class MoebiusParser: private Parser {
 			return function;
 		}
 		else if (parse("'")) {
-			if (!position) {
-				error(position, "unexpected end");
+			if (!cursor) {
+				error("unexpected end");
 			}
-			const char c = *position;
-			++position;
+			const char c = *cursor;
+			++cursor;
 			expect("'");
 			return new Number(c);
 		}
@@ -349,7 +361,7 @@ class MoebiusParser: private Parser {
 			return parse_variable();
 		}
 		else {
-			error(position, "unexpected character");
+			error("unexpected character");
 		}
 	}
 	const Expression* parse_expression(int level = 0) {
@@ -359,7 +371,7 @@ class MoebiusParser: private Parser {
 			while (parse("(")) {
 				parse_white_space();
 				Call* call = new Call(expression);
-				while (position && *position != ')') {
+				while (cursor && *cursor != ')') {
 					call->add_argument(parse_expression());
 					parse_white_space();
 					if (parse(",")) {
@@ -402,7 +414,7 @@ class MoebiusParser: private Parser {
 				break;
 			}
 			else {
-				error(position, "expected \"let\" or \"return\"");
+				error("expected \"let\" or \"return\"");
 				break;
 			}
 		}
