@@ -15,7 +15,6 @@ class Intrinsic;
 class Type {
 public:
 	virtual int get_id() const = 0;
-	virtual std::uint32_t get_size() const = 0;
 };
 
 class NumberType: public Type {
@@ -24,9 +23,6 @@ public:
 	static constexpr int id = 2;
 	int get_id() const override {
 		return id;
-	}
-	std::uint32_t get_size() const override {
-		return 4;
 	}
 };
 
@@ -38,13 +34,6 @@ public:
 	static constexpr int id = 3;
 	int get_id() const override {
 		return id;
-	}
-	std::uint32_t get_size() const override {
-		int size = 0;
-		for (const Type* type: environment_types) {
-			size += type->get_size();
-		}
-		return size;
 	}
 	void add_environment_type(const Type* type) {
 		environment_types.push_back(type);
@@ -63,9 +52,6 @@ public:
 	int get_id() const override {
 		return id;
 	}
-	std::uint32_t get_size() const override {
-		return 0;
-	}
 };
 
 class VoidType: public Type {
@@ -73,9 +59,6 @@ public:
 	static constexpr int id = 5;
 	int get_id() const override {
 		return id;
-	}
-	std::uint32_t get_size() const override {
-		return 0;
 	}
 };
 
