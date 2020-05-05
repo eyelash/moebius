@@ -53,26 +53,18 @@ public:
 	void add_variable(const StringView& name, const Expression* value) {
 		variables[name] = value;
 	}
-	const Expression* look_up(const StringView& name) const {
+	const Expression* look_up(const StringView& name) {
 		auto iterator = variables.find(name);
 		if (iterator != variables.end()) {
 			return iterator->second;
 		}
 		if (function) {
-			for (const StringView& argument_name: function->get_argument_names()) {
-				if (argument_name == name) {
-					return new Argument(name);
-				}
-			}
-			for (const StringView& environment_name: function->get_environment_names()) {
-				if (environment_name == name) {
-					return new Argument(name);
-				}
-			}
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
-					function->add_environment_expression(name, expression);
-					return new Argument(name);
+					const std::size_t index = function->add_environment_expression(expression);
+					Argument* argument = new Argument(index);
+					add_variable(name, argument);
+					return argument;
 				}
 			}
 		}
@@ -332,7 +324,8 @@ class MoebiusParser: private Parser {
 			current_scope = &scope;
 			while (cursor && *cursor != ')') {
 				const StringView name = parse_identifier();
-				function->add_argument_name(name);
+				const std::size_t index = function->add_argument();
+				scope.add_variable(name, new Argument(index));
 				parse_white_space();
 				if (parse(",")) {
 					parse_white_space();
@@ -424,15 +417,17 @@ class MoebiusParser: private Parser {
 public:
 	MoebiusParser(const SourceFile* file): Parser(file), current_scope(nullptr) {}
 	const Expression* create_putChar() {
+		Function* function = new Function();
+		const std::size_t index = function->add_argument();
 		Intrinsic* intrinsic = new Intrinsic("putChar", new VoidType());
-		intrinsic->add_argument("c");
-		Function* function = new Function(intrinsic);
-		function->add_argument_name("c");
+		intrinsic->add_argument(index);
+		function->set_expression(intrinsic);
 		return function;
 	}
 	const Expression* create_getChar() {
+		Function* function = new Function();
 		Intrinsic* intrinsic = new Intrinsic("getChar", new NumberType());
-		Function* function = new Function(intrinsic);
+		function->set_expression(intrinsic);
 		return function;
 	}
 	const Expression* parse_program() {

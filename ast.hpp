@@ -160,9 +160,8 @@ public:
 
 class Function: public Expression {
 	const Expression* expression;
-	std::vector<StringView> environment_names;
+	std::size_t arguments = 0;
 	std::vector<const Expression*> environment_expressions;
-	std::vector<StringView> argument_names;
 public:
 	Function(const Expression* expression, const Type* type = nullptr): Expression(type), expression(expression) {}
 	Function(): expression(nullptr) {}
@@ -172,40 +171,34 @@ public:
 	void set_expression(const Expression* expression) {
 		this->expression = expression;
 	}
-	void add_environment_expression(const StringView& name, const Expression* expression) {
-		environment_names.push_back(name);
-		environment_expressions.push_back(expression);
+	std::size_t add_argument() {
+		return arguments++;
 	}
-	// TODO: remove this again
-	void add_environment_expression(const Expression* expression) {
+	std::size_t add_environment_expression(const Expression* expression) {
+		const std::size_t index = arguments + environment_expressions.size();
 		environment_expressions.push_back(expression);
-	}
-	void add_argument_name(const StringView& name) {
-		argument_names.push_back(name);
+		return index;
 	}
 	const Expression* get_expression() const {
 		return expression;
 	}
-	const std::vector<StringView>& get_environment_names() const {
-		return environment_names;
+	std::size_t get_arguments() const {
+		return arguments;
 	}
 	const std::vector<const Expression*>& get_environment_expressions() const {
 		return environment_expressions;
 	}
-	const std::vector<StringView>& get_argument_names() const {
-		return argument_names;
-	}
 };
 
 class Argument: public Expression {
-	StringView name;
+	std::size_t index;
 public:
-	Argument(const StringView& name, const Type* type = nullptr): Expression(type), name(name) {}
+	Argument(std::size_t index, const Type* type = nullptr): Expression(type), index(index) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_argument(this);
 	}
-	StringView get_name() const {
-		return name;
+	std::size_t get_index() const {
+		return index;
 	}
 };
 
@@ -236,8 +229,8 @@ public:
 	void accept(Visitor* visitor) const override {
 		visitor->visit_intrinsic(this);
 	}
-	void add_argument(const StringView& argument_name) {
-		arguments.push_back(new Argument(argument_name));
+	void add_argument(std::size_t index) {
+		arguments.push_back(new Argument(index));
 	}
 	StringView get_name() const {
 		return name;

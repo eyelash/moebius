@@ -17,21 +17,20 @@ template <class T> [[noreturn]] void error(const T& t) {
 class FunctionTable {
 	struct Entry {
 		const Function* function;
-		std::vector<const Type*> environment_types;
 		std::vector<const Type*> argument_types;
+		std::vector<const Type*> environment_types;
 		const Expression* expression;
-		Entry(const Function* function, const std::vector<const Type*>& environment_types, const std::vector<const Type*>& argument_types): function(function), environment_types(environment_types), argument_types(argument_types), expression(nullptr) {}
-		const Type* look_up(const StringView& name) const {
-			const std::vector<StringView>& environment_names = function->get_environment_names();
-			const std::vector<StringView>& argument_names = function->get_argument_names();
-			for (std::size_t i = 0; i < environment_names.size(); ++i) {
-				if (environment_names[i] == name) {
-					return environment_types[i];
+		Entry(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): function(function), argument_types(argument_types), environment_types(environment_types), expression(nullptr) {}
+		const Type* look_up(std::size_t index) const {
+			for (std::size_t i = 0; i < argument_types.size(); ++i) {
+				if (i == index) {
+					return argument_types[i];
 				}
 			}
-			for (std::size_t i = 0; i < argument_names.size(); ++i) {
-				if (argument_names[i] == name) {
-					return argument_types[i];
+			index -= argument_types.size();
+			for (std::size_t i = 0; i < environment_types.size(); ++i) {
+				if (i == index) {
+					return environment_types[i];
 				}
 			}
 			return nullptr;
@@ -66,18 +65,18 @@ class FunctionTable {
 		return true;
 	}
 public:
-	std::size_t look_up(const Function* function, const std::vector<const Type*>& environment_types, const std::vector<const Type*>& argument_types) const {
+	std::size_t look_up(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) const {
 		std::size_t index;
 		for (index = 0; index < functions.size(); ++index) {
 			const Entry& entry = functions[index];
-			if (entry.function == function && equals(entry.environment_types, environment_types) && equals(entry.argument_types, argument_types)) {
+			if (entry.function == function && equals(entry.argument_types, argument_types) && equals(entry.environment_types, environment_types)) {
 				return index;
 			}
 		}
 		return index;
 	}
-	void add_entry(const Function* function, const std::vector<const Type*>& environment_types, const std::vector<const Type*>& argument_types) {
-		functions.emplace_back(function, environment_types, argument_types);
+	void add_entry(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
+		functions.emplace_back(function, argument_types, environment_types);
 	}
 	Entry& operator [](std::size_t index) {
 		return functions[index];
@@ -158,15 +157,15 @@ public:
 		expression = new_function;
 	}
 	void visit_argument(const Argument* argument) override {
-		const Type* type = function_table[index].look_up(argument->get_name());
-		expression = new Argument(argument->get_name(), type);
+		const Type* type = function_table[index].look_up(argument->get_index());
+		expression = new Argument(argument->get_index(), type);
 	}
 	void visit_call(const Call* call) override {
 		const Expression* call_expression = evaluate(call->get_expression());
 		if (call_expression->get_type_id() == FunctionType::id) {
 			const FunctionType* type = static_cast<const FunctionType*>(call_expression->get_type());
-			if (call->get_arguments().size() != type->get_function()->get_argument_names().size()) {
-				error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(type->get_function()->get_argument_names().size())));
+			if (call->get_arguments().size() != type->get_function()->get_arguments()) {
+				error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(type->get_function()->get_arguments())));
 			}
 			std::vector<const Type*> argument_types;
 			Call* new_call = new Call(call_expression);
@@ -176,9 +175,9 @@ public:
 				new_call->add_argument(new_argument);
 			}
 
-			const std::size_t new_index = function_table.look_up(type->get_function(), type->get_environment_types(), argument_types);
+			const std::size_t new_index = function_table.look_up(type->get_function(), argument_types, type->get_environment_types());
 			if (new_index == function_table.size()) {
-				function_table.add_entry(type->get_function(), type->get_environment_types(), argument_types);
+				function_table.add_entry(type->get_function(), argument_types, type->get_environment_types());
 				Pass1 pass1(function_table, data, new_index);
 				const Expression* e = pass1.evaluate(type->get_function()->get_expression());
 				function_table[new_index].expression = e;
@@ -257,28 +256,27 @@ template <class A> class Pass2: public Visitor {
 		std::uint32_t output_size;
 		PerFunctionData(const FunctionTable::Entry& entry) {
 			input_size = 0;
-			for (const Type* type: entry.environment_types) {
+			for (const Type* type: entry.argument_types) {
 				input_size += get_type_size(type);
 			}
-			for (const Type* type: entry.argument_types) {
+			for (const Type* type: entry.environment_types) {
 				input_size += get_type_size(type);
 			}
 			output_size = get_type_size(entry.expression->get_type());
 		}
-		const Type* look_up(const FunctionTable::Entry& entry, const StringView& name, std::uint32_t& location) const {
-			const std::vector<StringView>& environment_names = entry.function->get_environment_names();
-			const std::vector<StringView>& argument_names = entry.function->get_argument_names();
+		const Type* look_up(const FunctionTable::Entry& entry, std::size_t index, std::uint32_t& location) const {
 			location = std::max(input_size, output_size);
-			for (std::size_t i = 0; i < environment_names.size(); ++i) {
-				location -= get_type_size(entry.environment_types[i]);
-				if (environment_names[i] == name) {
-					return entry.environment_types[i];
+			for (std::size_t i = 0; i < entry.argument_types.size(); ++i) {
+				location -= get_type_size(entry.argument_types[i]);
+				if (i == index) {
+					return entry.argument_types[i];
 				}
 			}
-			for (std::size_t i = 0; i < argument_names.size(); ++i) {
-				location -= get_type_size(entry.argument_types[i]);
-				if (argument_names[i] == name) {
-					return entry.argument_types[i];
+			index -= entry.argument_types.size();
+			for (std::size_t i = 0; i < entry.environment_types.size(); ++i) {
+				location -= get_type_size(entry.environment_types[i]);
+				if (i == index) {
+					return entry.environment_types[i];
 				}
 			}
 			return nullptr;
@@ -395,7 +393,7 @@ public:
 	}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
-		const Type* type = data.per_function[index].look_up(function_table[index], argument->get_name(), location);
+		const Type* type = data.per_function[index].look_up(function_table[index], argument->get_index(), location);
 		const std::uint32_t size = get_type_size(type);
 		for (std::uint32_t i = 0; i < size; i += 4) {
 			assembler.MOV(EAX, PTR(EBP, 8 + location + size - 4 - i));
@@ -403,16 +401,16 @@ public:
 		}
 	}
 	void visit_call(const Call* call) override {
-		const Expression* call_expression = call->get_expression();
-		evaluate(call_expression);
-		// assert(call_expression->get_type_id() == FunctionType::id);
-		const FunctionType* type = static_cast<const FunctionType*>(call_expression->get_type());
 		std::vector<const Type*> argument_types;
 		for (const Expression* argument: call->get_arguments()) {
 			evaluate(argument);
 			argument_types.push_back(argument->get_type());
 		}
-		const std::size_t new_index = function_table.look_up(type->get_function(), type->get_environment_types(), argument_types);
+		const Expression* call_expression = call->get_expression();
+		evaluate(call_expression);
+		// assert(call_expression->get_type_id() == FunctionType::id);
+		const FunctionType* type = static_cast<const FunctionType*>(call_expression->get_type());
+		const std::size_t new_index = function_table.look_up(type->get_function(), argument_types, type->get_environment_types());
 		const std::uint32_t input_size = data.per_function[new_index].input_size;
 		const std::uint32_t output_size = data.per_function[new_index].output_size;
 		if (output_size > input_size) {
