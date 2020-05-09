@@ -35,8 +35,8 @@ constexpr Ptr PTR(Register r, std::uint32_t offset = 0) {
 	return Ptr(r, offset);
 }
 
-static constexpr std::uint64_t VADDR = 0x10000;
 using Addr = std::uint32_t;
+static constexpr Addr VADDR = 0x10000;
 static constexpr Addr ELF_HEADER_SIZE = 52;
 static constexpr Addr PROGRAM_HEADER_SIZE = 32;
 

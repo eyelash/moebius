@@ -117,7 +117,7 @@ public:
 			}
 		}
 
-		printer.print(format("%:%: ", file_name, print_number(line_number)));
+		printer.print(bold(format("%:%: ", file_name, print_number(line_number))));
 		printer.print(bold(red("error: ")));
 		printer.print(t);
 		printer.print('\n');
@@ -440,7 +440,8 @@ public:
 	}
 };
 
-const Expression* parse(const SourceFile& file) {
+const Expression* parse(const char* file_name) {
+	SourceFile file(file_name);
 	MoebiusParser parser(&file);
 	return parser.parse_program();
 }

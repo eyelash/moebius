@@ -14,29 +14,8 @@ template <class T> [[noreturn]] void error(const T& t) {
 	std::exit(EXIT_FAILURE);
 }
 
-class FunctionTable {
-	struct Entry {
-		const Function* old_function;
-		std::vector<const Type*> argument_types;
-		std::vector<const Type*> environment_types;
-		const Function* new_function = nullptr;
-		Entry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): old_function(old_function), argument_types(argument_types), environment_types(environment_types) {}
-		const Type* look_up(std::size_t index) const {
-			for (std::size_t i = 0; i < argument_types.size(); ++i) {
-				if (i == index) {
-					return argument_types[i];
-				}
-			}
-			index -= argument_types.size();
-			for (std::size_t i = 0; i < environment_types.size(); ++i) {
-				if (i == index) {
-					return environment_types[i];
-				}
-			}
-			return nullptr;
-		}
-	};
-	std::vector<Entry> functions;
+// type checking and monomorphization
+class Pass1: public Visitor {
 	static bool equals(const Type* type1, const Type* type2) {
 		const int id1 = type1->get_id();
 		const int id2 = type2->get_id();
@@ -44,12 +23,12 @@ class FunctionTable {
 			return false;
 		}
 		if (id1 == FunctionType::id) {
-			const FunctionType* funtion_type1 = static_cast<const FunctionType*>(type1);
-			const FunctionType* funtion_type2 = static_cast<const FunctionType*>(type2);
-			if (funtion_type1->get_function() != funtion_type2->get_function()) {
+			const FunctionType* function_type1 = static_cast<const FunctionType*>(type1);
+			const FunctionType* function_type2 = static_cast<const FunctionType*>(type2);
+			if (function_type1->get_function() != function_type2->get_function()) {
 				return false;
 			}
-			return equals(funtion_type1->get_environment_types(), funtion_type2->get_environment_types());
+			return equals(function_type1->get_environment_types(), function_type2->get_environment_types());
 		}
 		return true;
 	}
@@ -64,37 +43,53 @@ class FunctionTable {
 		}
 		return true;
 	}
-public:
-	std::size_t recursion = -1;
-	std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) const {
-		std::size_t index;
-		for (index = 0; index < functions.size(); ++index) {
-			const Entry& entry = functions[index];
-			if (entry.old_function == old_function && equals(entry.argument_types, argument_types) && equals(entry.environment_types, environment_types)) {
-				return index;
+	struct FunctionTableEntry {
+		const Function* old_function;
+		std::vector<const Type*> argument_types;
+		std::vector<const Type*> environment_types;
+		const Function* new_function = nullptr;
+		FunctionTableEntry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): old_function(old_function), argument_types(argument_types), environment_types(environment_types) {}
+		const Type* look_up(std::size_t index) const {
+			if (index < argument_types.size()) {
+				return argument_types[index];
 			}
+			index -= argument_types.size();
+			if (index < environment_types.size()) {
+				return environment_types[index];
+			}
+			return nullptr;
 		}
-		return index;
-	}
-	void add_entry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
-		functions.emplace_back(old_function, argument_types, environment_types);
-	}
-	Entry& operator [](std::size_t index) {
-		return functions[index];
-	}
-	const Entry& operator [](std::size_t index) const {
-		return functions[index];
-	}
-	std::size_t size() const {
-		return functions.size();
-	}
-	void clear(std::size_t index) {
-		functions.erase(functions.begin() + index + 1, functions.end());
-	}
-};
-
-// type checking and monomorphization
-class Pass1: public Visitor {
+	};
+	class FunctionTable {
+		std::vector<FunctionTableEntry> functions;
+	public:
+		std::size_t recursion = -1;
+		std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) const {
+			std::size_t index;
+			for (index = 0; index < functions.size(); ++index) {
+				const FunctionTableEntry& entry = functions[index];
+				if (entry.old_function == old_function && equals(entry.argument_types, argument_types) && equals(entry.environment_types, environment_types)) {
+					return index;
+				}
+			}
+			return index;
+		}
+		void add_entry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
+			functions.emplace_back(old_function, argument_types, environment_types);
+		}
+		FunctionTableEntry& operator [](std::size_t index) {
+			return functions[index];
+		}
+		const FunctionTableEntry& operator [](std::size_t index) const {
+			return functions[index];
+		}
+		std::size_t size() const {
+			return functions.size();
+		}
+		void clear(std::size_t index) {
+			functions.erase(functions.begin() + index + 1, functions.end());
+		}
+	};
 	const Expression* expression;
 	FunctionTable& function_table;
 	std::size_t index;
@@ -125,8 +120,7 @@ public:
 		if (condition->get_type_id() == NumberType::id || condition->get_type_id() == NeverType::id) {
 			const Expression* then_expression = evaluate(if_->get_then_expression());
 			const Expression* else_expression = evaluate(if_->get_else_expression());
-			// TODO: compare types properly
-			if (then_expression->get_type_id() == else_expression->get_type_id()) {
+			if (equals(then_expression->get_type(), else_expression->get_type())) {
 				expression = new If(condition, then_expression, else_expression, then_expression->get_type());
 			}
 			else if (then_expression->get_type_id() == NeverType::id) {
