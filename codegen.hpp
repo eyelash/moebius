@@ -16,11 +16,11 @@ template <class T> [[noreturn]] void error(const T& t) {
 
 class FunctionTable {
 	struct Entry {
-		const Function* function;
+		const Function* old_function;
 		std::vector<const Type*> argument_types;
 		std::vector<const Type*> environment_types;
-		const Expression* expression;
-		Entry(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): function(function), argument_types(argument_types), environment_types(environment_types), expression(nullptr) {}
+		const Function* new_function = nullptr;
+		Entry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): old_function(old_function), argument_types(argument_types), environment_types(environment_types) {}
 		const Type* look_up(std::size_t index) const {
 			for (std::size_t i = 0; i < argument_types.size(); ++i) {
 				if (i == index) {
@@ -65,18 +65,19 @@ class FunctionTable {
 		return true;
 	}
 public:
-	std::size_t look_up(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) const {
+	std::size_t recursion = -1;
+	std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) const {
 		std::size_t index;
 		for (index = 0; index < functions.size(); ++index) {
 			const Entry& entry = functions[index];
-			if (entry.function == function && equals(entry.argument_types, argument_types) && equals(entry.environment_types, environment_types)) {
+			if (entry.old_function == old_function && equals(entry.argument_types, argument_types) && equals(entry.environment_types, environment_types)) {
 				return index;
 			}
 		}
 		return index;
 	}
-	void add_entry(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
-		functions.emplace_back(function, argument_types, environment_types);
+	void add_entry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
+		functions.emplace_back(old_function, argument_types, environment_types);
 	}
 	Entry& operator [](std::size_t index) {
 		return functions[index];
@@ -94,15 +95,11 @@ public:
 
 // type checking and monomorphization
 class Pass1: public Visitor {
-	struct Data {
-		std::size_t recursion = -1;
-	};
 	const Expression* expression;
 	FunctionTable& function_table;
-	Data& data;
 	std::size_t index;
 public:
-	Pass1(FunctionTable& function_table, Data& data, std::size_t index): expression(nullptr), function_table(function_table), data(data), index(index) {}
+	Pass1(FunctionTable& function_table, std::size_t index): expression(nullptr), function_table(function_table), index(index) {}
 	const Expression* evaluate(const Expression* expression) {
 		this->expression = nullptr;
 		expression->accept(this);
@@ -161,52 +158,55 @@ public:
 		expression = new Argument(argument->get_index(), type);
 	}
 	void visit_call(const Call* call) override {
-		const Expression* call_expression = evaluate(call->get_expression());
-		if (call_expression->get_type_id() == FunctionType::id) {
-			const FunctionType* type = static_cast<const FunctionType*>(call_expression->get_type());
-			if (call->get_arguments().size() != type->get_function()->get_arguments()) {
-				error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(type->get_function()->get_arguments())));
-			}
-			std::vector<const Type*> argument_types;
-			Call* new_call = new Call(call_expression);
-			for (const Expression* argument: call->get_arguments()) {
-				const Expression* new_argument = evaluate(argument);
-				argument_types.push_back(new_argument->get_type());
-				new_call->add_argument(new_argument);
-			}
-
-			const std::size_t new_index = function_table.look_up(type->get_function(), argument_types, type->get_environment_types());
-			if (new_index == function_table.size()) {
-				function_table.add_entry(type->get_function(), argument_types, type->get_environment_types());
-				Pass1 pass1(function_table, data, new_index);
-				const Expression* e = pass1.evaluate(type->get_function()->get_expression());
-				function_table[new_index].expression = e;
-				if (data.recursion == new_index) {
-					// reevaluate the expression in case of recursion
-					data.recursion = -1;
-					function_table.clear(new_index);
-					e = pass1.evaluate(type->get_function()->get_expression());
-					function_table[new_index].expression = e;
-				}
-				new_call->set_type(e->get_type());
-			}
-			else {
-				// detect recursion
-				if (function_table[new_index].expression == nullptr) {
-					if (new_index < data.recursion) {
-						data.recursion = new_index;
-					}
-					new_call->set_type(new NeverType());
-				}
-				else {
-					new_call->set_type(function_table[new_index].expression->get_type());
-				}
-			}
-			expression = new_call;
-		}
-		else {
+		const Expression* object = evaluate(call->get_object());
+		if (object->get_type_id() != FunctionType::id) {
 			error("call to a value that is not a function");
 		}
+		const FunctionType* type = static_cast<const FunctionType*>(object->get_type());
+		const Function* old_function = type->get_function();
+		if (call->get_arguments().size() != old_function->get_arguments()) {
+			error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(old_function->get_arguments())));
+		}
+		std::vector<const Type*> argument_types;
+		Call* new_call = new Call(object);
+		for (const Expression* argument: call->get_arguments()) {
+			const Expression* new_argument = evaluate(argument);
+			argument_types.push_back(new_argument->get_type());
+			new_call->add_argument(new_argument);
+		}
+
+		const std::size_t new_index = function_table.look_up(old_function, argument_types, type->get_environment_types());
+		if (new_index == function_table.size()) {
+			function_table.add_entry(old_function, argument_types, type->get_environment_types());
+			Pass1 pass1(function_table, new_index);
+			const Expression* new_expression = pass1.evaluate(old_function->get_expression());
+			Function* new_function = new Function(new_expression, new_expression->get_type());
+			function_table[new_index].new_function = new_function;
+			if (function_table.recursion == new_index) {
+				// reevaluate the expression in case of recursion
+				function_table.recursion = -1;
+				function_table.clear(new_index);
+				new_expression = pass1.evaluate(old_function->get_expression());
+				new_function->set_expression(new_expression);
+				new_function->set_type(new_expression->get_type());
+			}
+			new_call->set_type(new_expression->get_type());
+			new_call->set_function(new_function);
+		}
+		else {
+			// detect recursion
+			if (function_table[new_index].new_function == nullptr) {
+				if (new_index < function_table.recursion) {
+					function_table.recursion = new_index;
+				}
+				new_call->set_type(new NeverType());
+			}
+			else {
+				new_call->set_type(function_table[new_index].new_function->get_type());
+				new_call->set_function(function_table[new_index].new_function);
+			}
+		}
+		expression = new_call;
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
 		if (intrinsic->get_name() == "putChar") {
@@ -220,9 +220,9 @@ public:
 			expression = intrinsic;
 		}
 	}
-	static const Expression* run(FunctionTable& function_table, const Expression* expression) {
-		Data data;
-		Pass1 pass1(function_table, data, 0);
+	static const Expression* run(const Expression* expression) {
+		FunctionTable function_table;
+		Pass1 pass1(function_table, 0);
 		return pass1.evaluate(expression);
 	}
 };
@@ -251,52 +251,71 @@ template <class A> class Pass2: public Visitor {
 		std::size_t function_index;
 		DeferredCall(const Jump& jump, std::size_t function_index): jump(jump), function_index(function_index) {}
 	};
-	struct PerFunctionData {
+	struct FunctionTableEntry {
+		const Function* function;
+		std::vector<const Type*> argument_types;
+		std::vector<const Type*> environment_types;
 		std::uint32_t input_size;
 		std::uint32_t output_size;
-		PerFunctionData(const FunctionTable::Entry& entry) {
+		std::size_t position;
+		FunctionTableEntry(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): function(function), argument_types(argument_types), environment_types(environment_types) {
 			input_size = 0;
-			for (const Type* type: entry.argument_types) {
+			for (const Type* type: argument_types) {
 				input_size += get_type_size(type);
 			}
-			for (const Type* type: entry.environment_types) {
+			for (const Type* type: environment_types) {
 				input_size += get_type_size(type);
 			}
-			output_size = get_type_size(entry.expression->get_type());
+			output_size = get_type_size(function->get_expression()->get_type());
 		}
-		const Type* look_up(const FunctionTable::Entry& entry, std::size_t index, std::uint32_t& location) const {
+		const Type* look_up(std::size_t index, std::uint32_t& location) const {
 			location = std::max(input_size, output_size);
-			for (std::size_t i = 0; i < entry.argument_types.size(); ++i) {
-				location -= get_type_size(entry.argument_types[i]);
+			for (std::size_t i = 0; i < argument_types.size(); ++i) {
+				location -= get_type_size(argument_types[i]);
 				if (i == index) {
-					return entry.argument_types[i];
+					return argument_types[i];
 				}
 			}
-			index -= entry.argument_types.size();
-			for (std::size_t i = 0; i < entry.environment_types.size(); ++i) {
-				location -= get_type_size(entry.environment_types[i]);
+			index -= argument_types.size();
+			for (std::size_t i = 0; i < environment_types.size(); ++i) {
+				location -= get_type_size(environment_types[i]);
 				if (i == index) {
-					return entry.environment_types[i];
+					return environment_types[i];
 				}
 			}
 			return nullptr;
 		}
 	};
-	struct Data {
-		std::vector<PerFunctionData> per_function;
+	class FunctionTable {
+		std::vector<FunctionTableEntry> functions;
+	public:
 		std::vector<DeferredCall> deferred_calls;
-		Data(const FunctionTable& function_table) {
-			for (std::size_t index = 0; index < function_table.size(); ++index) {
-				per_function.emplace_back(function_table[index]);
+		std::size_t done = 0;
+		std::size_t look_up(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
+			std::size_t index;
+			for (index = 0; index < functions.size(); ++index) {
+				if (functions[index].function == function) {
+					return index;
+				}
 			}
+			functions.emplace_back(function, argument_types, environment_types);
+			return index;
+		}
+		FunctionTableEntry& operator [](std::size_t index) {
+			return functions[index];
+		}
+		const FunctionTableEntry& operator [](std::size_t index) const {
+			return functions[index];
+		}
+		std::size_t size() const {
+			return functions.size();
 		}
 	};
-	const FunctionTable& function_table;
-	Data& data;
+	FunctionTable& function_table;
 	const std::size_t index;
 	A& assembler;
 public:
-	Pass2(const FunctionTable& function_table, Data& data, std::size_t index, A& assembler): function_table(function_table), data(data), index(index), assembler(assembler) {}
+	Pass2(FunctionTable& function_table, std::size_t index, A& assembler): function_table(function_table), index(index), assembler(assembler) {}
 	void evaluate(const Expression* expression) {
 		expression->accept(this);
 	}
@@ -393,7 +412,7 @@ public:
 	}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
-		const Type* type = data.per_function[index].look_up(function_table[index], argument->get_index(), location);
+		const Type* type = function_table[index].look_up(argument->get_index(), location);
 		const std::uint32_t size = get_type_size(type);
 		for (std::uint32_t i = 0; i < size; i += 4) {
 			assembler.MOV(EAX, PTR(EBP, 8 + location + size - 4 - i));
@@ -406,19 +425,19 @@ public:
 			evaluate(argument);
 			argument_types.push_back(argument->get_type());
 		}
-		const Expression* call_expression = call->get_expression();
-		evaluate(call_expression);
-		// assert(call_expression->get_type_id() == FunctionType::id);
-		const FunctionType* type = static_cast<const FunctionType*>(call_expression->get_type());
-		const std::size_t new_index = function_table.look_up(type->get_function(), argument_types, type->get_environment_types());
-		const std::uint32_t input_size = data.per_function[new_index].input_size;
-		const std::uint32_t output_size = data.per_function[new_index].output_size;
+		const Expression* object = call->get_object();
+		evaluate(object);
+		// assert(object->get_type_id() == FunctionType::id);
+		const FunctionType* type = static_cast<const FunctionType*>(object->get_type());
+		const std::size_t new_index = function_table.look_up(call->get_function(), argument_types, type->get_environment_types());
+		const std::uint32_t input_size = function_table[new_index].input_size;
+		const std::uint32_t output_size = function_table[new_index].output_size;
 		if (output_size > input_size) {
 			// negative in order to grow the stack
 			assembler.ADD(ESP, input_size - output_size);
 		}
 		Jump jump = assembler.CALL();
-		data.deferred_calls.emplace_back(jump, new_index);
+		function_table.deferred_calls.emplace_back(jump, new_index);
 		if (output_size < input_size) {
 			assembler.ADD(ESP, input_size - output_size);
 		}
@@ -445,31 +464,31 @@ public:
 			assembler.MOVZX(EAX, EAX);
 		}
 	}
-	static void codegen(const FunctionTable& function_table, const Expression* expression, const char* path) {
+	static void codegen(const Expression* expression, const char* path) {
+		FunctionTable function_table;
 		A assembler;
-		Data data(function_table);
-		std::vector<std::size_t> positions(function_table.size());
 		{
 			// the main function
-			Pass2 pass2(function_table, data, 0, assembler);
+			Pass2 pass2(function_table, 0, assembler);
 			pass2.evaluate(expression);
 			assembler.comment("exit");
 			assembler.MOV(EAX, 0x01);
 			assembler.MOV(EBX, 0);
 			assembler.INT(0x80);
 		}
-		for (std::size_t index = 0; index < function_table.size(); ++index) {
+		while (function_table.done < function_table.size()) {
+			const std::size_t index = function_table.done;
 			assembler.comment("function");
-			positions[index] = assembler.get_position();
+			function_table[index].position = assembler.get_position();
 			assembler.PUSH(EBP);
 			assembler.MOV(EBP, ESP);
 			assembler.comment("--");
-			const Expression* expression = function_table[index].expression;
-			Pass2 pass2(function_table, data, index, assembler);
+			const Expression* expression = function_table[index].function->get_expression();
+			Pass2 pass2(function_table, index, assembler);
 			pass2.evaluate(expression);
 			assembler.comment("--");
-			const std::uint32_t output_size = data.per_function[index].output_size;
-			const std::uint32_t size = std::max(data.per_function[index].input_size, output_size);
+			const std::uint32_t output_size = function_table[index].output_size;
+			const std::uint32_t size = std::max(function_table[index].input_size, output_size);
 			for (std::uint32_t i = 0; i < output_size; i += 4) {
 				assembler.POP(EAX);
 				assembler.MOV(PTR(EBP, 8 + size - output_size + i), EAX);
@@ -478,9 +497,10 @@ public:
 			assembler.MOV(ESP, EBP);
 			assembler.POP(EBP);
 			assembler.RET();
+			++function_table.done;
 		}
-		for (const DeferredCall& deferred_call: data.deferred_calls) {
-			const std::size_t target = positions[deferred_call.function_index];
+		for (const DeferredCall& deferred_call: function_table.deferred_calls) {
+			const std::size_t target = function_table[deferred_call.function_index].position;
 			deferred_call.jump.set_target(target);
 		}
 		assembler.write_file(path);
@@ -488,7 +508,6 @@ public:
 };
 
 void codegen(const Expression* expression, const char* path) {
-	FunctionTable function_table;
-	expression = Pass1::run(function_table, expression);
-	Pass2<Assembler>::codegen(function_table, expression, path);
+	expression = Pass1::run(expression);
+	Pass2<Assembler>::codegen(expression, path);
 }

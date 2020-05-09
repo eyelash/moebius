@@ -203,21 +203,28 @@ public:
 };
 
 class Call: public Expression {
-	const Expression* expression;
 	std::vector<const Expression*> arguments;
+	const Expression* object;
+	const Function* function = nullptr;
 public:
-	Call(const Expression* expression): expression(expression) {}
+	Call(const Expression* object): object(object) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_call(this);
 	}
 	void add_argument(const Expression* expression) {
 		arguments.push_back(expression);
 	}
-	const Expression* get_expression() const {
-		return expression;
+	void set_function(const Function* function) {
+		this->function = function;
 	}
 	const std::vector<const Expression*>& get_arguments() const {
 		return arguments;
+	}
+	const Expression* get_object() const {
+		return object;
+	}
+	const Function* get_function() const {
+		return function;
 	}
 };
 
