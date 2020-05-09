@@ -2,9 +2,6 @@
 
 #include "printer.hpp"
 #include "ast.hpp"
-#include <vector>
-#include <fstream>
-#include <iterator>
 #include <map>
 #include <cstdlib>
 
@@ -72,70 +69,6 @@ public:
 			return parent->look_up(name);
 		}
 		return nullptr;
-	}
-};
-
-class SourceFile {
-	const char* file_name;
-	std::vector<char> content;
-public:
-	SourceFile(const char* file_name): file_name(file_name) {
-		std::ifstream file(file_name);
-		content.insert(content.end(), std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-	}
-	const char* get_name() const {
-		return file_name;
-	}
-	const char* begin() const {
-		return content.data();
-	}
-	const char* end() const {
-		return content.data() + content.size();
-	}
-};
-
-class SourcePosition {
-	const char* file_name;
-	std::size_t position;
-public:
-	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
-	template <class T> void print_error(Printer& printer, const T& t) const {
-		SourceFile file(file_name);
-		unsigned int line_number = 1;
-		const char* c = file.begin();
-		const char* end = file.end();
-		const char* position = std::min(c + this->position, end);
-		const char* line_start = c;
-		while (c < position) {
-			if (*c == '\n') {
-				++c;
-				++line_number;
-				line_start = c;
-			}
-			else {
-				++c;
-			}
-		}
-
-		printer.print(bold(format("%:%: ", file_name, print_number(line_number))));
-		printer.print(bold(red("error: ")));
-		printer.print(t);
-		printer.print('\n');
-
-		c = line_start;
-		while (c < end && *c != '\n') {
-			printer.print(*c);
-			++c;
-		}
-		printer.print('\n');
-
-		c = line_start;
-		while (c < position) {
-			printer.print(*c == '\t' ? '\t' : ' ');
-			++c;
-		}
-		printer.print('^');
-		printer.print('\n');
 	}
 };
 
@@ -286,6 +219,7 @@ class MoebiusParser: private Parser {
 		return BinaryOperator();
 	}
 	const Expression* parse_expression_last() {
+		const SourcePosition position = cursor.get_position();
 		if (parse("{")) {
 			parse_white_space();
 			const Expression* expression = parse_scope();
@@ -313,7 +247,9 @@ class MoebiusParser: private Parser {
 			expect("else");
 			parse_white_space();
 			const Expression* else_expression = parse_expression();
-			return new If(condition, then_expression, else_expression);
+			If* if_ = new If(condition, then_expression, else_expression);
+			if_->set_position(position);
+			return if_;
 		}
 		else if (parse("fn")) {
 			parse_white_space();
@@ -379,11 +315,15 @@ class MoebiusParser: private Parser {
 		}
 		const Expression* left = parse_expression(level + 1);
 		parse_white_space();
+		SourcePosition position = cursor.get_position();
 		while (BinaryOperator op = parse_operator(level)) {
 			parse_white_space();
 			const Expression* right = parse_expression(level + 1);
-			left = op.create(left, right);
+			Expression* expression = op.create(left, right);
+			expression->set_position(position);
+			left = expression;
 			parse_white_space();
+			position = cursor.get_position();
 		}
 		return left;
 	}

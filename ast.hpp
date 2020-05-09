@@ -75,6 +75,7 @@ public:
 
 class Expression {
 	const Type* type;
+	SourcePosition position;
 public:
 	Expression(const Type* type = nullptr): type(type) {}
 	virtual void accept(Visitor* visitor) const = 0;
@@ -86,6 +87,12 @@ public:
 	}
 	int get_type_id() const {
 		return get_type()->get_id();
+	}
+	void set_position(const SourcePosition& position) {
+		this->position = position;
+	}
+	const SourcePosition& get_position() const {
+		return position;
 	}
 };
 

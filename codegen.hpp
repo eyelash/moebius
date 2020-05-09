@@ -4,16 +4,6 @@
 #include "assembler.hpp"
 #include <cstdlib>
 
-template <class T> [[noreturn]] void error(const T& t) {
-	Printer printer(stderr);
-
-	printer.print(bold(red("error: ")));
-	printer.print(t);
-	printer.print("\n");
-
-	std::exit(EXIT_FAILURE);
-}
-
 // type checking and monomorphization
 class Pass1: public Visitor {
 	static bool equals(const Type* type1, const Type* type2) {
@@ -42,6 +32,30 @@ class Pass1: public Visitor {
 			}
 		}
 		return true;
+	}
+	static StringView print_type(const Type* type) {
+		switch (type->get_id()) {
+		case NumberType::id:
+			return "Number";
+		case FunctionType::id:
+			return "Function";
+		case VoidType::id:
+			return "Void";
+		default:
+			return StringView();
+		}
+	}
+	template <class T> [[noreturn]] void error(const Expression* expression, const T& t) {
+		Printer printer(stderr);
+		expression->get_position().print_error(printer, t);
+		std::exit(EXIT_FAILURE);
+	}
+	template <class T> [[noreturn]] void error(const T& t) {
+		Printer printer(stderr);
+		printer.print(bold(red("error: ")));
+		printer.print(t);
+		printer.print('\n');
+		std::exit(EXIT_FAILURE);
 	}
 	struct FunctionTableEntry {
 		const Function* old_function;
@@ -112,7 +126,7 @@ public:
 			expression = new BinaryExpression(binary_expression->get_operation(), left, right);
 		}
 		else {
-			error(format("binary expression of types % and %", print_number(left->get_type_id()), print_number(right->get_type_id())));
+			error(binary_expression, format("binary expression of types % and %", print_type(left->get_type()), print_type(right->get_type())));
 		}
 	}
 	void visit_if(const If* if_) override {
@@ -130,11 +144,11 @@ public:
 				expression = new If(condition, then_expression, else_expression, then_expression->get_type());
 			}
 			else {
-				error("if and else branches must return values of the same type");
+				error(if_, "if and else branches must return values of the same type");
 			}
 		}
 		else {
-			error("type of condition must be a number");
+			error(if_, "type of condition must be a number");
 		}
 	}
 	void visit_function(const Function* function) override {

@@ -3,6 +3,10 @@
 #include <cstddef>
 #include <cstdio>
 
+#include <vector>
+#include <fstream>
+#include <iterator>
+
 class StringView {
 	const char* string;
 	std::size_t length;
@@ -141,3 +145,68 @@ public:
 inline PrintNumber print_number(unsigned int n) {
 	return PrintNumber(n);
 }
+
+class SourceFile {
+	const char* file_name;
+	std::vector<char> content;
+public:
+	SourceFile(const char* file_name): file_name(file_name) {
+		std::ifstream file(file_name);
+		content.insert(content.end(), std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+	}
+	const char* get_name() const {
+		return file_name;
+	}
+	const char* begin() const {
+		return content.data();
+	}
+	const char* end() const {
+		return content.data() + content.size();
+	}
+};
+
+class SourcePosition {
+	const char* file_name;
+	std::size_t position;
+public:
+	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
+	SourcePosition(): file_name(nullptr) {}
+	template <class T> void print_error(Printer& printer, const T& t) const {
+		SourceFile file(file_name);
+		unsigned int line_number = 1;
+		const char* c = file.begin();
+		const char* end = file.end();
+		const char* position = std::min(c + this->position, end);
+		const char* line_start = c;
+		while (c < position) {
+			if (*c == '\n') {
+				++c;
+				++line_number;
+				line_start = c;
+			}
+			else {
+				++c;
+			}
+		}
+
+		printer.print(bold(format("%:%: ", file_name, print_number(line_number))));
+		printer.print(bold(red("error: ")));
+		printer.print(t);
+		printer.print('\n');
+
+		c = line_start;
+		while (c < end && *c != '\n') {
+			printer.print(*c);
+			++c;
+		}
+		printer.print('\n');
+
+		c = line_start;
+		while (c < position) {
+			printer.print(*c == '\t' ? '\t' : ' ');
+			++c;
+		}
+		printer.print('^');
+		printer.print('\n');
+	}
+};
