@@ -94,9 +94,6 @@ class Pass1: public Visitor {
 		FunctionTableEntry& operator [](std::size_t index) {
 			return functions[index];
 		}
-		const FunctionTableEntry& operator [](std::size_t index) const {
-			return functions[index];
-		}
 		std::size_t size() const {
 			return functions.size();
 		}
@@ -107,7 +104,6 @@ class Pass1: public Visitor {
 	const Expression* expression;
 	FunctionTable& function_table;
 	std::size_t index;
-public:
 	Pass1(FunctionTable& function_table, std::size_t index): expression(nullptr), function_table(function_table), index(index) {}
 	const Expression* evaluate(const Expression* expression) {
 		this->expression = nullptr;
@@ -116,6 +112,7 @@ public:
 		this->expression = nullptr;
 		return result;
 	}
+public:
 	void visit_number(const Number* number) override {
 		expression = number;
 	}
@@ -235,8 +232,7 @@ public:
 	}
 };
 
-// code generation
-template <class A> class Pass2: public Visitor {
+template <class A> class CodegenX86: public Visitor {
 	using Jump = typename A::Jump;
 	static std::uint32_t get_type_size(const Type* type) {
 		switch (type->get_id()) {
@@ -312,9 +308,6 @@ template <class A> class Pass2: public Visitor {
 		FunctionTableEntry& operator [](std::size_t index) {
 			return functions[index];
 		}
-		const FunctionTableEntry& operator [](std::size_t index) const {
-			return functions[index];
-		}
 		std::size_t size() const {
 			return functions.size();
 		}
@@ -322,11 +315,11 @@ template <class A> class Pass2: public Visitor {
 	FunctionTable& function_table;
 	const std::size_t index;
 	A& assembler;
-public:
-	Pass2(FunctionTable& function_table, std::size_t index, A& assembler): function_table(function_table), index(index), assembler(assembler) {}
+	CodegenX86(FunctionTable& function_table, std::size_t index, A& assembler): function_table(function_table), index(index), assembler(assembler) {}
 	void evaluate(const Expression* expression) {
 		expression->accept(this);
 	}
+public:
 	void visit_number(const Number* number) override {
 		assembler.PUSH(number->get_value());
 	}
@@ -477,8 +470,8 @@ public:
 		A assembler;
 		{
 			// the main function
-			Pass2 pass2(function_table, 0, assembler);
-			pass2.evaluate(expression);
+			CodegenX86 codegen(function_table, 0, assembler);
+			codegen.evaluate(expression);
 			assembler.comment("exit");
 			assembler.MOV(EAX, 0x01);
 			assembler.MOV(EBX, 0);
@@ -491,9 +484,8 @@ public:
 			assembler.PUSH(EBP);
 			assembler.MOV(EBP, ESP);
 			assembler.comment("--");
-			const Expression* expression = function_table[index].function->get_expression();
-			Pass2 pass2(function_table, index, assembler);
-			pass2.evaluate(expression);
+			CodegenX86 codegen(function_table, index, assembler);
+			codegen.evaluate(function_table[index].function->get_expression());
 			assembler.comment("--");
 			const std::uint32_t output_size = function_table[index].output_size;
 			const std::uint32_t size = std::max(function_table[index].input_size, output_size);
@@ -672,5 +664,5 @@ public:
 
 void codegen(const Expression* expression, const char* path) {
 	expression = Pass1::run(expression);
-	Pass2<Assembler>::codegen(expression, path);
+	CodegenX86<Assembler>::codegen(expression, path);
 }

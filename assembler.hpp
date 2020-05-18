@@ -48,11 +48,6 @@ class Assembler {
 			t >>= 8;
 		}
 	}
-	template <class T> void write(std::initializer_list<T> ts) {
-		for (const T& t: ts) {
-			write<T>(t);
-		}
-	}
 	template <class T> void write(std::size_t position, T t) {
 		auto iterator = data.begin() + position;
 		for (std::size_t i = 0; i < sizeof(T); ++i) {
@@ -61,7 +56,10 @@ class Assembler {
 		}
 	}
 	void write_elf_header(std::size_t entry_point = 0) {
-		write<std::uint8_t>({0x7f, 'E', 'L', 'F'});
+		write<std::uint8_t>(0x7f);
+		write<std::uint8_t>('E');
+		write<std::uint8_t>('L');
+		write<std::uint8_t>('F');
 		write<std::uint8_t>(1); // ELFCLASS32
 		write<std::uint8_t>(1); // ELFDATA2LSB
 		write<std::uint8_t>(1); // version
@@ -264,15 +262,15 @@ class TextAssembler {
 	Printer printer;
 	static StringView print_register(Register r) {
 		switch (r) {
-		case EAX: return "EAX";
-		case ECX: return "ECX";
-		case EDX: return "EDX";
-		case EBX: return "EBX";
-		case ESP: return "ESP";
-		case EBP: return "EBP";
-		case ESI: return "ESI";
-		case EDI: return "EDI";
-		default: return StringView();
+			case EAX: return "EAX";
+			case ECX: return "ECX";
+			case EDX: return "EDX";
+			case EBX: return "EBX";
+			case ESP: return "ESP";
+			case EBP: return "EBP";
+			case ESI: return "ESI";
+			case EDI: return "EDI";
+			default: return StringView();
 		}
 	}
 	class PrintPtr {
