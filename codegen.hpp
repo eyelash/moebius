@@ -35,14 +35,10 @@ class Pass1: public Visitor {
 	}
 	static StringView print_type(const Type* type) {
 		switch (type->get_id()) {
-		case NumberType::id:
-			return "Number";
-		case FunctionType::id:
-			return "Function";
-		case VoidType::id:
-			return "Void";
-		default:
-			return StringView();
+			case NumberType::id: return "Number";
+			case FunctionType::id: return "Function";
+			case VoidType::id: return "Void";
+			default: return StringView();
 		}
 	}
 	template <class T> [[noreturn]] void error(const Expression* expression, const T& t) {
@@ -232,22 +228,22 @@ public:
 	}
 };
 
-template <class A> class CodegenX86: public Visitor {
+class CodegenX86: public Visitor {
+	using A = Assembler;
 	using Jump = typename A::Jump;
 	static std::uint32_t get_type_size(const Type* type) {
 		switch (type->get_id()) {
-		case NumberType::id:
-			return 4;
-		case FunctionType::id:
-			{
+			case NumberType::id:
+				return 4;
+			case FunctionType::id: {
 				int size = 0;
 				for (const Type* type: static_cast<const FunctionType*>(type)->get_environment_types()) {
 					size += get_type_size(type);
 				}
 				return size;
 			}
-		default:
-			return 0;
+			default:
+				return 0;
 		}
 	}
 	struct DeferredCall {
@@ -664,5 +660,5 @@ public:
 
 void codegen(const Expression* expression, const char* path) {
 	expression = Pass1::run(expression);
-	CodegenX86<Assembler>::codegen(expression, path);
+	CodegenX86::codegen(expression, path);
 }

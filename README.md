@@ -9,8 +9,10 @@
 
 ## to do
 
-- [x] JavaScript codegen
-- [ ] C codegen
+- codegen
+  - [x] x86
+  - [ ] C
+  - [x] JavaScript
 - [ ] inlining
 - [ ] constant propagation
 - [ ] tail call optimization

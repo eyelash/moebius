@@ -236,10 +236,10 @@ public:
 };
 
 class Intrinsic: public Expression {
-	StringView name;
+	const char* name;
 	std::vector<const Expression*> arguments;
 public:
-	Intrinsic(const StringView& name, const Type* type): Expression(type), name(name) {}
+	Intrinsic(const char* name, const Type* type): Expression(type), name(name) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_intrinsic(this);
 	}
