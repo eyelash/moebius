@@ -56,36 +56,25 @@ class Pass1: public Visitor {
 	struct FunctionTableEntry {
 		const Function* old_function;
 		std::vector<const Type*> argument_types;
-		std::vector<const Type*> environment_types;
 		const Function* new_function = nullptr;
-		FunctionTableEntry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): old_function(old_function), argument_types(argument_types), environment_types(environment_types) {}
-		const Type* look_up(std::size_t index) const {
-			if (index < argument_types.size()) {
-				return argument_types[index];
-			}
-			index -= argument_types.size();
-			if (index < environment_types.size()) {
-				return environment_types[index];
-			}
-			return nullptr;
-		}
+		FunctionTableEntry(const Function* old_function, const std::vector<const Type*>& argument_types): old_function(old_function), argument_types(argument_types) {}
 	};
 	class FunctionTable {
 		std::vector<FunctionTableEntry> functions;
 	public:
 		std::size_t recursion = -1;
-		std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) const {
+		std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types) const {
 			std::size_t index;
 			for (index = 0; index < functions.size(); ++index) {
 				const FunctionTableEntry& entry = functions[index];
-				if (entry.old_function == old_function && equals(entry.argument_types, argument_types) && equals(entry.environment_types, environment_types)) {
+				if (entry.old_function == old_function && equals(entry.argument_types, argument_types)) {
 					return index;
 				}
 			}
 			return index;
 		}
-		void add_entry(const Function* old_function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
-			functions.emplace_back(old_function, argument_types, environment_types);
+		void add_entry(const Function* old_function, const std::vector<const Type*>& argument_types) {
+			functions.emplace_back(old_function, argument_types);
 		}
 		FunctionTableEntry& operator [](std::size_t index) {
 			return functions[index];
@@ -146,39 +135,49 @@ public:
 	}
 	void visit_function(const Function* function) override {
 		FunctionType* type = new FunctionType(function);
-		Function* new_function = new Function(nullptr, type);
+		Tuple* tuple = new Tuple(type);
 		for (const Expression* expression: function->get_environment_expressions()) {
 			const Expression* new_expression = evaluate(expression);
 			type->add_environment_type(new_expression->get_type());
-			new_function->add_environment_expression(new_expression);
+			tuple->add_element(new_expression);
 		}
-		expression = new_function;
+		expression = tuple;
 	}
 	void visit_argument(const Argument* argument) override {
-		const Type* type = function_table[index].look_up(argument->get_index());
-		expression = new Argument(argument->get_index(), type);
+		if (argument->get_index() < function_table[index].old_function->get_arguments()) {
+			const std::size_t argument_index = argument->get_index() + 1;
+			const Type* type = function_table[index].argument_types[argument_index];
+			expression = new Argument(argument_index, type);
+		}
+		else {
+			const std::size_t argument_index = argument->get_index() - function_table[index].old_function->get_arguments();
+			const FunctionType* tuple_type = static_cast<const FunctionType*>(function_table[index].argument_types[0]);
+			const Type* type = tuple_type->get_environment_types()[argument_index];
+			expression = new TupleAccess(new Argument(0, tuple_type), argument_index, type);
+		}
 	}
 	void visit_call(const Call* call) override {
 		const Expression* object = evaluate(call->get_object());
 		if (object->get_type_id() != FunctionType::id) {
 			error("call to a value that is not a function");
 		}
-		const FunctionType* type = static_cast<const FunctionType*>(object->get_type());
-		const Function* old_function = type->get_function();
+		const Function* old_function = static_cast<const FunctionType*>(object->get_type())->get_function();
 		if (call->get_arguments().size() != old_function->get_arguments()) {
 			error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(old_function->get_arguments())));
 		}
 		std::vector<const Type*> argument_types;
-		Call* new_call = new Call(object);
+		Call* new_call = new Call(nullptr);
+		argument_types.push_back(object->get_type());
+		new_call->add_argument(object);
 		for (const Expression* argument: call->get_arguments()) {
 			const Expression* new_argument = evaluate(argument);
 			argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
 		}
 
-		const std::size_t new_index = function_table.look_up(old_function, argument_types, type->get_environment_types());
+		const std::size_t new_index = function_table.look_up(old_function, argument_types);
 		if (new_index == function_table.size()) {
-			function_table.add_entry(old_function, argument_types, type->get_environment_types());
+			function_table.add_entry(old_function, argument_types);
 			Pass1 pass1(function_table, new_index);
 			const Expression* new_expression = pass1.evaluate(old_function->get_expression());
 			Function* new_function = new Function(new_expression, new_expression->get_type());
@@ -210,17 +209,20 @@ public:
 		expression = new_call;
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
-		if (intrinsic->get_name() == "putChar") {
-			const Expression* argument = evaluate(intrinsic->get_arguments()[0]);
-			if (argument->get_type_id() != NumberType::id) {
+		Intrinsic* new_intrinsic = new Intrinsic(intrinsic->get_name(), intrinsic->get_type());
+		for (const Expression* argument: intrinsic->get_arguments()) {
+			new_intrinsic->add_argument(evaluate(argument));
+		}
+		if (intrinsic->name_equals("putChar")) {
+			// assert(new_intrinsic->get_arguments().size() == 1);
+			if (new_intrinsic->get_arguments()[0]->get_type_id() != NumberType::id) {
 				error("argument of putChar must be a number");
 			}
-			expression = intrinsic;
 		}
-		else if (intrinsic->get_name() == "getChar") {
-			expression = intrinsic;
-		}
+		expression = new_intrinsic;
 	}
+	void visit_tuple(const Tuple* tuple) override {}
+	void visit_tuple_access(const TupleAccess* tuple_access) override {}
 	static const Expression* run(const Expression* expression) {
 		FunctionTable function_table;
 		Pass1 pass1(function_table, 0);
@@ -254,16 +256,12 @@ class CodegenX86: public Visitor {
 	struct FunctionTableEntry {
 		const Function* function;
 		std::vector<const Type*> argument_types;
-		std::vector<const Type*> environment_types;
 		std::uint32_t input_size;
 		std::uint32_t output_size;
 		std::size_t position;
-		FunctionTableEntry(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types): function(function), argument_types(argument_types), environment_types(environment_types) {
+		FunctionTableEntry(const Function* function, const std::vector<const Type*>& argument_types): function(function), argument_types(argument_types) {
 			input_size = 0;
 			for (const Type* type: argument_types) {
-				input_size += get_type_size(type);
-			}
-			for (const Type* type: environment_types) {
 				input_size += get_type_size(type);
 			}
 			output_size = get_type_size(function->get_expression()->get_type());
@@ -276,13 +274,6 @@ class CodegenX86: public Visitor {
 					return argument_types[i];
 				}
 			}
-			index -= argument_types.size();
-			for (std::size_t i = 0; i < environment_types.size(); ++i) {
-				location -= get_type_size(environment_types[i]);
-				if (i == index) {
-					return environment_types[i];
-				}
-			}
 			return nullptr;
 		}
 	};
@@ -291,14 +282,14 @@ class CodegenX86: public Visitor {
 	public:
 		std::vector<DeferredCall> deferred_calls;
 		std::size_t done = 0;
-		std::size_t look_up(const Function* function, const std::vector<const Type*>& argument_types, const std::vector<const Type*>& environment_types) {
+		std::size_t look_up(const Function* function, const std::vector<const Type*>& argument_types) {
 			std::size_t index;
 			for (index = 0; index < functions.size(); ++index) {
 				if (functions[index].function == function) {
 					return index;
 				}
 			}
-			functions.emplace_back(function, argument_types, environment_types);
+			functions.emplace_back(function, argument_types);
 			return index;
 		}
 		FunctionTableEntry& operator [](std::size_t index) {
@@ -402,11 +393,7 @@ public:
 		assembler.comment("end");
 		jump_end.set_target(assembler.get_position());
 	}
-	void visit_function(const Function* function) override {
-		for (const Expression* expression: function->get_environment_expressions()) {
-			evaluate(expression);
-		}
-	}
+	void visit_function(const Function* function) override {}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
 		const Type* type = function_table[index].look_up(argument->get_index(), location);
@@ -422,11 +409,7 @@ public:
 			evaluate(argument);
 			argument_types.push_back(argument->get_type());
 		}
-		const Expression* object = call->get_object();
-		evaluate(object);
-		// assert(object->get_type_id() == FunctionType::id);
-		const FunctionType* type = static_cast<const FunctionType*>(object->get_type());
-		const std::size_t new_index = function_table.look_up(call->get_function(), argument_types, type->get_environment_types());
+		const std::size_t new_index = function_table.look_up(call->get_function(), argument_types);
 		const std::uint32_t input_size = function_table[new_index].input_size;
 		const std::uint32_t output_size = function_table[new_index].output_size;
 		if (output_size > input_size) {
@@ -440,7 +423,7 @@ public:
 		}
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
-		if (intrinsic->get_name() == "putChar") {
+		if (intrinsic->name_equals("putChar")) {
 			evaluate(intrinsic->get_arguments()[0]);
 			assembler.comment("putChar");
 			assembler.MOV(EAX, 0x04);
@@ -450,7 +433,7 @@ public:
 			assembler.INT(0x80);
 			assembler.POP(EAX);
 		}
-		else if (intrinsic->get_name() == "getChar") {
+		else if (intrinsic->name_equals("getChar")) {
 			assembler.comment("getChar");
 			assembler.PUSH(0);
 			assembler.MOV(EAX, 0x03);
@@ -459,6 +442,32 @@ public:
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
 			assembler.MOVZX(EAX, EAX);
+		}
+	}
+	void visit_tuple(const Tuple* tuple) override {
+		for (const Expression* element: tuple->get_elements()) {
+			evaluate(element);
+		}
+	}
+	void visit_tuple_access(const TupleAccess* tuple_access) override {
+		evaluate(tuple_access->get_tuple());
+		// assert(tuple_access->get_tuple()->get_type_id() == FunctionType::id);
+		const std::vector<const Type*>& types = static_cast<const FunctionType*>(tuple_access->get_tuple()->get_type())->get_environment_types();
+		std::uint32_t before = 0, size = 0, after = 0;
+		for (std::size_t i = 0; i < types.size(); ++i) {
+			if (i < tuple_access->get_index()) before += get_type_size(types[i]);
+			else if (i == tuple_access->get_index()) size += get_type_size(types[i]);
+			else if (i > tuple_access->get_index()) after += get_type_size(types[i]);
+		}
+		if (after > 0) {
+			assembler.ADD(ESP, after);
+		}
+		if (before > 0) {
+			for (std::uint32_t i = 0; i < size; i += 4) {
+				assembler.MOV(EAX, PTR(ESP, i));
+				assembler.MOV(PTR(ESP, before + i), EAX);
+			}
+			assembler.ADD(ESP, before);
 		}
 	}
 	static void codegen(const Expression* expression, const char* path) {
@@ -581,53 +590,51 @@ public:
 		printer.println("  }");
 		this->result = result;
 	}
-	void visit_function(const Function* function) override {
-		std::vector<std::size_t> environment;
-		for (const Expression* expression: function->get_environment_expressions()) {
-			environment.push_back(evaluate(expression));
-		}
-		result = function_table.variable++;
-		printer.print(format("  let v% = [", print_number(result)));
-		for (const std::size_t value: environment) {
-			printer.print(format("v%,", print_number(value)));
-		}
-		printer.println("];");
-	}
+	void visit_function(const Function* function) override {}
 	void visit_argument(const Argument* argument) override {
 		result = function_table.variable++;
-		const std::size_t argument_index = argument->get_index();
-		if (argument_index < function_table[index].arguments) {
-			printer.println(format("  let v% = a%;", print_number(result), print_number(argument_index)));
-		}
-		else {
-			const std::size_t object_index = argument_index - function_table[index].arguments;
-			printer.println(format("  let v% = obj[%];", print_number(result), print_number(object_index)));
-		}
+		printer.println(format("  let v% = a%;", print_number(result), print_number(argument->get_index())));
 	}
 	void visit_call(const Call* call) override {
 		std::vector<std::size_t> arguments;
 		for (const Expression* argument: call->get_arguments()) {
 			arguments.push_back(evaluate(argument));
 		}
-		const std::size_t object = evaluate(call->get_object());
 		const std::size_t new_index = function_table.look_up(call->get_function(), arguments.size());
 		result = function_table.variable++;
-		printer.print(format("  let v% = f%(v%", print_number(result), print_number(new_index), print_number(object)));
+		printer.print(format("  let v% = f%(", print_number(result), print_number(new_index)));
 		for (const std::size_t argument: arguments) {
-			printer.print(format(", v%", print_number(argument)));
+			printer.print(format("v%,", print_number(argument)));
 		}
 		printer.println(");");
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
-		if (intrinsic->get_name() == "putChar") {
+		if (intrinsic->name_equals("putChar")) {
 			const std::size_t argument = evaluate(intrinsic->get_arguments()[0]);
 			printer.println(format("  document.write(String.fromCharCode(v%).replace('\\n', '<br>'));", print_number(argument)));
 			result = function_table.variable++;
 			printer.println(format("  let v% = null;", print_number(result)));
 		}
-		else if (intrinsic->get_name() == "getChar") {
+		else if (intrinsic->name_equals("getChar")) {
 			// TODO
 		}
+	}
+	void visit_tuple(const Tuple* tuple) override {
+		std::vector<std::size_t> elements;
+		for (const Expression* element: tuple->get_elements()) {
+			elements.push_back(evaluate(element));
+		}
+		result = function_table.variable++;
+		printer.print(format("  let v% = [", print_number(result)));
+		for (const std::size_t element: elements) {
+			printer.print(format("v%,", print_number(element)));
+		}
+		printer.println("];");
+	}
+	void visit_tuple_access(const TupleAccess* tuple_access) override {
+		const std::size_t tuple = evaluate(tuple_access->get_tuple());
+		result = function_table.variable++;
+		printer.println(format("  let v% = v%[%];", print_number(result), print_number(tuple), print_number(tuple_access->get_index())));
 	}
 	static void codegen(const Expression* expression, const char* path) {
 		FunctionTable function_table;
@@ -643,9 +650,9 @@ public:
 		}
 		while (function_table.done < function_table.size()) {
 			const std::size_t index = function_table.done;
-			printer.print(format("function f%(obj", print_number(index)));
+			printer.print(format("function f%(", print_number(index)));
 			for (std::size_t i = 0; i < function_table[index].arguments; ++i) {
-				printer.print(format(", a%", print_number(i)));
+				printer.print(format("a%,", print_number(i)));
 			}
 			printer.println(") {");
 			CodegenJS codegen(function_table, index, printer);

@@ -11,6 +11,8 @@ class Function;
 class Argument;
 class Call;
 class Intrinsic;
+class Tuple;
+class TupleAccess;
 
 class Type {
 public:
@@ -71,6 +73,8 @@ public:
 	virtual void visit_argument(const Argument* argument) = 0;
 	virtual void visit_call(const Call* call) = 0;
 	virtual void visit_intrinsic(const Intrinsic* intrinsic) = 0;
+	virtual void visit_tuple(const Tuple* tuple) = 0;
+	virtual void visit_tuple_access(const TupleAccess* tuple_access) = 0;
 };
 
 class Expression {
@@ -246,10 +250,47 @@ public:
 	void add_argument(std::size_t index) {
 		arguments.push_back(new Argument(index));
 	}
-	StringView get_name() const {
+	void add_argument(const Expression* expression) {
+		arguments.push_back(expression);
+	}
+	const char* get_name() const {
 		return name;
+	}
+	bool name_equals(const StringView& name) const {
+		return StringView(this->name) == name;
 	}
 	const std::vector<const Expression*>& get_arguments() const {
 		return arguments;
+	}
+};
+
+class Tuple: public Expression {
+	std::vector<const Expression*> elements;
+public:
+	Tuple(const Type* type): Expression(type) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_tuple(this);
+	}
+	void add_element(const Expression* element) {
+		elements.push_back(element);
+	}
+	const std::vector<const Expression*>& get_elements() const {
+		return elements;
+	}
+};
+
+class TupleAccess: public Expression {
+	const Expression* tuple;
+	std::size_t index;
+public:
+	TupleAccess(const Expression* tuple, std::size_t index, const Type* type): Expression(type), tuple(tuple), index(index) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_tuple_access(this);
+	}
+	const Expression* get_tuple() const {
+		return tuple;
+	}
+	std::size_t get_index() const {
+		return index;
 	}
 };
