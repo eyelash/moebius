@@ -537,7 +537,6 @@ class CodegenJS: public Visitor {
 	class FunctionTable {
 		std::vector<FunctionTableEntry> functions;
 	public:
-		std::size_t variable = 1;
 		std::size_t done = 0;
 		std::size_t look_up(const Function* function, std::size_t arguments) {
 			std::size_t index;
@@ -560,6 +559,7 @@ class CodegenJS: public Visitor {
 	FunctionTable& function_table;
 	const std::size_t index;
 	Printer& printer;
+	std::size_t variable = 1;
 	CodegenJS(FunctionTable& function_table, std::size_t index, Printer& printer): function_table(function_table), index(index), printer(printer) {}
 	std::size_t evaluate(const Expression* expression) {
 		result = 0;
@@ -568,18 +568,18 @@ class CodegenJS: public Visitor {
 	}
 public:
 	void visit_number(const Number* number) override {
-		result = function_table.variable++;
-		printer.println(format("  let v% = %;", print_number(result), print_number(number->get_value())));
+		result = variable++;
+		printer.println(format("  const v% = %;", print_number(result), print_number(number->get_value())));
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
 		const std::size_t left = evaluate(binary_expression->get_left());
 		const std::size_t right = evaluate(binary_expression->get_right());
-		result = function_table.variable++;
-		printer.println(format("  let v% = v% % v%;", print_number(result), print_number(left), print_operator(binary_expression->get_operation()), print_number(right)));
+		result = variable++;
+		printer.println(format("  const v% = (v% % v%) | 0;", print_number(result), print_number(left), print_operator(binary_expression->get_operation()), print_number(right)));
 	}
 	void visit_if(const If* if_) override {
 		const std::size_t condition = evaluate(if_->get_condition());
-		const std::size_t result = function_table.variable++;
+		const std::size_t result = variable++;
 		printer.println(format("  let v%;", print_number(result)));
 		printer.println(format("  if (v%) {", print_number(condition)));
 		const std::size_t inner_then = evaluate(if_->get_then_expression());
@@ -592,8 +592,7 @@ public:
 	}
 	void visit_function(const Function* function) override {}
 	void visit_argument(const Argument* argument) override {
-		result = function_table.variable++;
-		printer.println(format("  let v% = a%;", print_number(result), print_number(argument->get_index())));
+		result = argument->get_index();
 	}
 	void visit_call(const Call* call) override {
 		std::vector<std::size_t> arguments;
@@ -601,8 +600,8 @@ public:
 			arguments.push_back(evaluate(argument));
 		}
 		const std::size_t new_index = function_table.look_up(call->get_function(), arguments.size());
-		result = function_table.variable++;
-		printer.print(format("  let v% = f%(", print_number(result), print_number(new_index)));
+		result = variable++;
+		printer.print(format("  const v% = f%(", print_number(result), print_number(new_index)));
 		for (const std::size_t argument: arguments) {
 			printer.print(format("v%,", print_number(argument)));
 		}
@@ -611,9 +610,10 @@ public:
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
 		if (intrinsic->name_equals("putChar")) {
 			const std::size_t argument = evaluate(intrinsic->get_arguments()[0]);
-			printer.println(format("  document.write(String.fromCharCode(v%).replace('\\n', '<br>'));", print_number(argument)));
-			result = function_table.variable++;
-			printer.println(format("  let v% = null;", print_number(result)));
+			printer.println(format("  const s = String.fromCharCode(v%);", print_number(argument)));
+			printer.println("  document.body.appendChild(s === '\\n' ? document.createElement('br') : document.createTextNode(s));");
+			result = variable++;
+			printer.println(format("  const v% = null;", print_number(result)));
 		}
 		else if (intrinsic->name_equals("getChar")) {
 			// TODO
@@ -624,8 +624,8 @@ public:
 		for (const Expression* element: tuple->get_elements()) {
 			elements.push_back(evaluate(element));
 		}
-		result = function_table.variable++;
-		printer.print(format("  let v% = [", print_number(result)));
+		result = variable++;
+		printer.print(format("  const v% = [", print_number(result)));
 		for (const std::size_t element: elements) {
 			printer.print(format("v%,", print_number(element)));
 		}
@@ -633,16 +633,16 @@ public:
 	}
 	void visit_tuple_access(const TupleAccess* tuple_access) override {
 		const std::size_t tuple = evaluate(tuple_access->get_tuple());
-		result = function_table.variable++;
-		printer.println(format("  let v% = v%[%];", print_number(result), print_number(tuple), print_number(tuple_access->get_index())));
+		result = variable++;
+		printer.println(format("  const v% = v%[%];", print_number(result), print_number(tuple), print_number(tuple_access->get_index())));
 	}
 	static void codegen(const Expression* expression, const char* path) {
 		FunctionTable function_table;
 		Printer printer(stdout);
-		printer.println("<html><head><script>");
+		printer.println("<!DOCTYPE html><html><head><script>");
 		{
 			// the main function
-			printer.println("window.onload = main;");
+			printer.println("window.addEventListener('load', main);");
 			printer.println("function main() {");
 			CodegenJS codegen(function_table, 0, printer);
 			codegen.evaluate(expression);
@@ -652,10 +652,11 @@ public:
 			const std::size_t index = function_table.done;
 			printer.print(format("function f%(", print_number(index)));
 			for (std::size_t i = 0; i < function_table[index].arguments; ++i) {
-				printer.print(format("a%,", print_number(i)));
+				printer.print(format("v%,", print_number(i)));
 			}
 			printer.println(") {");
 			CodegenJS codegen(function_table, index, printer);
+			codegen.variable = function_table[index].arguments;
 			const std::size_t result = codegen.evaluate(function_table[index].function->get_expression());
 			printer.println(format("  return v%;", print_number(result)));
 			printer.println("}");
