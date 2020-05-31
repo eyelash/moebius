@@ -22,10 +22,10 @@ static constexpr BinaryOperator operators[][5] = {
 		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
 	},
 	{
-		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
 		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>),
-		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>),
-		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>)
+		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
+		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>),
+		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>)
 	},
 	{
 		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
@@ -114,6 +114,9 @@ public:
 	static constexpr bool alphanumeric(char c) {
 		return alphabetic(c) || numeric(c);
 	}
+	static constexpr bool operator_char(char c) {
+		return StringView("+-*/%=<>!&|~^?:").contains(c);
+	}
 	template <class F> bool parse(F f) {
 		if (cursor && f(*cursor)) {
 			++cursor;
@@ -128,22 +131,36 @@ public:
 		}
 		return false;
 	}
-	bool parse(const StringView& s) {
-		const Cursor copy = cursor;
+	template <class F> bool parse(const StringView& s, F f) {
+		Cursor copy = cursor;
 		for (char c: s) {
-			if (!(cursor && *cursor == c)) {
-				cursor = copy;
+			if (!copy || *copy != c) {
 				return false;
 			}
-			++cursor;
+			++copy;
 		}
+		if (f(*copy)) {
+			return false;
+		}
+		cursor = copy;
+		return true;
+	}
+	bool parse(const StringView& s) {
+		Cursor copy = cursor;
+		for (char c: s) {
+			if (!copy || *copy != c) {
+				return false;
+			}
+			++copy;
+		}
+		cursor = copy;
 		return true;
 	}
 	bool parse(const char* s) {
 		return parse(StringView(s));
 	}
-	template <class T> void parse_all(T&& t) {
-		while (parse(std::forward<T>(t))) {}
+	template <class F> void parse_all(F f) {
+		while (parse(f)) {}
 	}
 	Parser(const SourceFile* file): cursor(file) {}
 	Parser(const Cursor& cursor): cursor(cursor) {}
@@ -212,7 +229,7 @@ class MoebiusParser: private Parser {
 	}
 	BinaryOperator parse_operator(int level) {
 		for (int i = 0; operators[level][i]; ++i) {
-			if (parse(operators[level][i].string)) {
+			if (parse(operators[level][i].string, operator_char)) {
 				return operators[level][i];
 			}
 		}
@@ -234,7 +251,7 @@ class MoebiusParser: private Parser {
 			expect(")");
 			return expression;
 		}
-		else if (parse("if")) {
+		else if (parse("if", alphanumeric)) {
 			parse_white_space();
 			expect("(");
 			parse_white_space();
@@ -251,7 +268,7 @@ class MoebiusParser: private Parser {
 			if_->set_position(position);
 			return if_;
 		}
-		else if (parse("fn")) {
+		else if (parse("fn", alphanumeric)) {
 			parse_white_space();
 			expect("(");
 			parse_white_space();
@@ -332,7 +349,7 @@ class MoebiusParser: private Parser {
 		current_scope = &scope;
 		const Expression* result = nullptr;
 		while (true) {
-			if (parse("let")) {
+			if (parse("let", alphanumeric)) {
 				parse_white_space();
 				StringView name = parse_identifier();
 				parse_white_space();
@@ -341,7 +358,7 @@ class MoebiusParser: private Parser {
 				const Expression* expression = parse_expression();
 				scope.add_variable(name, expression);
 			}
-			else if (parse("return")) {
+			else if (parse("return", alphanumeric)) {
 				parse_white_space();
 				result = parse_expression();
 				break;

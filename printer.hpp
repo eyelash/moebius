@@ -16,6 +16,9 @@ class StringView {
 	static constexpr int strncmp(const char* s0, const char* s1, std::size_t n) {
 		return n == 0 ? 0 : *s0 != *s1 ? *s0 - *s1 : strncmp(s0 + 1, s1 + 1, n - 1);
 	}
+	static constexpr const char* strchr(const char* s, char c) {
+		return *s == c ? s : *s == '\0' ? nullptr : strchr(s + 1, c);
+	}
 public:
 	constexpr StringView(): string(nullptr), length(0) {}
 	constexpr StringView(const char* string, std::size_t length): string(string), length(length) {}
@@ -43,6 +46,9 @@ public:
 	}
 	constexpr const char* end() const {
 		return string + length;
+	}
+	constexpr bool contains(char c) const {
+		return strchr(string, c);
 	}
 };
 
