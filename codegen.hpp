@@ -223,6 +223,11 @@ public:
 	}
 	void visit_tuple(const Tuple* tuple) override {}
 	void visit_tuple_access(const TupleAccess* tuple_access) override {}
+	void visit_bind(const Bind* bind) override {
+		const Expression* left = evaluate(bind->get_left());
+		const Expression* right = evaluate(bind->get_right());
+		expression = new Bind(left, right);
+	}
 	static const Expression* run(const Expression* expression) {
 		FunctionTable function_table;
 		Pass1 pass1(function_table, 0);
@@ -470,6 +475,10 @@ public:
 			assembler.ADD(ESP, before);
 		}
 	}
+	void visit_bind(const Bind* bind) override {
+		evaluate(bind->get_left());
+		evaluate(bind->get_right());
+	}
 	static void codegen(const Expression* expression, const char* path) {
 		FunctionTable function_table;
 		A assembler;
@@ -635,6 +644,10 @@ public:
 		const std::size_t tuple = evaluate(tuple_access->get_tuple());
 		result = variable++;
 		printer.println(format("  const v% = v%[%];", print_number(result), print_number(tuple), print_number(tuple_access->get_index())));
+	}
+	void visit_bind(const Bind* bind) override {
+		evaluate(bind->get_left());
+		evaluate(bind->get_right());
 	}
 	static void codegen(const Expression* expression, const char* path) {
 		FunctionTable function_table;

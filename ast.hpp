@@ -13,6 +13,7 @@ class Call;
 class Intrinsic;
 class Tuple;
 class TupleAccess;
+class Bind;
 
 class Type {
 public:
@@ -75,6 +76,7 @@ public:
 	virtual void visit_intrinsic(const Intrinsic* intrinsic) = 0;
 	virtual void visit_tuple(const Tuple* tuple) = 0;
 	virtual void visit_tuple_access(const TupleAccess* tuple_access) = 0;
+	virtual void visit_bind(const Bind* bind) = 0;
 };
 
 class Expression {
@@ -292,5 +294,24 @@ public:
 	}
 	std::size_t get_index() const {
 		return index;
+	}
+};
+
+class Bind: public Expression {
+	const Expression* left;
+	const Expression* right;
+public:
+	Bind(const Expression* left, const Expression* right): Expression(new VoidType()), left(left), right(right) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_bind(this);
+	}
+	const Expression* get_left() const {
+		return left;
+	}
+	const Expression* get_right() const {
+		return right;
+	}
+	static Expression* create(const Expression* left, const Expression* right) {
+		return new Bind(left, right);
 	}
 };

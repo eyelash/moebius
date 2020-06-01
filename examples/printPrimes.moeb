@@ -1,17 +1,16 @@
 let false = 0
 let true = 1
 let newline = 10
-let bind = fn(io1, io2) io2
 
 let printNum = fn(num) {
 	let inner = fn(inner, num) {
 		return if (9 < num) {
-			return bind(inner(inner, num / 10), putChar(48 + (num % 10)))
+			return inner(inner, num / 10) >> putChar(48 + (num % 10))
 		} else {
 			return putChar(48 + num)
 		}
 	}
-	return bind(inner(inner, num), putChar(newline))
+	return inner(inner, num) >> putChar(newline)
 }
 
 let isPrime = fn(n) {
@@ -34,7 +33,7 @@ let printPrimes = fn() {
 	let inner = fn(inner, n, count) {
 		return if (count < 100) {
 			return if (isPrime(n)) {
-				return bind(printNum(n), inner(inner, n + 1, count + 1))
+				return printNum(n) >> inner(inner, n + 1, count + 1)
 			} else {
 				return inner(inner, n + 1, count)
 			}
