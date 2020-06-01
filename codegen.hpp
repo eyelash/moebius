@@ -235,6 +235,185 @@ public:
 	}
 };
 
+// inlining
+class Pass2 {
+	struct FunctionTableEntry {
+		const Function* function;
+		const Function* new_function = nullptr;
+		std::size_t callers = 0;
+		FunctionTableEntry(const Function* function): function(function) {}
+		bool should_inline() const {
+			return callers == 1;
+		}
+	};
+	class FunctionTable {
+		std::vector<FunctionTableEntry> functions;
+	public:
+		std::size_t look_up(const Function* function) const {
+			std::size_t index;
+			for (index = 0; index < functions.size(); ++index) {
+				if (functions[index].function == function) {
+					return index;
+				}
+			}
+			return index;
+		}
+		void add_entry(const Function* function) {
+			functions.emplace_back(function);
+		}
+		FunctionTableEntry& operator [](std::size_t index) {
+			return functions[index];
+		}
+		std::size_t size() const {
+			return functions.size();
+		}
+	};
+	class Analyze: public Visitor {
+		FunctionTable& function_table;
+	public:
+		Analyze(FunctionTable& function_table): function_table(function_table) {}
+		void visit_number(const Number* number) override {}
+		void visit_binary_expression(const BinaryExpression* binary_expression) override {
+			binary_expression->get_left()->accept(this);
+			binary_expression->get_right()->accept(this);
+		}
+		void visit_if(const If* if_) override {
+			if_->get_condition()->accept(this);
+			if_->get_then_expression()->accept(this);
+			if_->get_else_expression()->accept(this);
+		}
+		void visit_function(const Function* function) override {}
+		void visit_argument(const Argument* argument) override {}
+		void visit_call(const Call* call) override {
+			for (const Expression* argument: call->get_arguments()) {
+				argument->accept(this);
+			}
+			const std::size_t new_index = function_table.look_up(call->get_function());
+			if (new_index == function_table.size()) {
+				function_table.add_entry(call->get_function());
+				call->get_function()->get_expression()->accept(this);
+			}
+			++function_table[new_index].callers;
+		}
+		void visit_intrinsic(const Intrinsic* intrinsic) override {
+			for (const Expression* argument: intrinsic->get_arguments()) {
+				argument->accept(this);
+			}
+		}
+		void visit_tuple(const Tuple* tuple) override {
+			for (const Expression* element: tuple->get_elements()) {
+				element->accept(this);
+			}
+		}
+		void visit_tuple_access(const TupleAccess* tuple_access) override {
+			tuple_access->get_tuple()->accept(this);
+		}
+		void visit_bind(const Bind* bind) override {
+			bind->get_left()->accept(this);
+			bind->get_right()->accept(this);
+		}
+	};
+	class Replace: public Visitor {
+		const Expression* expression;
+		FunctionTable& function_table;
+		std::size_t index;
+		std::vector<const Expression*> arguments;
+	public:
+		Replace(FunctionTable& function_table, std::size_t index): expression(nullptr), function_table(function_table), index(index) {}
+		const Expression* evaluate(const Expression* expression) {
+			this->expression = nullptr;
+			expression->accept(this);
+			const Expression* result = this->expression;
+			this->expression = nullptr;
+			return result;
+		}
+		void visit_number(const Number* number) override {
+			expression = new Number(number->get_value());
+		}
+		void visit_binary_expression(const BinaryExpression* binary_expression) override {
+			const Expression* left = evaluate(binary_expression->get_left());
+			const Expression* right = evaluate(binary_expression->get_right());
+			expression = new BinaryExpression(binary_expression->get_operation(), left, right);
+		}
+		void visit_if(const If* if_) override {
+			const Expression* condition = evaluate(if_->get_condition());
+			const Expression* then_expression = evaluate(if_->get_then_expression());
+			const Expression* else_expression = evaluate(if_->get_else_expression());
+			expression = new If(condition, then_expression, else_expression, if_->get_type());
+		}
+		void visit_function(const Function* function) override {}
+		void visit_argument(const Argument* argument) override {
+			if (function_table[index].should_inline()) {
+				expression = arguments[argument->get_index()];
+			}
+			else {
+				expression = new Argument(argument->get_index(), argument->get_type());
+			}
+		}
+		void visit_call(const Call* call) override {
+			const std::size_t new_index = function_table.look_up(call->get_function());
+			if (function_table[new_index].should_inline()) {
+				Replace replace(function_table, new_index);
+				for (const Expression* argument: call->get_arguments()) {
+					const Expression* new_argument = evaluate(argument);
+					replace.arguments.push_back(new_argument);
+				}
+				expression = replace.evaluate(call->get_function()->get_expression());
+			}
+			else {
+				Call* new_call = new Call(nullptr);
+				for (const Expression* argument: call->get_arguments()) {
+					const Expression* new_argument = evaluate(argument);
+					new_call->add_argument(new_argument);
+				}
+				if (function_table[new_index].new_function == nullptr) {
+					Function* new_function = new Function();
+					new_function->set_type(call->get_function()->get_type());
+					function_table[new_index].new_function = new_function;
+					Replace replace(function_table, new_index);
+					new_function->set_expression(replace.evaluate(call->get_function()->get_expression()));
+				}
+				new_call->set_type(function_table[new_index].new_function->get_type());
+				new_call->set_function(function_table[new_index].new_function);
+				expression = new_call;
+			}
+		}
+		void visit_intrinsic(const Intrinsic* intrinsic) override {
+			Intrinsic* new_intrinsic = new Intrinsic(intrinsic->get_name(), intrinsic->get_type());
+			for (const Expression* argument: intrinsic->get_arguments()) {
+				new_intrinsic->add_argument(evaluate(argument));
+			}
+			expression = new_intrinsic;
+		}
+		void visit_tuple(const Tuple* tuple) override {
+			Tuple* new_tuple = new Tuple(tuple->get_type());
+			for (const Expression* element: tuple->get_elements()) {
+				new_tuple->add_element(evaluate(element));
+			}
+			expression = new_tuple;
+		}
+		void visit_tuple_access(const TupleAccess* tuple_access) override {
+			const Expression* tuple = evaluate(tuple_access->get_tuple());
+			expression = new TupleAccess(tuple, tuple_access->get_index(), tuple_access->get_type());
+		}
+		void visit_bind(const Bind* bind) override {
+			const Expression* left = evaluate(bind->get_left());
+			const Expression* right = evaluate(bind->get_right());
+			expression = new Bind(left, right);
+		}
+	};
+public:
+	Pass2() = delete;
+	static const Expression* run(const Expression* expression) {
+		FunctionTable function_table;
+		Analyze analyze(function_table);
+		expression->accept(&analyze);
+		Replace replace(function_table, 0);
+		expression = replace.evaluate(expression);
+		return expression;
+	}
+};
+
 class CodegenX86: public Visitor {
 	using A = Assembler;
 	using Jump = typename A::Jump;
