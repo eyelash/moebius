@@ -62,7 +62,7 @@ public:
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
 					const std::size_t index = closure->add_environment_expression(expression);
-					Argument* argument = new Argument(index);
+					const Expression* argument = new ClosureAccess(new Argument(0), index);
 					add_variable(name, argument);
 					return argument;
 				}
@@ -320,7 +320,8 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			while (parse("(")) {
 				parse_white_space();
-				Call* call = new Call(expression);
+				Call* call = new Call();
+				call->add_argument(expression);
 				while (cursor && *cursor != ')') {
 					call->add_argument(parse_expression());
 					parse_white_space();

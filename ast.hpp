@@ -172,7 +172,7 @@ public:
 
 class Function: public Expression {
 	const Expression* expression;
-	std::size_t arguments = 0;
+	std::size_t arguments = 1;
 public:
 	Function(const Expression* expression, const Type* type = nullptr): Expression(type), expression(expression) {}
 	Function(): expression(nullptr) {}
@@ -202,10 +202,9 @@ public:
 		visitor->visit_closure(this);
 	}
 	std::size_t add_environment_expression(const Expression* expression) {
-		const std::size_t arguments = function ? function->get_arguments() : 0;
 		const std::size_t index = environment_expressions.size();
 		environment_expressions.push_back(expression);
-		return arguments + index;
+		return index;
 	}
 	const Function* get_function() const {
 		return function;
@@ -219,7 +218,7 @@ class ClosureAccess: public Expression {
 	const Expression* closure;
 	std::size_t index;
 public:
-	ClosureAccess(const Expression* closure, std::size_t index, const Type* type): Expression(type), closure(closure), index(index) {}
+	ClosureAccess(const Expression* closure, std::size_t index, const Type* type = nullptr): Expression(type), closure(closure), index(index) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_closure_access(this);
 	}
@@ -245,10 +244,9 @@ public:
 
 class Call: public Expression {
 	std::vector<const Expression*> arguments;
-	const Expression* object;
 	const Function* function = nullptr;
 public:
-	Call(const Expression* object): object(object) {}
+	Call() {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_call(this);
 	}
@@ -262,7 +260,7 @@ public:
 		return arguments;
 	}
 	const Expression* get_object() const {
-		return object;
+		return arguments[0];
 	}
 	const Function* get_function() const {
 		return function;

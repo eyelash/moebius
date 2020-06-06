@@ -143,37 +143,33 @@ public:
 		}
 		expression = new_closure;
 	}
-	void visit_closure_access(const ClosureAccess* closure_access) override {}
+	void visit_closure_access(const ClosureAccess* closure_access) override {
+		const std::size_t argument_index = closure_access->get_index();
+		const Expression* closure = evaluate(closure_access->get_closure());
+		const ClosureType* closure_type = static_cast<const ClosureType*>(closure->get_type());
+		const Type* type = closure_type->get_environment_types()[argument_index];
+		expression = new ClosureAccess(closure, argument_index, type);
+	}
 	void visit_argument(const Argument* argument) override {
-		if (argument->get_index() < function_table[index].old_function->get_arguments()) {
-			const std::size_t argument_index = argument->get_index() + 1;
-			const Type* type = function_table[index].argument_types[argument_index];
-			expression = new Argument(argument_index, type);
-		}
-		else {
-			const std::size_t argument_index = argument->get_index() - function_table[index].old_function->get_arguments();
-			const ClosureType* closure_type = static_cast<const ClosureType*>(function_table[index].argument_types[0]);
-			const Type* type = closure_type->get_environment_types()[argument_index];
-			expression = new ClosureAccess(new Argument(0, closure_type), argument_index, type);
-		}
+		const std::size_t argument_index = argument->get_index();
+		const Type* type = function_table[index].argument_types[argument_index];
+		expression = new Argument(argument_index, type);
 	}
 	void visit_call(const Call* call) override {
-		const Expression* object = evaluate(call->get_object());
+		Call* new_call = new Call();
+		std::vector<const Type*> argument_types;
+		for (const Expression* argument: call->get_arguments()) {
+			const Expression* new_argument = evaluate(argument);
+			argument_types.push_back(new_argument->get_type());
+			new_call->add_argument(new_argument);
+		}
+		const Expression* object = new_call->get_object();
 		if (object->get_type_id() != ClosureType::id) {
 			error("call to a value that is not a function");
 		}
 		const Function* old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
 		if (call->get_arguments().size() != old_function->get_arguments()) {
-			error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(old_function->get_arguments())));
-		}
-		std::vector<const Type*> argument_types;
-		Call* new_call = new Call(nullptr);
-		argument_types.push_back(object->get_type());
-		new_call->add_argument(object);
-		for (const Expression* argument: call->get_arguments()) {
-			const Expression* new_argument = evaluate(argument);
-			argument_types.push_back(new_argument->get_type());
-			new_call->add_argument(new_argument);
+			error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size() - 1), print_number(old_function->get_arguments() - 1)));
 		}
 
 		const std::size_t new_index = function_table.look_up(old_function, argument_types);
@@ -369,7 +365,7 @@ class Pass2 {
 				expression = replace.evaluate(call->get_function()->get_expression());
 			}
 			else {
-				Call* new_call = new Call(nullptr);
+				Call* new_call = new Call();
 				for (const Expression* argument: call->get_arguments()) {
 					const Expression* new_argument = evaluate(argument);
 					new_call->add_argument(new_argument);
