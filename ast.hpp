@@ -8,11 +8,11 @@ class Number;
 class BinaryExpression;
 class If;
 class Function;
+class Closure;
+class ClosureAccess;
 class Argument;
 class Call;
 class Intrinsic;
-class Tuple;
-class TupleAccess;
 class Bind;
 
 class Type {
@@ -29,11 +29,11 @@ public:
 	}
 };
 
-class FunctionType: public Type {
+class ClosureType: public Type {
 	const Function* function;
 	std::vector<const Type*> environment_types;
 public:
-	FunctionType(const Function* function): function(function) {}
+	ClosureType(const Function* function): function(function) {}
 	static constexpr int id = 3;
 	int get_id() const override {
 		return id;
@@ -70,12 +70,11 @@ public:
 	virtual void visit_number(const Number* number) = 0;
 	virtual void visit_binary_expression(const BinaryExpression* binary_expression) = 0;
 	virtual void visit_if(const If* if_) = 0;
-	virtual void visit_function(const Function* function) = 0;
+	virtual void visit_closure(const Closure* closure) = 0;
+	virtual void visit_closure_access(const ClosureAccess* closure_access) = 0;
 	virtual void visit_argument(const Argument* argument) = 0;
 	virtual void visit_call(const Call* call) = 0;
 	virtual void visit_intrinsic(const Intrinsic* intrinsic) = 0;
-	virtual void visit_tuple(const Tuple* tuple) = 0;
-	virtual void visit_tuple_access(const TupleAccess* tuple_access) = 0;
 	virtual void visit_bind(const Bind* bind) = 0;
 };
 
@@ -174,12 +173,11 @@ public:
 class Function: public Expression {
 	const Expression* expression;
 	std::size_t arguments = 0;
-	std::vector<const Expression*> environment_expressions;
 public:
 	Function(const Expression* expression, const Type* type = nullptr): Expression(type), expression(expression) {}
 	Function(): expression(nullptr) {}
 	void accept(Visitor* visitor) const override {
-		visitor->visit_function(this);
+		//visitor->visit_function(this);
 	}
 	void set_expression(const Expression* expression) {
 		this->expression = expression;
@@ -187,19 +185,49 @@ public:
 	std::size_t add_argument() {
 		return arguments++;
 	}
-	std::size_t add_environment_expression(const Expression* expression) {
-		const std::size_t index = arguments + environment_expressions.size();
-		environment_expressions.push_back(expression);
-		return index;
-	}
 	const Expression* get_expression() const {
 		return expression;
 	}
 	std::size_t get_arguments() const {
 		return arguments;
 	}
+};
+
+class Closure: public Expression {
+	const Function* function;
+	std::vector<const Expression*> environment_expressions;
+public:
+	Closure(const Function* function, const Type* type = nullptr): Expression(type), function(function) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_closure(this);
+	}
+	std::size_t add_environment_expression(const Expression* expression) {
+		const std::size_t arguments = function ? function->get_arguments() : 0;
+		const std::size_t index = environment_expressions.size();
+		environment_expressions.push_back(expression);
+		return arguments + index;
+	}
+	const Function* get_function() const {
+		return function;
+	}
 	const std::vector<const Expression*>& get_environment_expressions() const {
 		return environment_expressions;
+	}
+};
+
+class ClosureAccess: public Expression {
+	const Expression* closure;
+	std::size_t index;
+public:
+	ClosureAccess(const Expression* closure, std::size_t index, const Type* type): Expression(type), closure(closure), index(index) {}
+	void accept(Visitor* visitor) const override {
+		visitor->visit_closure_access(this);
+	}
+	const Expression* get_closure() const {
+		return closure;
+	}
+	std::size_t get_index() const {
+		return index;
 	}
 };
 
@@ -263,37 +291,6 @@ public:
 	}
 	const std::vector<const Expression*>& get_arguments() const {
 		return arguments;
-	}
-};
-
-class Tuple: public Expression {
-	std::vector<const Expression*> elements;
-public:
-	Tuple(const Type* type): Expression(type) {}
-	void accept(Visitor* visitor) const override {
-		visitor->visit_tuple(this);
-	}
-	void add_element(const Expression* element) {
-		elements.push_back(element);
-	}
-	const std::vector<const Expression*>& get_elements() const {
-		return elements;
-	}
-};
-
-class TupleAccess: public Expression {
-	const Expression* tuple;
-	std::size_t index;
-public:
-	TupleAccess(const Expression* tuple, std::size_t index, const Type* type): Expression(type), tuple(tuple), index(index) {}
-	void accept(Visitor* visitor) const override {
-		visitor->visit_tuple_access(this);
-	}
-	const Expression* get_tuple() const {
-		return tuple;
-	}
-	std::size_t get_index() const {
-		return index;
 	}
 };
 

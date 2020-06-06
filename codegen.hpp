@@ -12,13 +12,13 @@ class Pass1: public Visitor {
 		if (id1 != id2) {
 			return false;
 		}
-		if (id1 == FunctionType::id) {
-			const FunctionType* function_type1 = static_cast<const FunctionType*>(type1);
-			const FunctionType* function_type2 = static_cast<const FunctionType*>(type2);
-			if (function_type1->get_function() != function_type2->get_function()) {
+		if (id1 == ClosureType::id) {
+			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
+			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
+			if (closure_type1->get_function() != closure_type2->get_function()) {
 				return false;
 			}
-			return equals(function_type1->get_environment_types(), function_type2->get_environment_types());
+			return equals(closure_type1->get_environment_types(), closure_type2->get_environment_types());
 		}
 		return true;
 	}
@@ -36,7 +36,7 @@ class Pass1: public Visitor {
 	static StringView print_type(const Type* type) {
 		switch (type->get_id()) {
 			case NumberType::id: return "Number";
-			case FunctionType::id: return "Function";
+			case ClosureType::id: return "Function";
 			case VoidType::id: return "Void";
 			default: return StringView();
 		}
@@ -133,16 +133,17 @@ public:
 			error(if_, "type of condition must be a number");
 		}
 	}
-	void visit_function(const Function* function) override {
-		FunctionType* type = new FunctionType(function);
-		Tuple* tuple = new Tuple(type);
-		for (const Expression* expression: function->get_environment_expressions()) {
+	void visit_closure(const Closure* closure) override {
+		ClosureType* type = new ClosureType(closure->get_function());
+		Closure* new_closure = new Closure(nullptr, type);
+		for (const Expression* expression: closure->get_environment_expressions()) {
 			const Expression* new_expression = evaluate(expression);
 			type->add_environment_type(new_expression->get_type());
-			tuple->add_element(new_expression);
+			new_closure->add_environment_expression(new_expression);
 		}
-		expression = tuple;
+		expression = new_closure;
 	}
+	void visit_closure_access(const ClosureAccess* closure_access) override {}
 	void visit_argument(const Argument* argument) override {
 		if (argument->get_index() < function_table[index].old_function->get_arguments()) {
 			const std::size_t argument_index = argument->get_index() + 1;
@@ -151,17 +152,17 @@ public:
 		}
 		else {
 			const std::size_t argument_index = argument->get_index() - function_table[index].old_function->get_arguments();
-			const FunctionType* tuple_type = static_cast<const FunctionType*>(function_table[index].argument_types[0]);
-			const Type* type = tuple_type->get_environment_types()[argument_index];
-			expression = new TupleAccess(new Argument(0, tuple_type), argument_index, type);
+			const ClosureType* closure_type = static_cast<const ClosureType*>(function_table[index].argument_types[0]);
+			const Type* type = closure_type->get_environment_types()[argument_index];
+			expression = new ClosureAccess(new Argument(0, closure_type), argument_index, type);
 		}
 	}
 	void visit_call(const Call* call) override {
 		const Expression* object = evaluate(call->get_object());
-		if (object->get_type_id() != FunctionType::id) {
+		if (object->get_type_id() != ClosureType::id) {
 			error("call to a value that is not a function");
 		}
-		const Function* old_function = static_cast<const FunctionType*>(object->get_type())->get_function();
+		const Function* old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
 		if (call->get_arguments().size() != old_function->get_arguments()) {
 			error(format("call with % arguments to a function that accepts % arguments", print_number(call->get_arguments().size()), print_number(old_function->get_arguments())));
 		}
@@ -221,8 +222,6 @@ public:
 		}
 		expression = new_intrinsic;
 	}
-	void visit_tuple(const Tuple* tuple) override {}
-	void visit_tuple_access(const TupleAccess* tuple_access) override {}
 	void visit_bind(const Bind* bind) override {
 		const Expression* left = evaluate(bind->get_left());
 		const Expression* right = evaluate(bind->get_right());
@@ -282,7 +281,14 @@ class Pass2 {
 			if_->get_then_expression()->accept(this);
 			if_->get_else_expression()->accept(this);
 		}
-		void visit_function(const Function* function) override {}
+		void visit_closure(const Closure* closure) override {
+			for (const Expression* expression: closure->get_environment_expressions()) {
+				expression->accept(this);
+			}
+		}
+		void visit_closure_access(const ClosureAccess* closure_access) override {
+			closure_access->get_closure()->accept(this);
+		}
 		void visit_argument(const Argument* argument) override {}
 		void visit_call(const Call* call) override {
 			for (const Expression* argument: call->get_arguments()) {
@@ -299,14 +305,6 @@ class Pass2 {
 			for (const Expression* argument: intrinsic->get_arguments()) {
 				argument->accept(this);
 			}
-		}
-		void visit_tuple(const Tuple* tuple) override {
-			for (const Expression* element: tuple->get_elements()) {
-				element->accept(this);
-			}
-		}
-		void visit_tuple_access(const TupleAccess* tuple_access) override {
-			tuple_access->get_tuple()->accept(this);
 		}
 		void visit_bind(const Bind* bind) override {
 			bind->get_left()->accept(this);
@@ -341,7 +339,17 @@ class Pass2 {
 			const Expression* else_expression = evaluate(if_->get_else_expression());
 			expression = new If(condition, then_expression, else_expression, if_->get_type());
 		}
-		void visit_function(const Function* function) override {}
+		void visit_closure(const Closure* closure) override {
+			Closure* new_closure = new Closure(nullptr, closure->get_type());
+			for (const Expression* expression: closure->get_environment_expressions()) {
+				new_closure->add_environment_expression(evaluate(expression));
+			}
+			expression = new_closure;
+		}
+		void visit_closure_access(const ClosureAccess* closure_access) override {
+			const Expression* closure = evaluate(closure_access->get_closure());
+			expression = new ClosureAccess(closure, closure_access->get_index(), closure_access->get_type());
+		}
 		void visit_argument(const Argument* argument) override {
 			if (function_table[index].should_inline()) {
 				expression = arguments[argument->get_index()];
@@ -385,17 +393,6 @@ class Pass2 {
 			}
 			expression = new_intrinsic;
 		}
-		void visit_tuple(const Tuple* tuple) override {
-			Tuple* new_tuple = new Tuple(tuple->get_type());
-			for (const Expression* element: tuple->get_elements()) {
-				new_tuple->add_element(evaluate(element));
-			}
-			expression = new_tuple;
-		}
-		void visit_tuple_access(const TupleAccess* tuple_access) override {
-			const Expression* tuple = evaluate(tuple_access->get_tuple());
-			expression = new TupleAccess(tuple, tuple_access->get_index(), tuple_access->get_type());
-		}
 		void visit_bind(const Bind* bind) override {
 			const Expression* left = evaluate(bind->get_left());
 			const Expression* right = evaluate(bind->get_right());
@@ -421,9 +418,9 @@ class CodegenX86: public Visitor {
 		switch (type->get_id()) {
 			case NumberType::id:
 				return 4;
-			case FunctionType::id: {
+			case ClosureType::id: {
 				int size = 0;
-				for (const Type* type: static_cast<const FunctionType*>(type)->get_environment_types()) {
+				for (const Type* type: static_cast<const ClosureType*>(type)->get_environment_types()) {
 					size += get_type_size(type);
 				}
 				return size;
@@ -577,7 +574,11 @@ public:
 		assembler.comment("end");
 		jump_end.set_target(assembler.get_position());
 	}
-	void visit_function(const Function* function) override {}
+	void visit_closure(const Closure* closure) override {
+		for (const Expression* expression: closure->get_environment_expressions()) {
+			evaluate(expression);
+		}
+	}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
 		const Type* type = function_table[index].look_up(argument->get_index(), location);
@@ -628,20 +629,15 @@ public:
 			assembler.MOVZX(EAX, EAX);
 		}
 	}
-	void visit_tuple(const Tuple* tuple) override {
-		for (const Expression* element: tuple->get_elements()) {
-			evaluate(element);
-		}
-	}
-	void visit_tuple_access(const TupleAccess* tuple_access) override {
-		evaluate(tuple_access->get_tuple());
-		// assert(tuple_access->get_tuple()->get_type_id() == FunctionType::id);
-		const std::vector<const Type*>& types = static_cast<const FunctionType*>(tuple_access->get_tuple()->get_type())->get_environment_types();
+	void visit_closure_access(const ClosureAccess* closure_access) override {
+		evaluate(closure_access->get_closure());
+		// assert(closure_access->get_closure()->get_type_id() == ClosureType::id);
+		const std::vector<const Type*>& types = static_cast<const ClosureType*>(closure_access->get_closure()->get_type())->get_environment_types();
 		std::uint32_t before = 0, size = 0, after = 0;
 		for (std::size_t i = 0; i < types.size(); ++i) {
-			if (i < tuple_access->get_index()) before += get_type_size(types[i]);
-			else if (i == tuple_access->get_index()) size += get_type_size(types[i]);
-			else if (i > tuple_access->get_index()) after += get_type_size(types[i]);
+			if (i < closure_access->get_index()) before += get_type_size(types[i]);
+			else if (i == closure_access->get_index()) size += get_type_size(types[i]);
+			else if (i > closure_access->get_index()) after += get_type_size(types[i]);
 		}
 		if (after > 0) {
 			assembler.ADD(ESP, after);
@@ -778,7 +774,6 @@ public:
 		printer.println("  }");
 		this->result = result;
 	}
-	void visit_function(const Function* function) override {}
 	void visit_argument(const Argument* argument) override {
 		result = argument->get_index();
 	}
@@ -807,9 +802,9 @@ public:
 			// TODO
 		}
 	}
-	void visit_tuple(const Tuple* tuple) override {
+	void visit_closure(const Closure* closure) override {
 		std::vector<std::size_t> elements;
-		for (const Expression* element: tuple->get_elements()) {
+		for (const Expression* element: closure->get_environment_expressions()) {
 			elements.push_back(evaluate(element));
 		}
 		result = variable++;
@@ -819,10 +814,10 @@ public:
 		}
 		printer.println("];");
 	}
-	void visit_tuple_access(const TupleAccess* tuple_access) override {
-		const std::size_t tuple = evaluate(tuple_access->get_tuple());
+	void visit_closure_access(const ClosureAccess* closure_access) override {
+		const std::size_t closure = evaluate(closure_access->get_closure());
 		result = variable++;
-		printer.println(format("  const v% = v%[%];", print_number(result), print_number(tuple), print_number(tuple_access->get_index())));
+		printer.println(format("  const v% = v%[%];", print_number(result), print_number(closure), print_number(closure_access->get_index())));
 	}
 	void visit_bind(const Bind* bind) override {
 		evaluate(bind->get_left());

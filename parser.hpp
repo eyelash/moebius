@@ -44,9 +44,9 @@ static constexpr BinaryOperator operators[][5] = {
 class Scope {
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
-	Function* function;
+	Closure* closure;
 public:
-	Scope(Scope* parent, Function* function = nullptr): parent(parent), function(function) {}
+	Scope(Scope* parent, Closure* closure = nullptr): parent(parent), closure(closure) {}
 	Scope* get_parent() const {
 		return parent;
 	}
@@ -58,10 +58,10 @@ public:
 		if (iterator != variables.end()) {
 			return iterator->second;
 		}
-		if (function) {
+		if (closure) {
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
-					const std::size_t index = function->add_environment_expression(expression);
+					const std::size_t index = closure->add_environment_expression(expression);
 					Argument* argument = new Argument(index);
 					add_variable(name, argument);
 					return argument;
@@ -276,7 +276,8 @@ class MoebiusParser: private Parser {
 			expect("(");
 			parse_white_space();
 			Function* function = new Function();
-			Scope scope(current_scope, function);
+			Closure* closure = new Closure(function);
+			Scope scope(current_scope, closure);
 			current_scope = &scope;
 			while (cursor && *cursor != ')') {
 				const StringView name = parse_identifier();
@@ -292,7 +293,7 @@ class MoebiusParser: private Parser {
 			const Expression* expression = parse_expression();
 			function->set_expression(expression);
 			current_scope = scope.get_parent();
-			return function;
+			return closure;
 		}
 		else if (parse("'")) {
 			if (!cursor) {
@@ -382,13 +383,13 @@ public:
 		Intrinsic* intrinsic = new Intrinsic("putChar", new VoidType());
 		intrinsic->add_argument(index);
 		function->set_expression(intrinsic);
-		return function;
+		return new Closure(function);
 	}
 	const Expression* create_getChar() {
 		Function* function = new Function();
 		Intrinsic* intrinsic = new Intrinsic("getChar", new NumberType());
 		function->set_expression(intrinsic);
-		return function;
+		return new Closure(function);
 	}
 	const Expression* parse_program() {
 		parse_white_space();
