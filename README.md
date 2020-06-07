@@ -13,10 +13,13 @@
   - [x] x86
   - [ ] C
   - [x] JavaScript
-- [ ] inlining
-- [ ] constant propagation
-- [ ] tail call optimization
-- [ ] common subexpression elimination
+- optimizations
+  - [x] monomorphization
+  - [x] dead code elimination
+  - [ ] inlining
+  - [ ] constant propagation
+  - [ ] tail call optimization
+  - [ ] common subexpression elimination
 - [ ] fix memory leaks
 - [ ] testing
 - [ ] logical operators (`&&`, `||` and `!`)

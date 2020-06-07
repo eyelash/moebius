@@ -194,8 +194,9 @@ public:
 				++c;
 			}
 		}
+		unsigned int column = 1 + (c - line_start);
 
-		printer.print(bold(format("%:%: ", file_name, print_number(line_number))));
+		printer.print(bold(format("%:%:%: ", file_name, print_number(line_number), print_number(column))));
 		printer.print(bold(red("error: ")));
 		printer.print(t);
 		printer.print('\n');
@@ -212,7 +213,7 @@ public:
 			printer.print(*c == '\t' ? '\t' : ' ');
 			++c;
 		}
-		printer.print('^');
+		printer.print(bold(red('^')));
 		printer.print('\n');
 	}
 };

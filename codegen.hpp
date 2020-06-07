@@ -488,10 +488,8 @@ public:
 		assembler.PUSH(number->get_value());
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
-		const Expression* left = binary_expression->get_left();
-		const Expression* right = binary_expression->get_right();
-		evaluate(left);
-		evaluate(right);
+		evaluate(binary_expression->get_left());
+		evaluate(binary_expression->get_right());
 		assembler.POP(EBX);
 		assembler.POP(EAX);
 		switch (binary_expression->get_operation()) {
@@ -575,6 +573,27 @@ public:
 			evaluate(expression);
 		}
 	}
+	void visit_closure_access(const ClosureAccess* closure_access) override {
+		evaluate(closure_access->get_closure());
+		// assert(closure_access->get_closure()->get_type_id() == ClosureType::id);
+		const std::vector<const Type*>& types = static_cast<const ClosureType*>(closure_access->get_closure()->get_type())->get_environment_types();
+		std::uint32_t before = 0, size = 0, after = 0;
+		for (std::size_t i = 0; i < types.size(); ++i) {
+			if (i < closure_access->get_index()) before += get_type_size(types[i]);
+			else if (i == closure_access->get_index()) size += get_type_size(types[i]);
+			else if (i > closure_access->get_index()) after += get_type_size(types[i]);
+		}
+		if (after > 0) {
+			assembler.ADD(ESP, after);
+		}
+		if (before > 0) {
+			for (std::uint32_t i = 0; i < size; i += 4) {
+				assembler.MOV(EAX, PTR(ESP, i));
+				assembler.MOV(PTR(ESP, before + i), EAX);
+			}
+			assembler.ADD(ESP, before);
+		}
+	}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
 		const Type* type = function_table[index].look_up(argument->get_index(), location);
@@ -625,27 +644,6 @@ public:
 			assembler.MOVZX(EAX, EAX);
 		}
 	}
-	void visit_closure_access(const ClosureAccess* closure_access) override {
-		evaluate(closure_access->get_closure());
-		// assert(closure_access->get_closure()->get_type_id() == ClosureType::id);
-		const std::vector<const Type*>& types = static_cast<const ClosureType*>(closure_access->get_closure()->get_type())->get_environment_types();
-		std::uint32_t before = 0, size = 0, after = 0;
-		for (std::size_t i = 0; i < types.size(); ++i) {
-			if (i < closure_access->get_index()) before += get_type_size(types[i]);
-			else if (i == closure_access->get_index()) size += get_type_size(types[i]);
-			else if (i > closure_access->get_index()) after += get_type_size(types[i]);
-		}
-		if (after > 0) {
-			assembler.ADD(ESP, after);
-		}
-		if (before > 0) {
-			for (std::uint32_t i = 0; i < size; i += 4) {
-				assembler.MOV(EAX, PTR(ESP, i));
-				assembler.MOV(PTR(ESP, before + i), EAX);
-			}
-			assembler.ADD(ESP, before);
-		}
-	}
 	void visit_bind(const Bind* bind) override {
 		evaluate(bind->get_left());
 		evaluate(bind->get_right());
@@ -682,7 +680,7 @@ public:
 			assembler.MOV(ESP, EBP);
 			assembler.POP(EBP);
 			assembler.RET();
-			++function_table.done;
+			function_table.done += 1;
 		}
 		for (const DeferredCall& deferred_call: function_table.deferred_calls) {
 			const std::size_t target = function_table[deferred_call.function_index].position;
@@ -770,6 +768,23 @@ public:
 		printer.println("  }");
 		this->result = result;
 	}
+	void visit_closure(const Closure* closure) override {
+		std::vector<std::size_t> elements;
+		for (const Expression* element: closure->get_environment_expressions()) {
+			elements.push_back(evaluate(element));
+		}
+		result = variable++;
+		printer.print(format("  const v% = [", print_number(result)));
+		for (const std::size_t element: elements) {
+			printer.print(format("v%,", print_number(element)));
+		}
+		printer.println("];");
+	}
+	void visit_closure_access(const ClosureAccess* closure_access) override {
+		const std::size_t closure = evaluate(closure_access->get_closure());
+		result = variable++;
+		printer.println(format("  const v% = v%[%];", print_number(result), print_number(closure), print_number(closure_access->get_index())));
+	}
 	void visit_argument(const Argument* argument) override {
 		result = argument->get_index();
 	}
@@ -797,23 +812,6 @@ public:
 		else if (intrinsic->name_equals("getChar")) {
 			// TODO
 		}
-	}
-	void visit_closure(const Closure* closure) override {
-		std::vector<std::size_t> elements;
-		for (const Expression* element: closure->get_environment_expressions()) {
-			elements.push_back(evaluate(element));
-		}
-		result = variable++;
-		printer.print(format("  const v% = [", print_number(result)));
-		for (const std::size_t element: elements) {
-			printer.print(format("v%,", print_number(element)));
-		}
-		printer.println("];");
-	}
-	void visit_closure_access(const ClosureAccess* closure_access) override {
-		const std::size_t closure = evaluate(closure_access->get_closure());
-		result = variable++;
-		printer.println(format("  const v% = v%[%];", print_number(result), print_number(closure), print_number(closure_access->get_index())));
 	}
 	void visit_bind(const Bind* bind) override {
 		evaluate(bind->get_left());
@@ -843,7 +841,7 @@ public:
 			const std::size_t result = codegen.evaluate(function_table[index].function->get_expression());
 			printer.println(format("  return v%;", print_number(result)));
 			printer.println("}");
-			++function_table.done;
+			function_table.done += 1;
 		}
 		printer.println("</script></head><body></body></html>");
 	}

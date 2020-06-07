@@ -42,13 +42,17 @@ static constexpr BinaryOperator operators[][5] = {
 };
 
 class Scope {
+	Scope*& current_scope;
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
 	Closure* closure;
 public:
-	Scope(Scope* parent, Closure* closure = nullptr): parent(parent), closure(closure) {}
-	Scope* get_parent() const {
-		return parent;
+	Scope(Scope*& current_scope, Closure* closure = nullptr): current_scope(current_scope), closure(closure) {
+		parent = current_scope;
+		current_scope = this;
+	}
+	~Scope() {
+		current_scope = parent;
 	}
 	void add_variable(const StringView& name, const Expression* value) {
 		variables[name] = value;
@@ -173,7 +177,7 @@ public:
 };
 
 class MoebiusParser: private Parser {
-	Scope* current_scope;
+	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const T& t) {
 		Printer printer(stderr);
 		cursor.get_position().print_error(printer, t);
@@ -278,7 +282,6 @@ class MoebiusParser: private Parser {
 			Function* function = new Function();
 			Closure* closure = new Closure(function);
 			Scope scope(current_scope, closure);
-			current_scope = &scope;
 			while (cursor && *cursor != ')') {
 				const StringView name = parse_identifier();
 				const std::size_t index = function->add_argument();
@@ -292,7 +295,6 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			const Expression* expression = parse_expression();
 			function->set_expression(expression);
-			current_scope = scope.get_parent();
 			return closure;
 		}
 		else if (parse("'")) {
@@ -351,7 +353,6 @@ class MoebiusParser: private Parser {
 	}
 	const Expression* parse_scope() {
 		Scope scope(current_scope);
-		current_scope = &scope;
 		const Expression* result = nullptr;
 		while (true) {
 			if (parse("let", alphanumeric)) {
@@ -373,11 +374,10 @@ class MoebiusParser: private Parser {
 				break;
 			}
 		}
-		current_scope = scope.get_parent();
 		return result;
 	}
 public:
-	MoebiusParser(const SourceFile* file): Parser(file), current_scope(nullptr) {}
+	MoebiusParser(const SourceFile* file): Parser(file) {}
 	const Expression* create_putChar() {
 		Function* function = new Function();
 		const std::size_t index = function->add_argument();
@@ -394,10 +394,9 @@ public:
 	}
 	const Expression* parse_program() {
 		parse_white_space();
-		Scope scope(nullptr);
+		Scope scope(current_scope);
 		scope.add_variable("putChar", create_putChar());
 		scope.add_variable("getChar", create_getChar());
-		current_scope = &scope;
 		return parse_scope();
 	}
 };

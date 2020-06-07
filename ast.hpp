@@ -176,9 +176,7 @@ class Function: public Expression {
 public:
 	Function(const Expression* expression, const Type* type = nullptr): Expression(type), expression(expression) {}
 	Function(): expression(nullptr) {}
-	void accept(Visitor* visitor) const override {
-		//visitor->visit_function(this);
-	}
+	void accept(Visitor* visitor) const override {}
 	void set_expression(const Expression* expression) {
 		this->expression = expression;
 	}
