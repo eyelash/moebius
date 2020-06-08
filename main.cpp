@@ -3,8 +3,6 @@
 #include <string>
 
 int main(int argc, char** argv) {
-	const Expression* expr = parse(argv[1]);
-	if (expr) {
-		codegen(expr, (std::string(argv[1]) + ".exe").c_str());
-	}
+	const Function* main_function = parse(argv[1]);
+	codegen(main_function, (std::string(argv[1]) + ".exe").c_str());
 }

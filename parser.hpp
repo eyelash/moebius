@@ -46,11 +46,15 @@ class Scope {
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
 	Closure* closure;
+	Block* block;
 public:
-	Scope(Scope*& current_scope, Closure* closure = nullptr): current_scope(current_scope), closure(closure) {
+	Scope(Scope*& current_scope, Closure* closure, Block* block): current_scope(current_scope), closure(closure), block(block) {
 		parent = current_scope;
 		current_scope = this;
 	}
+	Scope(Scope*& current_scope, Closure* closure): Scope(current_scope, closure, nullptr) {}
+	Scope(Scope*& current_scope, Block* block): Scope(current_scope, nullptr, block) {}
+	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr) {}
 	~Scope() {
 		current_scope = parent;
 	}
@@ -66,7 +70,7 @@ public:
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
 					const std::size_t index = closure->add_environment_expression(expression);
-					const Expression* argument = new ClosureAccess(new Argument(0), index);
+					const Expression* argument = create<ClosureAccess>(create<Argument>(0), index);
 					add_variable(name, argument);
 					return argument;
 				}
@@ -76,6 +80,19 @@ public:
 			return parent->look_up(name);
 		}
 		return nullptr;
+	}
+	void add_expression(Expression* expression) {
+		if (block) {
+			block->add_expression(expression);
+		}
+		else {
+			parent->add_expression(expression);
+		}
+	}
+	template <class T, class... A> T* create(A&&... arguments) {
+		T* expression = new T(std::forward<A>(arguments)...);
+		add_expression(expression);
+		return expression;
 	}
 };
 
@@ -216,7 +233,7 @@ class MoebiusParser: private Parser {
 			number += *cursor - '0';
 			++cursor;
 		}
-		return new Number(number);
+		return current_scope->create<Number>(number);
 	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
@@ -266,13 +283,22 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			expect(")");
 			parse_white_space();
-			const Expression* then_expression = parse_expression();
+			If* if_ = new If(condition);
+			if_->set_position(position);
+			{
+				Scope scope(current_scope, if_->get_then_block());
+				const Expression* then_expression = parse_expression();
+				if_->set_then_expression(then_expression);
+			}
 			parse_white_space();
 			expect("else");
 			parse_white_space();
-			const Expression* else_expression = parse_expression();
-			If* if_ = new If(condition, then_expression, else_expression);
-			if_->set_position(position);
+			{
+				Scope scope(current_scope, if_->get_else_block());
+				const Expression* else_expression = parse_expression();
+				if_->set_else_expression(else_expression);
+			}
+			current_scope->add_expression(if_);
 			return if_;
 		}
 		else if (parse("fn", alphanumeric)) {
@@ -281,20 +307,23 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			Function* function = new Function();
 			Closure* closure = new Closure(function);
-			Scope scope(current_scope, closure);
-			while (cursor && *cursor != ')') {
-				const StringView name = parse_identifier();
-				const std::size_t index = function->add_argument();
-				scope.add_variable(name, new Argument(index));
-				parse_white_space();
-				if (parse(",")) {
+			{
+				Scope scope(current_scope, closure, function->get_block());
+				while (cursor && *cursor != ')') {
+					const StringView name = parse_identifier();
+					const std::size_t index = function->add_argument();
+					scope.add_variable(name, current_scope->create<Argument>(index));
 					parse_white_space();
+					if (parse(",")) {
+						parse_white_space();
+					}
 				}
+				expect(")");
+				parse_white_space();
+				const Expression* expression = parse_expression();
+				function->set_expression(expression);
 			}
-			expect(")");
-			parse_white_space();
-			const Expression* expression = parse_expression();
-			function->set_expression(expression);
+			current_scope->add_expression(closure);
 			return closure;
 		}
 		else if (parse("'")) {
@@ -304,7 +333,7 @@ class MoebiusParser: private Parser {
 			const char c = *cursor;
 			++cursor;
 			expect("'");
-			return new Number(c);
+			return current_scope->create<Number>(c);
 		}
 		else if (copy().parse(numeric)) {
 			return parse_number();
@@ -332,6 +361,7 @@ class MoebiusParser: private Parser {
 					}
 				}
 				expect(")");
+				current_scope->add_expression(call);
 				expression = call;
 				parse_white_space();
 			}
@@ -345,6 +375,7 @@ class MoebiusParser: private Parser {
 			const Expression* right = parse_expression(level + 1);
 			Expression* expression = op.create(left, right);
 			expression->set_position(position);
+			current_scope->add_expression(expression);
 			left = expression;
 			parse_white_space();
 			position = cursor.get_position();
@@ -380,28 +411,35 @@ public:
 	MoebiusParser(const SourceFile* file): Parser(file) {}
 	const Expression* create_putChar() {
 		Function* function = new Function();
+		Closure* closure = current_scope->create<Closure>(function);
+		Scope scope(current_scope, function->get_block());
 		const std::size_t index = function->add_argument();
-		Intrinsic* intrinsic = new Intrinsic("putChar", new VoidType());
-		intrinsic->add_argument(index);
+		const Expression* argument = current_scope->create<Argument>(index);
+		Intrinsic* intrinsic = current_scope->create<Intrinsic>("putChar", new VoidType());
+		intrinsic->add_argument(argument);
 		function->set_expression(intrinsic);
-		return new Closure(function);
+		return closure;
 	}
 	const Expression* create_getChar() {
 		Function* function = new Function();
-		Intrinsic* intrinsic = new Intrinsic("getChar", new NumberType());
+		Closure* closure = current_scope->create<Closure>(function);
+		Scope scope(current_scope, function->get_block());
+		Intrinsic* intrinsic = current_scope->create<Intrinsic>("getChar", new NumberType());
 		function->set_expression(intrinsic);
-		return new Closure(function);
+		return closure;
 	}
-	const Expression* parse_program() {
+	const Function* parse_program() {
 		parse_white_space();
-		Scope scope(current_scope);
+		Function* main_function = new Function();
+		Scope scope(current_scope, main_function->get_block());
 		scope.add_variable("putChar", create_putChar());
 		scope.add_variable("getChar", create_getChar());
-		return parse_scope();
+		main_function->set_expression(parse_scope());
+		return main_function;
 	}
 };
 
-const Expression* parse(const char* file_name) {
+const Function* parse(const char* file_name) {
 	SourceFile file(file_name);
 	MoebiusParser parser(&file);
 	return parser.parse_program();

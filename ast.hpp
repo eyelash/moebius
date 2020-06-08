@@ -82,6 +82,7 @@ class Expression {
 	const Type* type;
 	SourcePosition position;
 public:
+	const Expression* next_expression = nullptr;
 	Expression(const Type* type = nullptr): type(type) {}
 	virtual void accept(Visitor* visitor) const = 0;
 	const Type* get_type() const {
@@ -98,6 +99,53 @@ public:
 	}
 	const SourcePosition& get_position() const {
 		return position;
+	}
+};
+
+class Block {
+	const Expression* first = nullptr;
+	Expression* last = nullptr;
+	const Expression* result = nullptr;
+public:
+	void add_expression(Expression* expression) {
+		if (first == nullptr) {
+			first = expression;
+		}
+		if (last) {
+			last->next_expression = expression;
+		}
+		last = expression;
+	}
+	void clear() {
+		first = nullptr;
+		last = nullptr;
+	}
+	void set_result(const Expression* expression) {
+		result = expression;
+	}
+	const Expression* get_result() const {
+		return result;
+	}
+	class Iterator {
+		const Expression* expression;
+	public:
+		constexpr Iterator(const Expression* expression): expression(expression) {}
+		constexpr bool operator !=(const Iterator& rhs) const {
+			return expression != rhs.expression;
+		}
+		Iterator& operator ++() {
+			expression = expression->next_expression;
+			return *this;
+		}
+		constexpr const Expression* operator *() const {
+			return expression;
+		}
+	};
+	constexpr Iterator begin() const {
+		return Iterator(first);
+	}
+	constexpr Iterator end() const {
+		return Iterator(nullptr);
 	}
 };
 
@@ -152,42 +200,65 @@ public:
 
 class If: public Expression {
 	const Expression* condition;
-	const Expression* then_expression;
-	const Expression* else_expression;
+	Block then_block;
+	Block else_block;
 public:
-	If(const Expression* condition, const Expression* then_expression, const Expression* else_expression, const Type* type = nullptr): Expression(type), condition(condition), then_expression(then_expression), else_expression(else_expression) {}
+	If(const Expression* condition, const Type* type = nullptr): Expression(type), condition(condition) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_if(this);
+	}
+	void set_then_expression(const Expression* then_expression) {
+		then_block.set_result(then_expression);
+	}
+	void set_else_expression(const Expression* else_expression) {
+		else_block.set_result(else_expression);
 	}
 	const Expression* get_condition() const {
 		return condition;
 	}
 	const Expression* get_then_expression() const {
-		return then_expression;
+		return then_block.get_result();
 	}
 	const Expression* get_else_expression() const {
-		return else_expression;
+		return else_block.get_result();
+	}
+	Block* get_then_block() {
+		return &then_block;
+	}
+	const Block& get_then_block() const {
+		return then_block;
+	}
+	Block* get_else_block() {
+		return &else_block;
+	}
+	const Block& get_else_block() const {
+		return else_block;
 	}
 };
 
 class Function: public Expression {
-	const Expression* expression;
+	Block block;
 	std::size_t arguments = 1;
 public:
-	Function(const Expression* expression, const Type* type = nullptr): Expression(type), expression(expression) {}
-	Function(): expression(nullptr) {}
+	Function(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor* visitor) const override {}
 	void set_expression(const Expression* expression) {
-		this->expression = expression;
+		block.set_result(expression);
 	}
 	std::size_t add_argument() {
 		return arguments++;
 	}
 	const Expression* get_expression() const {
-		return expression;
+		return block.get_result();
 	}
 	std::size_t get_arguments() const {
 		return arguments;
+	}
+	Block* get_block() {
+		return &block;
+	}
+	const Block& get_block() const {
+		return block;
 	}
 };
 
@@ -272,9 +343,6 @@ public:
 	Intrinsic(const char* name, const Type* type): Expression(type), name(name) {}
 	void accept(Visitor* visitor) const override {
 		visitor->visit_intrinsic(this);
-	}
-	void add_argument(std::size_t index) {
-		arguments.push_back(new Argument(index));
 	}
 	void add_argument(const Expression* expression) {
 		arguments.push_back(expression);

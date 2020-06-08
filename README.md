@@ -16,7 +16,7 @@
 - optimizations
   - [x] monomorphization
   - [x] dead code elimination
-  - [ ] inlining
+  - [x] inlining
   - [ ] constant propagation
   - [ ] tail call optimization
   - [ ] common subexpression elimination
