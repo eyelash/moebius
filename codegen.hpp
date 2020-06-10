@@ -501,105 +501,149 @@ class CodegenX86: public Visitor {
 			return functions.size();
 		}
 	};
+	std::uint32_t result;
 	FunctionTable& function_table;
 	const std::size_t index;
 	A& assembler;
+	std::uint32_t variable = 0;
+	std::map<const Expression*,std::uint32_t> cache;
 	CodegenX86(FunctionTable& function_table, std::size_t index, A& assembler): function_table(function_table), index(index), assembler(assembler) {}
-	void evaluate(const Expression* expression) {
-		expression->accept(this);
+	void evaluate(const Block& block) {
+		for (const Expression* expression: block) {
+			result = 0;
+			expression->accept(this);
+			cache[expression] = result;
+		}
+	}
+	std::uint32_t allocate(std::uint32_t size) {
+		variable -= size;
+		return variable;
 	}
 public:
 	void visit_number(const Number* number) override {
-		assembler.PUSH(number->get_value());
+		result = allocate(4);
+		assembler.MOV(EAX, number->get_value());
+		assembler.MOV(PTR(EBP, result), EAX);
 	}
 	void visit_binary_expression(const BinaryExpression* binary_expression) override {
-		evaluate(binary_expression->get_left());
-		evaluate(binary_expression->get_right());
-		assembler.POP(EBX);
-		assembler.POP(EAX);
+		const std::uint32_t left = cache[binary_expression->get_left()];
+		const std::uint32_t right = cache[binary_expression->get_right()];
+		assembler.MOV(EAX, PTR(EBP, left));
+		assembler.MOV(EBX, PTR(EBP, right));
+		result = allocate(4);
 		switch (binary_expression->get_operation()) {
 			case BinaryOperation::ADD:
 				assembler.ADD(EAX, EBX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::SUB:
 				assembler.SUB(EAX, EBX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::MUL:
 				assembler.IMUL(EBX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::DIV:
 				assembler.CDQ();
 				assembler.IDIV(EBX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::REM:
 				assembler.CDQ();
 				assembler.IDIV(EBX);
-				assembler.PUSH(EDX);
+				assembler.MOV(PTR(EBP, result), EDX);
 				break;
 			case BinaryOperation::EQ:
 				assembler.CMP(EAX, EBX);
 				assembler.SETE(EAX);
 				assembler.MOVZX(EAX, EAX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::NE:
 				assembler.CMP(EAX, EBX);
 				assembler.SETNE(EAX);
 				assembler.MOVZX(EAX, EAX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::LT:
 				assembler.CMP(EAX, EBX);
 				assembler.SETL(EAX);
 				assembler.MOVZX(EAX, EAX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::LE:
 				assembler.CMP(EAX, EBX);
 				assembler.SETLE(EAX);
 				assembler.MOVZX(EAX, EAX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::GT:
 				assembler.CMP(EAX, EBX);
 				assembler.SETG(EAX);
 				assembler.MOVZX(EAX, EAX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 			case BinaryOperation::GE:
 				assembler.CMP(EAX, EBX);
 				assembler.SETGE(EAX);
 				assembler.MOVZX(EAX, EAX);
-				assembler.PUSH(EAX);
+				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 		}
 	}
 	void visit_if(const If* if_) override {
-		const Expression* condition = if_->get_condition();
-		evaluate(condition);
-		assembler.POP(EAX);
+		const std::uint32_t condition = cache[if_->get_condition()];
+		assembler.MOV(EAX, PTR(EBP, condition));
 		assembler.CMP(EAX, 0);
+		const std::uint32_t size = get_type_size(if_->get_type());
+		const std::uint32_t if_result = allocate(size);
 		const Jump jump_else = assembler.JE();
 		assembler.comment("if");
-		evaluate(if_->get_then_expression());
+		evaluate(if_->get_then_block());
+		const std::uint32_t then_result = cache[if_->get_then_expression()];
+		for (std::uint32_t i = 0; i < size; i += 4) {
+			assembler.MOV(EAX, PTR(EBP, then_result + i));
+			assembler.MOV(PTR(EBP, if_result + i), EAX);
+		}
 		const Jump jump_end = assembler.JMP();
 		assembler.comment("else");
 		jump_else.set_target(assembler.get_position());
-		evaluate(if_->get_else_expression());
+		evaluate(if_->get_else_block());
+		const std::uint32_t else_result = cache[if_->get_else_expression()];
+		for (std::uint32_t i = 0; i < size; i += 4) {
+			assembler.MOV(EAX, PTR(EBP, else_result + i));
+			assembler.MOV(PTR(EBP, if_result + i), EAX);
+		}
 		assembler.comment("end");
 		jump_end.set_target(assembler.get_position());
+		result = if_result;
 	}
 	void visit_closure(const Closure* closure) override {
-		for (const Expression* expression: closure->get_environment_expressions()) {
-			evaluate(expression);
+		const std::uint32_t size = get_type_size(closure->get_type());
+		const std::vector<const Expression*>& environment = closure->get_environment_expressions();
+		if (environment.size() == 0) {
+			return;
+		}
+		if (environment.size() == 1) {
+			result = cache[environment[0]];
+		}
+		else {
+			std::uint32_t destination = allocate(size);
+			result = destination;
+			for (const Expression* expression: environment) {
+				const std::uint32_t element_size = get_type_size(expression->get_type());
+				const std::uint32_t source = cache[expression];
+				for (std::uint32_t i = 0; i < element_size; i += 4) {
+					assembler.MOV(EAX, PTR(EBP, source + i));
+					assembler.MOV(PTR(EBP, destination + i), EAX);
+				}
+				destination += element_size;
+			}
 		}
 	}
 	void visit_closure_access(const ClosureAccess* closure_access) override {
-		evaluate(closure_access->get_closure());
+		const std::uint32_t closure = cache[closure_access->get_closure()];
 		// assert(closure_access->get_closure()->get_type_id() == ClosureType::id);
 		const std::vector<const Type*>& types = static_cast<const ClosureType*>(closure_access->get_closure()->get_type())->get_environment_types();
 		std::uint32_t before = 0, size = 0, after = 0;
@@ -608,35 +652,31 @@ public:
 			else if (i == closure_access->get_index()) size += get_type_size(types[i]);
 			else if (i > closure_access->get_index()) after += get_type_size(types[i]);
 		}
-		if (after > 0) {
-			assembler.ADD(ESP, after);
-		}
-		if (before > 0) {
-			for (std::uint32_t i = 0; i < size; i += 4) {
-				assembler.MOV(EAX, PTR(ESP, i));
-				assembler.MOV(PTR(ESP, before + i), EAX);
-			}
-			assembler.ADD(ESP, before);
-		}
+		result = closure + before;
 	}
 	void visit_argument(const Argument* argument) override {
 		std::uint32_t location;
 		const Type* type = function_table[index].look_up(argument->get_index(), location);
-		const std::uint32_t size = get_type_size(type);
-		for (std::uint32_t i = 0; i < size; i += 4) {
-			assembler.MOV(EAX, PTR(EBP, 8 + location + size - 4 - i));
-			assembler.PUSH(EAX);
-		}
+		result = 8 + location;
 	}
 	void visit_call(const Call* call) override {
 		std::vector<const Type*> argument_types;
 		for (const Expression* argument: call->get_arguments()) {
-			evaluate(argument);
 			argument_types.push_back(argument->get_type());
 		}
 		const std::size_t new_index = function_table.look_up(call->get_function(), argument_types);
 		const std::uint32_t input_size = function_table[new_index].input_size;
 		const std::uint32_t output_size = function_table[new_index].output_size;
+		assembler.MOV(ESP, EBP);
+		assembler.ADD(ESP, variable);
+		for (const Expression* argument: call->get_arguments()) {
+			const std::uint32_t argument_size = get_type_size(argument->get_type());
+			const std::uint32_t argument_location = cache[argument];
+			for (std::uint32_t i = 0; i < argument_size; i += 4) {
+				assembler.MOV(EAX, PTR(EBP, argument_location + argument_size - 4 - i));
+				assembler.PUSH(EAX);
+			}
+		}
 		if (output_size > input_size) {
 			// negative in order to grow the stack
 			assembler.ADD(ESP, input_size - output_size);
@@ -646,40 +686,43 @@ public:
 		if (output_size < input_size) {
 			assembler.ADD(ESP, input_size - output_size);
 		}
+		variable -= output_size;
+		result = variable;
 	}
 	void visit_intrinsic(const Intrinsic* intrinsic) override {
 		if (intrinsic->name_equals("putChar")) {
-			evaluate(intrinsic->get_arguments()[0]);
+			const std::uint32_t argument = cache[intrinsic->get_arguments()[0]];
 			assembler.comment("putChar");
 			assembler.MOV(EAX, 0x04);
 			assembler.MOV(EBX, 1); // stdout
-			assembler.MOV(ECX, ESP);
+			assembler.MOV(ECX, EBP);
+			assembler.ADD(ECX, argument);
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
 			assembler.POP(EAX);
 		}
 		else if (intrinsic->name_equals("getChar")) {
+			result = allocate(4);
 			assembler.comment("getChar");
 			assembler.PUSH(0);
 			assembler.MOV(EAX, 0x03);
 			assembler.MOV(EBX, 0); // stdin
-			assembler.MOV(ECX, ESP);
+			assembler.MOV(ECX, EBP);
+			assembler.ADD(ECX, result);
+			assembler.MOV(PTR(ECX), EBX);
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
-			assembler.MOVZX(EAX, EAX);
 		}
 	}
-	void visit_bind(const Bind* bind) override {
-		evaluate(bind->get_left());
-		evaluate(bind->get_right());
-	}
-	static void codegen(const Expression* expression, const char* path) {
+	void visit_bind(const Bind* bind) override {}
+	static void codegen(const Function* main_function, const char* path) {
 		FunctionTable function_table;
 		A assembler;
 		{
 			// the main function
 			CodegenX86 codegen(function_table, 0, assembler);
-			codegen.evaluate(expression);
+			assembler.MOV(EBP, ESP);
+			codegen.evaluate(main_function->get_block());
 			assembler.comment("exit");
 			assembler.MOV(EAX, 0x01);
 			assembler.MOV(EBX, 0);
@@ -693,8 +736,11 @@ public:
 			assembler.MOV(EBP, ESP);
 			assembler.comment("--");
 			CodegenX86 codegen(function_table, index, assembler);
-			codegen.evaluate(function_table[index].function->get_expression());
+			codegen.evaluate(function_table[index].function->get_block());
+			const std::uint32_t output_location = codegen.cache[function_table[index].function->get_expression()];
 			assembler.comment("--");
+			assembler.MOV(ESP, EBP);
+			assembler.ADD(ESP, output_location);
 			const std::uint32_t output_size = function_table[index].output_size;
 			const std::uint32_t size = std::max(function_table[index].input_size, output_size);
 			for (std::uint32_t i = 0; i < output_size; i += 4) {
@@ -878,5 +924,5 @@ public:
 void codegen(const Function* main_function, const char* path) {
 	main_function = Pass1::run(main_function);
 	main_function = Pass2::run(main_function);
-	CodegenJS::codegen(main_function, path);
+	CodegenX86::codegen(main_function, path);
 }
