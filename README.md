@@ -20,6 +20,7 @@
   - [ ] constant propagation
   - [ ] tail call optimization
   - [ ] common subexpression elimination
+  - [ ] graph coloring register allocation
 - [ ] fix memory leaks
 - [ ] testing
 - [ ] logical operators (`&&`, `||` and `!`)

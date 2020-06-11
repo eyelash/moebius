@@ -93,7 +93,20 @@ class Assembler {
 		write<std::uint32_t>(5); // flags: PF_R|PF_X
 		write<std::uint32_t>(0); // align
 	}
-	void operands(Register op1, Ptr op2) {
+	void opcode(std::uint8_t opcode) {
+		write<std::uint8_t>(opcode);
+	}
+	void opcode_0F(std::uint8_t opcode) {
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(opcode);
+	}
+	void operand(std::uint8_t op1, Register op2) {
+		write<std::uint8_t>(3 << 6 | op1 << 3 | op2);
+	}
+	void operand(Register op) {
+		operand(0, op);
+	}
+	void operand(Register op1, Ptr op2) {
 		const std::uint32_t offset = op2.get_offset();
 		if (offset == 0) {
 			write<std::uint8_t>(op1 << 3 | op2.get_register());
@@ -137,138 +150,129 @@ public:
 		std::copy(data.begin(), data.end(), std::ostreambuf_iterator<char>(file));
 	}
 	void MOV(Register dst, Register src) {
-		write<std::uint8_t>(0x8B);
-		write<std::uint8_t>(0xC0 | dst << 3 | src);
+		opcode(0x8B);
+		operand(dst, src);
 	}
 	void MOV(Register dst, std::uint32_t value) {
-		write<std::uint8_t>(0xB8 | dst);
+		opcode(0xB8 | dst);
 		write<std::uint32_t>(value);
 	}
 	void MOV(Register dst, Ptr src) {
-		write<std::uint8_t>(0x8B);
-		operands(dst, src);
+		opcode(0x8B);
+		operand(dst, src);
 	}
 	void MOV(Ptr dst, Register src) {
-		write<std::uint8_t>(0x89);
-		operands(src, dst);
+		opcode(0x89);
+		operand(src, dst);
 	}
 	void MOVZX(Register dst, Register src) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0xB6);
-		write<std::uint8_t>(0xC0 | dst << 3 | src);
+		opcode_0F(0xB6);
+		operand(dst, src);
 	}
 	void LEA(Register dst, Ptr src) {
-		write<std::uint8_t>(0x8D);
-		operands(dst, src);
+		opcode(0x8D);
+		operand(dst, src);
 	}
 	void ADD(Register dst, Register src) {
-		write<std::uint8_t>(0x03);
-		write<std::uint8_t>(0xC0 | dst << 3 | src);
+		opcode(0x03);
+		operand(dst, src);
 	}
 	void ADD(Register dst, std::uint32_t value) {
-		write<std::uint8_t>(0x81);
-		write<std::uint8_t>(0xC0 | 0x0 << 3 | dst);
+		opcode(0x81);
+		operand(dst);
 		write<std::uint32_t>(value);
 	}
 	void SUB(Register dst, Register src) {
-		write<std::uint8_t>(0x2B);
-		write<std::uint8_t>(0xC0 | dst << 3 | src);
+		opcode(0x2B);
+		operand(dst, src);
 	}
 	// EDX:EAX = EAX * r
 	void IMUL(Register r) {
-		write<std::uint8_t>(0xF7);
-		write<std::uint8_t>(0xC0 | 0x5 << 3 | r);
+		opcode(0xF7);
+		operand(0x5, r);
 	}
 	// EAX = EDX:EAX / r
 	// EDX = EDX:EAX % r
 	void IDIV(Register r) {
-		write<std::uint8_t>(0xF7);
-		write<std::uint8_t>(0xC0 | 0x7 << 3 | r);
+		opcode(0xF7);
+		operand(0x7, r);
 	}
 	// EDX:EAX = EAX
 	void CDQ() {
-		write<std::uint8_t>(0x99);
+		opcode(0x99);
 	}
 	void PUSH(Register r) {
-		write<std::uint8_t>(0x50 | r);
+		opcode(0x50 | r);
 	}
 	void PUSH(std::uint32_t value) {
-		write<std::uint8_t>(0x68);
+		opcode(0x68);
 		write<std::uint32_t>(value);
 	}
 	void POP(Register r) {
-		write<std::uint8_t>(0x58 | r);
+		opcode(0x58 | r);
 	}
 	void CMP(Register r1, Register r2) {
-		write<std::uint8_t>(0x3B);
-		write<std::uint8_t>(0xC0 | r1 << 3 | r2);
+		opcode(0x3B);
+		operand(r1, r2);
 	}
 	void CMP(Register r, std::uint32_t value) {
-		write<std::uint8_t>(0x81);
-		write<std::uint8_t>(0xC0 | 0x7 << 3 | r);
+		opcode(0x81);
+		operand(0x7, r);
 		write<std::uint32_t>(value);
 	}
 	void SETE(Register r) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x94);
-		write<std::uint8_t>(0xC0 | r);
+		opcode_0F(0x94);
+		operand(r);
 	}
 	void SETNE(Register r) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x95);
-		write<std::uint8_t>(0xC0 | r);
+		opcode_0F(0x95);
+		operand(r);
 	}
 	void SETL(Register r) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x9C);
-		write<std::uint8_t>(0xC0 | r);
+		opcode_0F(0x9C);
+		operand(r);
 	}
 	void SETLE(Register r) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x9E);
-		write<std::uint8_t>(0xC0 | r);
+		opcode_0F(0x9E);
+		operand(r);
 	}
 	void SETG(Register r) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x9F);
-		write<std::uint8_t>(0xC0 | r);
+		opcode_0F(0x9F);
+		operand(r);
 	}
 	void SETGE(Register r) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x9D);
-		write<std::uint8_t>(0xC0 | r);
+		opcode_0F(0x9D);
+		operand(r);
 	}
 	Jump JMP() {
-		write<std::uint8_t>(0xE9);
+		opcode(0xE9);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
 		return Jump(this, position);
 	}
 	Jump JE() {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x84);
+		opcode_0F(0x84);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
 		return Jump(this, position);
 	}
 	Jump JNE() {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(0x85);
+		opcode_0F(0x85);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
 		return Jump(this, position);
 	}
 	Jump CALL() {
-		write<std::uint8_t>(0xE8);
+		opcode(0xE8);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
 		return Jump(this, position);
 	}
 	void RET() {
-		write<std::uint8_t>(0xC3);
+		opcode(0xC3);
 	}
 	void INT(std::uint8_t x) {
-		write<std::uint8_t>(0xCD);
+		opcode(0xCD);
 		write<std::uint8_t>(x);
 	}
 	template <class T> void comment(const T& t) {}
