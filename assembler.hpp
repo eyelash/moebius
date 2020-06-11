@@ -157,6 +157,10 @@ public:
 		write<std::uint8_t>(0xB6);
 		write<std::uint8_t>(0xC0 | dst << 3 | src);
 	}
+	void LEA(Register dst, Ptr src) {
+		write<std::uint8_t>(0x8D);
+		operands(dst, src);
+	}
 	void ADD(Register dst, Register src) {
 		write<std::uint8_t>(0x03);
 		write<std::uint8_t>(0xC0 | dst << 3 | src);
@@ -319,6 +323,9 @@ public:
 	}
 	void MOVZX(Register dst, Register src) {
 		printer.println(format("  MOVZX %, %", print_register(dst), print_register(src)));
+	}
+	void LEA(Register dst, Ptr src) {
+		printer.println(format("  LEA %, %", print_register(dst), print_ptr(src)));
 	}
 	void ADD(Register dst, Register src) {
 		printer.println(format("  ADD %, %", print_register(dst), print_register(src)));

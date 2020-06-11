@@ -695,8 +695,7 @@ public:
 			assembler.comment("putChar");
 			assembler.MOV(EAX, 0x04);
 			assembler.MOV(EBX, 1); // stdout
-			assembler.MOV(ECX, EBP);
-			assembler.ADD(ECX, argument);
+			assembler.LEA(ECX, PTR(EBP, argument));
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
 			assembler.POP(EAX);
@@ -704,11 +703,9 @@ public:
 		else if (intrinsic->name_equals("getChar")) {
 			result = allocate(4);
 			assembler.comment("getChar");
-			assembler.PUSH(0);
 			assembler.MOV(EAX, 0x03);
 			assembler.MOV(EBX, 0); // stdin
-			assembler.MOV(ECX, EBP);
-			assembler.ADD(ECX, result);
+			assembler.LEA(ECX, PTR(EBP, result));
 			assembler.MOV(PTR(ECX), EBX);
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
