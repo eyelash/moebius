@@ -93,6 +93,26 @@ class Assembler {
 		write<std::uint32_t>(5); // flags: PF_R|PF_X
 		write<std::uint32_t>(0); // align
 	}
+	void operands(Register op1, Ptr op2) {
+		const std::uint32_t offset = op2.get_offset();
+		if (offset == 0) {
+			write<std::uint8_t>(op1 << 3 | op2.get_register());
+		}
+		else if ((offset & 0xFFFFFF80) == 0 || (offset & 0xFFFFFF80) == 0xFFFFFF80) {
+			write<std::uint8_t>(1 << 6 | op1 << 3 | op2.get_register());
+			if (op2.get_register() == ESP) {
+				write<std::uint8_t>(ESP << 3 | ESP);
+			}
+			write<std::uint8_t>(offset);
+		}
+		else {
+			write<std::uint8_t>(2 << 6 | op1 << 3 | op2.get_register());
+			if (op2.get_register() == ESP) {
+				write<std::uint8_t>(ESP << 3 | ESP);
+			}
+			write<std::uint32_t>(offset);
+		}
+	}
 public:
 	class Jump {
 		Assembler* assembler;
@@ -126,19 +146,11 @@ public:
 	}
 	void MOV(Register dst, Ptr src) {
 		write<std::uint8_t>(0x8B);
-		write<std::uint8_t>(0x80 | dst << 3 | src.get_register());
-		if (src.get_register() == ESP) {
-			write<std::uint8_t>(0x24);
-		}
-		write<std::uint32_t>(src.get_offset());
+		operands(dst, src);
 	}
 	void MOV(Ptr dst, Register src) {
 		write<std::uint8_t>(0x89);
-		write<std::uint8_t>(0x80 | src << 3 | dst.get_register());
-		if (dst.get_register() == ESP) {
-			write<std::uint8_t>(0x24);
-		}
-		write<std::uint32_t>(dst.get_offset());
+		operands(src, dst);
 	}
 	void MOVZX(Register dst, Register src) {
 		write<std::uint8_t>(0x0F);
