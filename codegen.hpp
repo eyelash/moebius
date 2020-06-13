@@ -5,7 +5,7 @@
 #include <cstdlib>
 
 // type checking and monomorphization
-class Pass1: public Visitor {
+class Pass1: public Visitor<Expression*> {
 	static bool equals(const Type* type1, const Type* type2) {
 		const int id1 = type1->get_id();
 		const int id2 = type2->get_id();
@@ -86,36 +86,32 @@ class Pass1: public Visitor {
 			functions.erase(functions.begin() + index + 1, functions.end());
 		}
 	};
-	Expression* expression;
 	FunctionTable& function_table;
 	std::size_t index;
 	std::map<const Expression*, const Expression*> cache;
-	Pass1(FunctionTable& function_table, std::size_t index): expression(nullptr), function_table(function_table), index(index) {}
+	Pass1(FunctionTable& function_table, std::size_t index): function_table(function_table), index(index) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
 		for (const Expression* expression: source_block) {
-			this->expression = nullptr;
-			expression->accept(*this);
-			Expression* result = this->expression;
+			Expression* result = visit(*this, expression);
 			cache[expression] = result;
-			this->expression = nullptr;
 			destination_block->add_expression(result);
 		}
 	}
 public:
-	void visit_number(const Number& number) override {
-		expression = new Number(number.get_value());
+	Expression* visit_number(const Number& number) override {
+		return new Number(number.get_value());
 	}
-	void visit_binary_expression(const BinaryExpression& binary_expression) override {
+	Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Expression* left = cache[binary_expression.get_left()];
 		const Expression* right = cache[binary_expression.get_right()];
 		if ((left->get_type_id() == NumberType::id || left->get_type_id() == NeverType::id) && (right->get_type_id() == NumberType::id || right->get_type_id() == NeverType::id)) {
-			expression = new BinaryExpression(binary_expression.get_operation(), left, right);
+			return new BinaryExpression(binary_expression.get_operation(), left, right);
 		}
 		else {
 			error(binary_expression, format("binary expression of types % and %", print_type(left->get_type()), print_type(right->get_type())));
 		}
 	}
-	void visit_if(const If& if_) override {
+	Expression* visit_if(const If& if_) override {
 		const Expression* condition = cache[if_.get_condition()];
 		if (condition->get_type_id() == NumberType::id || condition->get_type_id() == NeverType::id) {
 			If* new_if = new If(condition);
@@ -137,13 +133,13 @@ public:
 			else {
 				error(if_, "if and else branches must return values of the same type");
 			}
-			expression = new_if;
+			return new_if;
 		}
 		else {
 			error(if_, "type of condition must be a number");
 		}
 	}
-	void visit_closure(const Closure& closure) override {
+	Expression* visit_closure(const Closure& closure) override {
 		ClosureType* type = new ClosureType(closure.get_function());
 		Closure* new_closure = new Closure(nullptr, type);
 		for (const Expression* expression: closure.get_environment_expressions()) {
@@ -151,21 +147,21 @@ public:
 			type->add_environment_type(new_expression->get_type());
 			new_closure->add_environment_expression(new_expression);
 		}
-		expression = new_closure;
+		return new_closure;
 	}
-	void visit_closure_access(const ClosureAccess& closure_access) override {
+	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
 		const std::size_t argument_index = closure_access.get_index();
 		const Expression* closure = cache[closure_access.get_closure()];
 		const ClosureType* closure_type = static_cast<const ClosureType*>(closure->get_type());
 		const Type* type = closure_type->get_environment_types()[argument_index];
-		expression = new ClosureAccess(closure, argument_index, type);
+		return new ClosureAccess(closure, argument_index, type);
 	}
-	void visit_argument(const Argument& argument) override {
+	Expression* visit_argument(const Argument& argument) override {
 		const std::size_t argument_index = argument.get_index();
 		const Type* type = function_table[index].argument_types[argument_index];
-		expression = new Argument(argument_index, type);
+		return new Argument(argument_index, type);
 	}
-	void visit_call(const Call& call) override {
+	Expression* visit_call(const Call& call) override {
 		Call* new_call = new Call();
 		std::vector<const Type*> argument_types;
 		for (const Expression* argument: call.get_arguments()) {
@@ -218,9 +214,9 @@ public:
 				new_call->set_function(function_table[new_index].new_function);
 			}
 		}
-		expression = new_call;
+		return new_call;
 	}
-	void visit_intrinsic(const Intrinsic& intrinsic) override {
+	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(cache[argument]);
@@ -231,12 +227,12 @@ public:
 				error("argument of putChar must be a number");
 			}
 		}
-		expression = new_intrinsic;
+		return new_intrinsic;
 	}
-	void visit_bind(const Bind& bind) override {
+	Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = cache[bind.get_left()];
 		const Expression* right = cache[bind.get_right()];
-		expression = new Bind(left, right);
+		return new Bind(left, right);
 	}
 	static const Function* run(const Function* main_function) {
 		FunctionTable function_table;
@@ -281,13 +277,13 @@ class Pass2 {
 			return functions.size();
 		}
 	};
-	class Analyze: public Visitor {
+	class Analyze: public Visitor<void> {
 		FunctionTable& function_table;
 	public:
 		Analyze(FunctionTable& function_table): function_table(function_table) {}
 		void evaluate(const Block& block) {
 			for (const Expression* expression: block) {
-				expression->accept(*this);
+				visit(*this, expression);
 			}
 		}
 		void visit_number(const Number& number) override {}
@@ -310,65 +306,63 @@ class Pass2 {
 		void visit_intrinsic(const Intrinsic& intrinsic) override {}
 		void visit_bind(const Bind& bind) override {}
 	};
-	class Replace: public Visitor {
-		Expression* expression;
+	class Replace: public Visitor<Expression*> {
 		Block* current_block;
 		FunctionTable& function_table;
 		std::size_t index;
 		std::vector<Expression*> arguments;
 		std::map<const Expression*, Expression*> cache;
 	public:
-		Replace(FunctionTable& function_table, std::size_t index): expression(nullptr), function_table(function_table), index(index) {}
+		Replace(FunctionTable& function_table, std::size_t index): function_table(function_table), index(index) {}
 		void evaluate(Block* destination_block, const Block& source_block) {
 			Block* previous_block = current_block;
 			current_block = destination_block;
 			for (const Expression* expression: source_block) {
-				this->expression = nullptr;
-				expression->accept(*this);
-				if (this->expression) {
-					cache[expression] = this->expression;
-					destination_block->add_expression(this->expression);
-					this->expression = nullptr;
+				Expression* result = visit(*this, expression);
+				if (result) {
+					cache[expression] = result;
+					destination_block->add_expression(result);
 				}
 			}
 			destination_block->set_result(cache[source_block.get_result()]);
 			current_block = previous_block;
 		}
-		void visit_number(const Number& number) override {
-			expression = new Number(number.get_value());
+		Expression* visit_number(const Number& number) override {
+			return new Number(number.get_value());
 		}
-		void visit_binary_expression(const BinaryExpression& binary_expression) override {
+		Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 			const Expression* left = cache[binary_expression.get_left()];
 			const Expression* right = cache[binary_expression.get_right()];
-			expression = new BinaryExpression(binary_expression.get_operation(), left, right);
+			return new BinaryExpression(binary_expression.get_operation(), left, right);
 		}
-		void visit_if(const If& if_) override {
+		Expression* visit_if(const If& if_) override {
 			const Expression* condition = cache[if_.get_condition()];
 			If* new_if = new If(condition, if_.get_type());
 			evaluate(new_if->get_then_block(), if_.get_then_block());
 			evaluate(new_if->get_else_block(), if_.get_else_block());
-			expression = new_if;
+			return new_if;
 		}
-		void visit_closure(const Closure& closure) override {
+		Expression* visit_closure(const Closure& closure) override {
 			Closure* new_closure = new Closure(nullptr, closure.get_type());
 			for (const Expression* expression: closure.get_environment_expressions()) {
 				new_closure->add_environment_expression(cache[expression]);
 			}
-			expression = new_closure;
+			return new_closure;
 		}
-		void visit_closure_access(const ClosureAccess& closure_access) override {
+		Expression* visit_closure_access(const ClosureAccess& closure_access) override {
 			const Expression* closure = cache[closure_access.get_closure()];
-			expression = new ClosureAccess(closure, closure_access.get_index(), closure_access.get_type());
+			return new ClosureAccess(closure, closure_access.get_index(), closure_access.get_type());
 		}
-		void visit_argument(const Argument& argument) override {
+		Expression* visit_argument(const Argument& argument) override {
 			if (function_table[index].should_inline()) {
 				cache[&argument] = arguments[argument.get_index()];
+				return nullptr;
 			}
 			else {
-				expression = new Argument(argument.get_index(), argument.get_type());
+				return new Argument(argument.get_index(), argument.get_type());
 			}
 		}
-		void visit_call(const Call& call) override {
+		Expression* visit_call(const Call& call) override {
 			const std::size_t new_index = function_table.look_up(call.get_function());
 			if (function_table[new_index].should_inline()) {
 				Replace replace(function_table, new_index);
@@ -378,7 +372,7 @@ class Pass2 {
 				}
 				replace.evaluate(current_block, call.get_function()->get_block());
 				cache[&call] = replace.cache[call.get_function()->get_expression()];
-				expression = nullptr;
+				return nullptr;
 			}
 			else {
 				Call* new_call = new Call();
@@ -394,20 +388,20 @@ class Pass2 {
 				}
 				new_call->set_type(function_table[new_index].new_function->get_type());
 				new_call->set_function(function_table[new_index].new_function);
-				expression = new_call;
+				return new_call;
 			}
 		}
-		void visit_intrinsic(const Intrinsic& intrinsic) override {
+		Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 			Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
 			for (const Expression* argument: intrinsic.get_arguments()) {
 				new_intrinsic->add_argument(cache[argument]);
 			}
-			expression = new_intrinsic;
+			return new_intrinsic;
 		}
-		void visit_bind(const Bind& bind) override {
+		Expression* visit_bind(const Bind& bind) override {
 			const Expression* left = cache[bind.get_left()];
 			const Expression* right = cache[bind.get_right()];
-			expression = new Bind(left, right);
+			return new Bind(left, right);
 		}
 	};
 public:
@@ -423,7 +417,7 @@ public:
 	}
 };
 
-class CodegenX86: public Visitor {
+class CodegenX86: public Visitor<std::uint32_t> {
 	using A = Assembler;
 	using Jump = typename A::Jump;
 	static std::uint32_t get_type_size(const Type* type) {
@@ -492,7 +486,6 @@ class CodegenX86: public Visitor {
 			return functions.size();
 		}
 	};
-	std::uint32_t result;
 	FunctionTable& function_table;
 	const std::size_t index;
 	A& assembler;
@@ -501,9 +494,7 @@ class CodegenX86: public Visitor {
 	CodegenX86(FunctionTable& function_table, std::size_t index, A& assembler): function_table(function_table), index(index), assembler(assembler) {}
 	void evaluate(const Block& block) {
 		for (const Expression* expression: block) {
-			result = 0;
-			expression->accept(*this);
-			cache[expression] = result;
+			cache[expression] = visit(*this, expression);
 		}
 	}
 	std::uint32_t allocate(std::uint32_t size) {
@@ -517,17 +508,18 @@ class CodegenX86: public Visitor {
 		}
 	}
 public:
-	void visit_number(const Number& number) override {
-		result = allocate(4);
+	std::uint32_t visit_number(const Number& number) override {
+		const std::uint32_t result = allocate(4);
 		assembler.MOV(EAX, number.get_value());
 		assembler.MOV(PTR(EBP, result), EAX);
+		return result;
 	}
-	void visit_binary_expression(const BinaryExpression& binary_expression) override {
+	std::uint32_t visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const std::uint32_t left = cache[binary_expression.get_left()];
 		const std::uint32_t right = cache[binary_expression.get_right()];
 		assembler.MOV(EAX, PTR(EBP, left));
 		assembler.MOV(EBX, PTR(EBP, right));
-		result = allocate(4);
+		const std::uint32_t result = allocate(4);
 		switch (binary_expression.get_operation()) {
 			case BinaryOperation::ADD:
 				assembler.ADD(EAX, EBX);
@@ -588,8 +580,9 @@ public:
 				assembler.MOV(PTR(EBP, result), EAX);
 				break;
 		}
+		return result;
 	}
-	void visit_if(const If& if_) override {
+	std::uint32_t visit_if(const If& if_) override {
 		const std::uint32_t condition = cache[if_.get_condition()];
 		assembler.MOV(EAX, PTR(EBP, condition));
 		assembler.CMP(EAX, 0);
@@ -608,25 +601,26 @@ public:
 		memcopy(if_result, else_result, size);
 		assembler.comment("end");
 		jump_end.set_target(assembler.get_position());
-		result = if_result;
+		return if_result;
 	}
-	void visit_closure(const Closure& closure) override {
+	std::uint32_t visit_closure(const Closure& closure) override {
 		const std::uint32_t size = get_type_size(closure.get_type());
 		const std::vector<const Expression*>& environment = closure.get_environment_expressions();
 		if (environment.size() == 1) {
-			result = cache[environment[0]];
+			return cache[environment[0]];
 		}
 		else if (environment.size() > 1) {
 			std::uint32_t destination = allocate(size);
-			result = destination;
+			const std::uint32_t result = destination;
 			for (const Expression* expression: environment) {
 				const std::uint32_t element_size = get_type_size(expression->get_type());
 				memcopy(destination, cache[expression], element_size);
 				destination += element_size;
 			}
+			return result;
 		}
 	}
-	void visit_closure_access(const ClosureAccess& closure_access) override {
+	std::uint32_t visit_closure_access(const ClosureAccess& closure_access) override {
 		const std::uint32_t closure = cache[closure_access.get_closure()];
 		// assert(closure_access.get_closure()->get_type_id() == ClosureType::id);
 		const std::vector<const Type*>& types = static_cast<const ClosureType*>(closure_access.get_closure()->get_type())->get_environment_types();
@@ -634,14 +628,14 @@ public:
 		for (std::size_t i = 0; i < closure_access.get_index(); ++i) {
 			before += get_type_size(types[i]);
 		}
-		result = closure + before;
+		return closure + before;
 	}
-	void visit_argument(const Argument& argument) override {
+	std::uint32_t visit_argument(const Argument& argument) override {
 		std::uint32_t location;
 		function_table[index].look_up(argument.get_index(), location);
-		result = 8 + location;
+		return 8 + location;
 	}
-	void visit_call(const Call& call) override {
+	std::uint32_t visit_call(const Call& call) override {
 		std::vector<const Type*> argument_types;
 		for (const Expression* argument: call.get_arguments()) {
 			argument_types.push_back(argument->get_type());
@@ -666,9 +660,9 @@ public:
 			assembler.ADD(ESP, input_size - output_size);
 		}
 		variable -= output_size;
-		result = variable;
+		return variable;
 	}
-	void visit_intrinsic(const Intrinsic& intrinsic) override {
+	std::uint32_t visit_intrinsic(const Intrinsic& intrinsic) override {
 		if (intrinsic.name_equals("putChar")) {
 			const std::uint32_t argument = cache[intrinsic.get_arguments()[0]];
 			assembler.comment("putChar");
@@ -680,7 +674,7 @@ public:
 			assembler.POP(EAX);
 		}
 		else if (intrinsic.name_equals("getChar")) {
-			result = allocate(4);
+			const std::uint32_t result = allocate(4);
 			assembler.comment("getChar");
 			assembler.MOV(EAX, 0x03);
 			assembler.MOV(EBX, 0); // stdin
@@ -688,9 +682,10 @@ public:
 			assembler.MOV(PTR(ECX), EBX);
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
+			return result;
 		}
 	}
-	void visit_bind(const Bind& bind) override {}
+	std::uint32_t visit_bind(const Bind& bind) override {}
 	static void codegen(const Function* main_function, const char* path) {
 		FunctionTable function_table;
 		A assembler;
@@ -737,7 +732,7 @@ public:
 	}
 };
 
-class CodegenJS: public Visitor {
+class CodegenJS: public Visitor<std::size_t> {
 	static StringView print_operator(BinaryOperation operation) {
 		switch (operation) {
 			case BinaryOperation::ADD: return "+";
@@ -780,7 +775,6 @@ class CodegenJS: public Visitor {
 			return functions.size();
 		}
 	};
-	std::size_t result;
 	FunctionTable& function_table;
 	const std::size_t index;
 	Printer& printer;
@@ -789,23 +783,23 @@ class CodegenJS: public Visitor {
 	CodegenJS(FunctionTable& function_table, std::size_t index, Printer& printer): function_table(function_table), index(index), printer(printer) {}
 	void evaluate(const Block& block) {
 		for (const Expression* expression: block) {
-			result = 0;
-			expression->accept(*this);
-			cache[expression] = result;
+			cache[expression] = visit(*this, expression);
 		}
 	}
 public:
-	void visit_number(const Number& number) override {
-		result = variable++;
+	std::size_t visit_number(const Number& number) override {
+		const std::size_t result = variable++;
 		printer.println(format("  const v% = %;", print_number(result), print_number(number.get_value())));
+		return result;
 	}
-	void visit_binary_expression(const BinaryExpression& binary_expression) override {
+	std::size_t visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const std::size_t left = cache[binary_expression.get_left()];
 		const std::size_t right = cache[binary_expression.get_right()];
-		result = variable++;
+		const std::size_t result = variable++;
 		printer.println(format("  const v% = (v% % v%) | 0;", print_number(result), print_number(left), print_operator(binary_expression.get_operation()), print_number(right)));
+		return result;
 	}
-	void visit_if(const If& if_) override {
+	std::size_t visit_if(const If& if_) override {
 		const std::size_t condition = cache[if_.get_condition()];
 		const std::size_t result = variable++;
 		printer.println(format("  let v%;", print_number(result)));
@@ -818,54 +812,58 @@ public:
 		const std::size_t inner_else = cache[if_.get_else_expression()];
 		printer.println(format("  v% = v%;", print_number(result), print_number(inner_else)));
 		printer.println("  }");
-		this->result = result;
+		return result;
 	}
-	void visit_closure(const Closure& closure) override {
+	std::size_t visit_closure(const Closure& closure) override {
 		std::vector<std::size_t> elements;
 		for (const Expression* element: closure.get_environment_expressions()) {
 			elements.push_back(cache[element]);
 		}
-		result = variable++;
+		const std::size_t result = variable++;
 		printer.print(format("  const v% = [", print_number(result)));
 		for (const std::size_t element: elements) {
 			printer.print(format("v%,", print_number(element)));
 		}
 		printer.println("];");
+		return result;
 	}
-	void visit_closure_access(const ClosureAccess& closure_access) override {
+	std::size_t visit_closure_access(const ClosureAccess& closure_access) override {
 		const std::size_t closure = cache[closure_access.get_closure()];
-		result = variable++;
+		const std::size_t result = variable++;
 		printer.println(format("  const v% = v%[%];", print_number(result), print_number(closure), print_number(closure_access.get_index())));
+		return result;
 	}
-	void visit_argument(const Argument& argument) override {
-		result = argument.get_index();
+	std::size_t visit_argument(const Argument& argument) override {
+		return argument.get_index();
 	}
-	void visit_call(const Call& call) override {
+	std::size_t visit_call(const Call& call) override {
 		std::vector<std::size_t> arguments;
 		for (const Expression* argument: call.get_arguments()) {
 			arguments.push_back(cache[argument]);
 		}
 		const std::size_t new_index = function_table.look_up(call.get_function(), arguments.size());
-		result = variable++;
+		const std::size_t result = variable++;
 		printer.print(format("  const v% = f%(", print_number(result), print_number(new_index)));
 		for (const std::size_t argument: arguments) {
 			printer.print(format("v%,", print_number(argument)));
 		}
 		printer.println(");");
+		return result;
 	}
-	void visit_intrinsic(const Intrinsic& intrinsic) override {
+	std::size_t visit_intrinsic(const Intrinsic& intrinsic) override {
 		if (intrinsic.name_equals("putChar")) {
 			const std::size_t argument = cache[intrinsic.get_arguments()[0]];
 			printer.println(format("  const s = String.fromCharCode(v%);", print_number(argument)));
 			printer.println("  document.body.appendChild(s === '\\n' ? document.createElement('br') : document.createTextNode(s));");
-			result = variable++;
+			const std::size_t result = variable++;
 			printer.println(format("  const v% = null;", print_number(result)));
+			return result;
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			// TODO
 		}
 	}
-	void visit_bind(const Bind& bind) override {}
+	std::size_t visit_bind(const Bind& bind) override {}
 	static void codegen(const Function* main_function, const char* path) {
 		FunctionTable function_table;
 		Printer printer(stdout);
