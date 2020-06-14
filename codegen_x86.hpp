@@ -28,18 +28,18 @@ class CodegenX86: public Visitor<std::uint32_t> {
 	};
 	struct FunctionTableEntry {
 		const Function* function;
-		std::vector<const Type*> argument_types;
 		std::uint32_t input_size;
 		std::uint32_t output_size;
 		std::size_t position;
-		FunctionTableEntry(const Function* function, const std::vector<const Type*>& argument_types): function(function), argument_types(argument_types) {
+		FunctionTableEntry(const Function* function): function(function) {
 			input_size = 0;
-			for (const Type* type: argument_types) {
+			for (const Type* type: function->get_argument_types()) {
 				input_size += get_type_size(type);
 			}
 			output_size = get_type_size(function->get_expression()->get_type());
 		}
 		const Type* look_up(std::size_t index, std::uint32_t& location) const {
+			const std::vector<const Type*>& argument_types = function->get_argument_types();
 			location = std::max(input_size, output_size);
 			for (std::size_t i = 0; i < argument_types.size(); ++i) {
 				location -= get_type_size(argument_types[i]);
@@ -55,14 +55,14 @@ class CodegenX86: public Visitor<std::uint32_t> {
 	public:
 		std::vector<DeferredCall> deferred_calls;
 		std::size_t done = 0;
-		std::size_t look_up(const Function* function, const std::vector<const Type*>& argument_types) {
+		std::size_t look_up(const Function* function) {
 			std::size_t index;
 			for (index = 0; index < functions.size(); ++index) {
 				if (functions[index].function == function) {
 					return index;
 				}
 			}
-			functions.emplace_back(function, argument_types);
+			functions.emplace_back(function);
 			return index;
 		}
 		FunctionTableEntry& operator [](std::size_t index) {
@@ -222,11 +222,7 @@ public:
 		return 8 + location;
 	}
 	std::uint32_t visit_call(const Call& call) override {
-		std::vector<const Type*> argument_types;
-		for (const Expression* argument: call.get_arguments()) {
-			argument_types.push_back(argument->get_type());
-		}
-		const std::size_t new_index = function_table.look_up(call.get_function(), argument_types);
+		const std::size_t new_index = function_table.look_up(call.get_function());
 		const std::uint32_t input_size = function_table[new_index].input_size;
 		const std::uint32_t output_size = function_table[new_index].output_size;
 		std::uint32_t destination = variable;

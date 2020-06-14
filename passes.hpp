@@ -181,6 +181,7 @@ public:
 			function_table.add_entry(old_function, argument_types);
 			Pass1 pass1(function_table, new_index);
 			Function* new_function = new Function();
+			new_function->add_argument_types(argument_types);
 			pass1.evaluate(new_function->get_block(), old_function->get_block());
 			const Expression* new_expression = pass1.cache[old_function->get_expression()];
 			new_function->set_expression(new_expression);
@@ -379,6 +380,7 @@ class Pass2 {
 				}
 				if (function_table[new_index].new_function == nullptr) {
 					Function* new_function = new Function(call.get_function()->get_type());
+					new_function->add_argument_types(call.get_function()->get_argument_types());
 					function_table[new_index].new_function = new_function;
 					Replace replace(function_table, new_index);
 					replace.evaluate(new_function->get_block(), call.get_function()->get_block());
