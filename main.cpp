@@ -1,5 +1,7 @@
 #include "parser.hpp"
-#include "codegen.hpp"
+#include "passes.hpp"
+#include "codegen_x86.hpp"
+#include "codegen_js.hpp"
 #include <string>
 
 int main(int argc, char** argv) {
