@@ -108,10 +108,13 @@ class Assembler {
 	}
 	void operand(Register op1, Ptr op2) {
 		const std::uint32_t offset = op2.get_offset();
-		if (offset == 0) {
-			write<std::uint8_t>(op1 << 3 | op2.get_register());
+		if (offset == 0 && op2.get_register() != EBP) {
+			write<std::uint8_t>(0 << 6 | op1 << 3 | op2.get_register());
+			if (op2.get_register() == ESP) {
+				write<std::uint8_t>(ESP << 3 | ESP);
+			}
 		}
-		else if ((offset & 0xFFFFFF80) == 0 || (offset & 0xFFFFFF80) == 0xFFFFFF80) {
+		else if (offset + 128 < 256) {
 			write<std::uint8_t>(1 << 6 | op1 << 3 | op2.get_register());
 			if (op2.get_register() == ESP) {
 				write<std::uint8_t>(ESP << 3 | ESP);

@@ -21,13 +21,16 @@
   - [ ] tail call optimization
   - [ ] common subexpression elimination
   - [ ] graph coloring register allocation
+- types
+  - [x] integers
+  - [x] closures
+  - [ ] strings
+  - [ ] arrays
+  - [ ] structs
+  - [ ] sum types
+  - [ ] interfaces
 - [ ] fix memory leaks
 - [ ] testing
 - [ ] logical operators (`&&`, `||` and `!`)
 - [ ] monadic IO
-- [ ] strings
-- [ ] arrays
-- [ ] structs
-- [ ] sum types
-- [ ] interfaces
 - [ ] metaprogramming/reflection
