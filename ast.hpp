@@ -288,7 +288,7 @@ class Function {
 	std::vector<const Type*> argument_types;
 	const Type* return_type;
 public:
-	Function(const Type* type = nullptr): return_type(type) {}
+	Function(const Type* return_type = nullptr): return_type(return_type) {}
 	void set_expression(const Expression* expression) {
 		block.set_result(expression);
 	}
@@ -298,7 +298,7 @@ public:
 	void add_argument_types(const std::vector<const Type*>& argument_types) {
 		this->argument_types.insert(this->argument_types.end(), argument_types.begin(), argument_types.end());
 	}
-	void set_type(const Type* type) {
+	void set_return_type(const Type* type) {
 		this->return_type = type;
 	}
 	const Expression* get_expression() const {
@@ -310,7 +310,7 @@ public:
 	const std::vector<const Type*>& get_argument_types() const {
 		return argument_types;
 	}
-	const Type* get_type() const {
+	const Type* get_return_type() const {
 		return return_type;
 	}
 	Block* get_block() {

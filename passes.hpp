@@ -185,7 +185,7 @@ public:
 			pass1.evaluate(new_function->get_block(), old_function->get_block());
 			const Expression* new_expression = pass1.cache[old_function->get_expression()];
 			new_function->set_expression(new_expression);
-			new_function->set_type(new_expression->get_type());
+			new_function->set_return_type(new_expression->get_type());
 			function_table[new_index].new_function = new_function;
 			if (function_table.recursion == new_index) {
 				// reevaluate the expression in case of recursion
@@ -195,7 +195,7 @@ public:
 				pass1.evaluate(new_function->get_block(), old_function->get_block());
 				new_expression = pass1.cache[old_function->get_expression()];
 				new_function->set_expression(new_expression);
-				new_function->set_type(new_expression->get_type());
+				new_function->set_return_type(new_expression->get_type());
 			}
 			new_call->set_type(new_expression->get_type());
 			new_call->set_function(new_function);
@@ -209,7 +209,7 @@ public:
 				new_call->set_type(new NeverType());
 			}
 			else {
-				new_call->set_type(function_table[new_index].new_function->get_type());
+				new_call->set_type(function_table[new_index].new_function->get_return_type());
 				new_call->set_function(function_table[new_index].new_function);
 			}
 		}
@@ -366,8 +366,7 @@ class Pass2 {
 			if (function_table[new_index].should_inline()) {
 				Replace replace(function_table, new_index);
 				for (const Expression* argument: call.get_arguments()) {
-					Expression* new_argument = cache[argument];
-					replace.arguments.push_back(new_argument);
+					replace.arguments.push_back(cache[argument]);
 				}
 				replace.evaluate(current_block, call.get_function()->get_block());
 				return replace.cache[call.get_function()->get_expression()];
@@ -375,17 +374,16 @@ class Pass2 {
 			else {
 				Call* new_call = create<Call>();
 				for (const Expression* argument: call.get_arguments()) {
-					const Expression* new_argument = cache[argument];
-					new_call->add_argument(new_argument);
+					new_call->add_argument(cache[argument]);
 				}
 				if (function_table[new_index].new_function == nullptr) {
-					Function* new_function = new Function(call.get_function()->get_type());
+					Function* new_function = new Function(call.get_function()->get_return_type());
 					new_function->add_argument_types(call.get_function()->get_argument_types());
 					function_table[new_index].new_function = new_function;
 					Replace replace(function_table, new_index);
 					replace.evaluate(new_function->get_block(), call.get_function()->get_block());
 				}
-				new_call->set_type(function_table[new_index].new_function->get_type());
+				new_call->set_type(function_table[new_index].new_function->get_return_type());
 				new_call->set_function(function_table[new_index].new_function);
 				return new_call;
 			}
@@ -410,7 +408,7 @@ public:
 		Analyze analyze(function_table);
 		analyze.evaluate(main_function->get_block());
 		Replace replace(function_table, 0);
-		Function* new_function = new Function(main_function->get_type());
+		Function* new_function = new Function(main_function->get_return_type());
 		replace.evaluate(new_function->get_block(), main_function->get_block());
 		return new_function;
 	}

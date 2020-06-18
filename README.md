@@ -1,13 +1,13 @@
 # Moebius
 
-## selling points
+## Selling Points
 
 - simplicity
 - performance
 - safety
 - a fast compiler
 
-## to do
+## Roadmap
 
 - codegen
   - [x] x86
@@ -29,8 +29,11 @@
   - [ ] structs
   - [ ] sum types
   - [ ] interfaces
+- operators
+  - [x] arithmetic (`+`, `-`, `*`, `/`, and `%`)
+  - [x] relational (`==`, `!=`, `<`, `<=`, `>`, and `>=`)
+  - [ ] logical (`&&`, `||`, and `!`)
 - [ ] fix memory leaks
 - [ ] testing
-- [ ] logical operators (`&&`, `||` and `!`)
 - [ ] monadic IO
 - [ ] metaprogramming/reflection

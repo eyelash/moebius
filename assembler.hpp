@@ -55,6 +55,55 @@ class Assembler {
 			t >>= 8;
 		}
 	}
+	void opcode(std::uint8_t opcode) {
+		write<std::uint8_t>(opcode);
+	}
+	void opcode_0F(std::uint8_t opcode) {
+		write<std::uint8_t>(0x0F);
+		write<std::uint8_t>(opcode);
+	}
+	void ModRM(std::uint8_t mod, std::uint8_t reg, std::uint8_t rm) {
+		write<std::uint8_t>(mod << 6 | reg << 3 | rm);
+	}
+	void SIB(std::uint8_t scale, std::uint8_t index, std::uint8_t base) {
+		write<std::uint8_t>(scale << 6 | index << 3 | base);
+	}
+	void operand(std::uint8_t op1, Register op2) {
+		ModRM(3, op1, op2);
+	}
+	void operand(std::uint8_t op1, Ptr op2) {
+		const std::uint32_t offset = op2.get_offset();
+		if (offset == 0 && op2.get_register() != EBP) {
+			ModRM(0, op1, op2.get_register());
+			if (op2.get_register() == ESP) {
+				SIB(0, ESP, ESP);
+			}
+		}
+		else if (offset + 128 < 256) {
+			ModRM(1, op1, op2.get_register());
+			if (op2.get_register() == ESP) {
+				SIB(0, ESP, ESP);
+			}
+			write<std::uint8_t>(offset);
+		}
+		else {
+			ModRM(2, op1, op2.get_register());
+			if (op2.get_register() == ESP) {
+				SIB(0, ESP, ESP);
+			}
+			write<std::uint32_t>(offset);
+		}
+	}
+public:
+	class Jump {
+		Assembler* assembler;
+		std::size_t position;
+	public:
+		Jump(Assembler* assembler, std::size_t position): assembler(assembler), position(position) {}
+		void set_target(std::size_t target) const {
+			assembler->write<std::uint32_t>(position, target - (position + 4));
+		}
+	};
 	void write_elf_header(std::size_t entry_point = 0) {
 		write<std::uint8_t>(0x7f);
 		write<std::uint8_t>('E');
@@ -93,56 +142,6 @@ class Assembler {
 		write<std::uint32_t>(5); // flags: PF_R|PF_X
 		write<std::uint32_t>(0); // align
 	}
-	void opcode(std::uint8_t opcode) {
-		write<std::uint8_t>(opcode);
-	}
-	void opcode_0F(std::uint8_t opcode) {
-		write<std::uint8_t>(0x0F);
-		write<std::uint8_t>(opcode);
-	}
-	void operand(std::uint8_t op1, Register op2) {
-		write<std::uint8_t>(3 << 6 | op1 << 3 | op2);
-	}
-	void operand(Register op) {
-		operand(0, op);
-	}
-	void operand(Register op1, Ptr op2) {
-		const std::uint32_t offset = op2.get_offset();
-		if (offset == 0 && op2.get_register() != EBP) {
-			write<std::uint8_t>(0 << 6 | op1 << 3 | op2.get_register());
-			if (op2.get_register() == ESP) {
-				write<std::uint8_t>(ESP << 3 | ESP);
-			}
-		}
-		else if (offset + 128 < 256) {
-			write<std::uint8_t>(1 << 6 | op1 << 3 | op2.get_register());
-			if (op2.get_register() == ESP) {
-				write<std::uint8_t>(ESP << 3 | ESP);
-			}
-			write<std::uint8_t>(offset);
-		}
-		else {
-			write<std::uint8_t>(2 << 6 | op1 << 3 | op2.get_register());
-			if (op2.get_register() == ESP) {
-				write<std::uint8_t>(ESP << 3 | ESP);
-			}
-			write<std::uint32_t>(offset);
-		}
-	}
-public:
-	class Jump {
-		Assembler* assembler;
-		std::size_t position;
-	public:
-		Jump(Assembler* assembler, std::size_t position): assembler(assembler), position(position) {}
-		void set_target(std::size_t target) const {
-			assembler->write<std::uint32_t>(position, target - (position + 4));
-		}
-	};
-	Assembler() {
-		write_elf_header();
-		write_program_header();
-	}
 	std::size_t get_position() const {
 		return data.size();
 	}
@@ -168,6 +167,11 @@ public:
 		opcode(0x89);
 		operand(src, dst);
 	}
+	void MOV(Ptr dst, std::uint32_t imm) {
+		opcode(0xC7);
+		operand(0, dst);
+		write<std::uint32_t>(imm);
+	}
 	void MOVZX(Register dst, Register src) {
 		opcode_0F(0xB6);
 		operand(dst, src);
@@ -182,7 +186,7 @@ public:
 	}
 	void ADD(Register dst, std::uint32_t value) {
 		opcode(0x81);
-		operand(dst);
+		operand(0, dst);
 		write<std::uint32_t>(value);
 	}
 	void SUB(Register dst, Register src) {
@@ -225,27 +229,27 @@ public:
 	}
 	void SETE(Register r) {
 		opcode_0F(0x94);
-		operand(r);
+		operand(0, r);
 	}
 	void SETNE(Register r) {
 		opcode_0F(0x95);
-		operand(r);
+		operand(0, r);
 	}
 	void SETL(Register r) {
 		opcode_0F(0x9C);
-		operand(r);
+		operand(0, r);
 	}
 	void SETLE(Register r) {
 		opcode_0F(0x9E);
-		operand(r);
+		operand(0, r);
 	}
 	void SETG(Register r) {
 		opcode_0F(0x9F);
-		operand(r);
+		operand(0, r);
 	}
 	void SETGE(Register r) {
 		opcode_0F(0x9D);
-		operand(r);
+		operand(0, r);
 	}
 	Jump JMP() {
 		opcode(0xE9);
@@ -312,6 +316,8 @@ public:
 	public:
 		void set_target(std::size_t target) const {}
 	};
+	void write_elf_header(std::size_t entry_point = 0) {}
+	void write_program_header() {}
 	std::size_t get_position() const {
 		return 0;
 	}
@@ -327,6 +333,9 @@ public:
 	}
 	void MOV(Ptr dst, Register src) {
 		printer.println(format("  MOV %, %", print_ptr(dst), print_register(src)));
+	}
+	void MOV(Ptr dst, std::uint32_t imm) {
+		printer.println(format("  MOV %, %", print_ptr(dst), print_number(imm)));
 	}
 	void MOVZX(Register dst, Register src) {
 		printer.println(format("  MOVZX %, %", print_register(dst), print_register(src)));

@@ -21,21 +21,20 @@ class CodegenJS: public Visitor<std::size_t> {
 	}
 	struct FunctionTableEntry {
 		const Function* function;
-		std::size_t arguments;
-		FunctionTableEntry(const Function* function, std::size_t arguments): function(function), arguments(arguments) {}
+		FunctionTableEntry(const Function* function): function(function) {}
 	};
 	class FunctionTable {
 		std::vector<FunctionTableEntry> functions;
 	public:
 		std::size_t done = 0;
-		std::size_t look_up(const Function* function, std::size_t arguments) {
+		std::size_t look_up(const Function* function) {
 			std::size_t index;
 			for (index = 0; index < functions.size(); ++index) {
 				if (functions[index].function == function) {
 					return index;
 				}
 			}
-			functions.emplace_back(function, arguments);
+			functions.emplace_back(function);
 			return index;
 		}
 		FunctionTableEntry& operator [](std::size_t index) {
@@ -51,10 +50,11 @@ class CodegenJS: public Visitor<std::size_t> {
 	std::size_t variable = 1;
 	std::map<const Expression*, std::size_t> cache;
 	CodegenJS(FunctionTable& function_table, std::size_t index, Printer& printer): function_table(function_table), index(index), printer(printer) {}
-	void evaluate(const Block& block) {
+	std::size_t evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
 		}
+		return cache[block.get_result()];
 	}
 public:
 	std::size_t visit_number(const Number& number) override {
@@ -74,13 +74,11 @@ public:
 		const std::size_t result = variable++;
 		printer.println(format("  let v%;", print_number(result)));
 		printer.println(format("  if (v%) {", print_number(condition)));
-		evaluate(if_.get_then_block());
-		const std::size_t inner_then = cache[if_.get_then_expression()];
-		printer.println(format("  v% = v%;", print_number(result), print_number(inner_then)));
+		const std::size_t then_result = evaluate(if_.get_then_block());
+		printer.println(format("  v% = v%;", print_number(result), print_number(then_result)));
 		printer.println("  } else {");
-		evaluate(if_.get_else_block());
-		const std::size_t inner_else = cache[if_.get_else_expression()];
-		printer.println(format("  v% = v%;", print_number(result), print_number(inner_else)));
+		const std::size_t else_result = evaluate(if_.get_else_block());
+		printer.println(format("  v% = v%;", print_number(result), print_number(else_result)));
 		printer.println("  }");
 		return result;
 	}
@@ -111,7 +109,7 @@ public:
 		for (const Expression* argument: call.get_arguments()) {
 			arguments.push_back(cache[argument]);
 		}
-		const std::size_t new_index = function_table.look_up(call.get_function(), arguments.size());
+		const std::size_t new_index = function_table.look_up(call.get_function());
 		const std::size_t result = variable++;
 		printer.print(format("  const v% = f%(", print_number(result), print_number(new_index)));
 		for (const std::size_t argument: arguments) {
@@ -138,9 +136,9 @@ public:
 		FunctionTable function_table;
 		Printer printer(stdout);
 		printer.println("<!DOCTYPE html><html><head><script>");
+		printer.println("window.addEventListener('load', main);");
 		{
 			// the main function
-			printer.println("window.addEventListener('load', main);");
 			printer.println("function main() {");
 			CodegenJS codegen(function_table, 0, printer);
 			codegen.evaluate(main_function->get_block());
@@ -149,14 +147,14 @@ public:
 		while (function_table.done < function_table.size()) {
 			const std::size_t index = function_table.done;
 			printer.print(format("function f%(", print_number(index)));
-			for (std::size_t i = 0; i < function_table[index].arguments; ++i) {
+			const std::size_t arguments = function_table[index].function->get_argument_types().size();
+			for (std::size_t i = 0; i < arguments; ++i) {
 				printer.print(format("v%,", print_number(i)));
 			}
 			printer.println(") {");
 			CodegenJS codegen(function_table, index, printer);
-			codegen.variable = function_table[index].arguments;
-			codegen.evaluate(function_table[index].function->get_block());
-			const std::size_t result = codegen.cache[function_table[index].function->get_expression()];
+			codegen.variable = arguments;
+			const std::size_t result = codegen.evaluate(function_table[index].function->get_block());
 			printer.println(format("  return v%;", print_number(result)));
 			printer.println("}");
 			function_table.done += 1;

@@ -78,10 +78,11 @@ class CodegenX86: public Visitor<std::uint32_t> {
 	std::uint32_t variable = 0;
 	std::map<const Expression*,std::uint32_t> cache;
 	CodegenX86(FunctionTable& function_table, std::size_t index, A& assembler): function_table(function_table), index(index), assembler(assembler) {}
-	void evaluate(const Block& block) {
+	std::uint32_t evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
 		}
+		return cache[block.get_result()];
 	}
 	std::uint32_t allocate(std::uint32_t size) {
 		variable -= size;
@@ -96,8 +97,7 @@ class CodegenX86: public Visitor<std::uint32_t> {
 public:
 	std::uint32_t visit_number(const Number& number) override {
 		const std::uint32_t result = allocate(4);
-		assembler.MOV(EAX, number.get_value());
-		assembler.MOV(PTR(EBP, result), EAX);
+		assembler.MOV(PTR(EBP, result), number.get_value());
 		return result;
 	}
 	std::uint32_t visit_binary_expression(const BinaryExpression& binary_expression) override {
@@ -176,14 +176,12 @@ public:
 		const std::uint32_t result = allocate(size);
 		const Jump jump_else = assembler.JE();
 		assembler.comment("if");
-		evaluate(if_.get_then_block());
-		const std::uint32_t then_result = cache[if_.get_then_expression()];
+		const std::uint32_t then_result = evaluate(if_.get_then_block());
 		memcopy(result, then_result, size);
 		const Jump jump_end = assembler.JMP();
 		assembler.comment("else");
 		jump_else.set_target(assembler.get_position());
-		evaluate(if_.get_else_block());
-		const std::uint32_t else_result = cache[if_.get_else_expression()];
+		const std::uint32_t else_result = evaluate(if_.get_else_block());
 		memcopy(result, else_result, size);
 		assembler.comment("end");
 		jump_end.set_target(assembler.get_position());
@@ -271,6 +269,8 @@ public:
 	static void codegen(const Function* main_function, const char* path) {
 		FunctionTable function_table;
 		A assembler;
+		assembler.write_elf_header();
+		assembler.write_program_header();
 		{
 			// the main function
 			CodegenX86 codegen(function_table, 0, assembler);
@@ -289,11 +289,10 @@ public:
 			assembler.MOV(EBP, ESP);
 			assembler.comment("--");
 			CodegenX86 codegen(function_table, index, assembler);
-			codegen.evaluate(function_table[index].function->get_block());
-			const std::uint32_t output_location = codegen.cache[function_table[index].function->get_expression()];
+			const std::uint32_t result = codegen.evaluate(function_table[index].function->get_block());
 			assembler.comment("--");
 			assembler.MOV(ESP, EBP);
-			assembler.ADD(ESP, output_location);
+			assembler.ADD(ESP, result);
 			const std::uint32_t output_size = function_table[index].output_size;
 			const std::uint32_t size = std::max(function_table[index].input_size, output_size);
 			for (std::uint32_t i = 0; i < output_size; i += 4) {
