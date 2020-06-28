@@ -21,63 +21,38 @@ class CodegenX86: public Visitor<std::uint32_t> {
 				return 0;
 		}
 	}
+	static std::uint32_t get_input_size(const Function* function) {
+		std::uint32_t input_size = 0;
+		for (const Type* type: function->get_argument_types()) {
+			input_size += get_type_size(type);
+		}
+		return input_size;
+	}
+	static std::uint32_t get_output_size(const Function* function) {
+		return get_type_size(function->get_expression()->get_type());
+	}
+	static std::uint32_t get_argument_location(const Function* function, std::size_t index) {
+		const std::vector<const Type*>& argument_types = function->get_argument_types();
+		std::uint32_t location = std::max(get_input_size(function), get_output_size(function));
+		for (std::size_t i = 0; i < argument_types.size(); ++i) {
+			location -= get_type_size(argument_types[i]);
+			if (i == index) {
+				return location;
+			}
+		}
+		return location;
+	}
 	struct DeferredCall {
 		Jump jump;
-		std::size_t function_index;
-		DeferredCall(const Jump& jump, std::size_t function_index): jump(jump), function_index(function_index) {}
-	};
-	struct FunctionTableEntry {
 		const Function* function;
-		std::uint32_t input_size;
-		std::uint32_t output_size;
-		std::size_t position;
-		FunctionTableEntry(const Function* function): function(function) {
-			input_size = 0;
-			for (const Type* type: function->get_argument_types()) {
-				input_size += get_type_size(type);
-			}
-			output_size = get_type_size(function->get_expression()->get_type());
-		}
-		const Type* look_up(std::size_t index, std::uint32_t& location) const {
-			const std::vector<const Type*>& argument_types = function->get_argument_types();
-			location = std::max(input_size, output_size);
-			for (std::size_t i = 0; i < argument_types.size(); ++i) {
-				location -= get_type_size(argument_types[i]);
-				if (i == index) {
-					return argument_types[i];
-				}
-			}
-			return nullptr;
-		}
+		DeferredCall(const Jump& jump, const Function* function): jump(jump), function(function) {}
 	};
-	class FunctionTable {
-		std::vector<FunctionTableEntry> functions;
-	public:
-		std::vector<DeferredCall> deferred_calls;
-		std::size_t done = 0;
-		std::size_t look_up(const Function* function) {
-			std::size_t index;
-			for (index = 0; index < functions.size(); ++index) {
-				if (functions[index].function == function) {
-					return index;
-				}
-			}
-			functions.emplace_back(function);
-			return index;
-		}
-		FunctionTableEntry& operator [](std::size_t index) {
-			return functions[index];
-		}
-		std::size_t size() const {
-			return functions.size();
-		}
-	};
-	FunctionTable& function_table;
-	const std::size_t index;
+	std::vector<DeferredCall>& deferred_calls;
+	const Function* function;
 	A& assembler;
 	std::uint32_t variable = 0;
 	std::map<const Expression*,std::uint32_t> cache;
-	CodegenX86(FunctionTable& function_table, std::size_t index, A& assembler): function_table(function_table), index(index), assembler(assembler) {}
+	CodegenX86(std::vector<DeferredCall>& deferred_calls, const Function* function, A& assembler): deferred_calls(deferred_calls), function(function), assembler(assembler) {}
 	std::uint32_t evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
@@ -180,11 +155,11 @@ public:
 		memcopy(result, then_result, size);
 		const Jump jump_end = assembler.JMP();
 		assembler.comment("else");
-		jump_else.set_target(assembler.get_position());
+		jump_else.set_target(assembler, assembler.get_position());
 		const std::uint32_t else_result = evaluate(if_.get_else_block());
 		memcopy(result, else_result, size);
 		assembler.comment("end");
-		jump_end.set_target(assembler.get_position());
+		jump_end.set_target(assembler, assembler.get_position());
 		return result;
 	}
 	std::uint32_t visit_closure(const Closure& closure) override {
@@ -215,14 +190,12 @@ public:
 		return closure + before;
 	}
 	std::uint32_t visit_argument(const Argument& argument) override {
-		std::uint32_t location;
-		function_table[index].look_up(argument.get_index(), location);
+		const std::uint32_t location = get_argument_location(function, argument.get_index());
 		return 8 + location;
 	}
 	std::uint32_t visit_call(const Call& call) override {
-		const std::size_t new_index = function_table.look_up(call.get_function());
-		const std::uint32_t input_size = function_table[new_index].input_size;
-		const std::uint32_t output_size = function_table[new_index].output_size;
+		const std::uint32_t input_size = get_input_size(call.get_function());
+		const std::uint32_t output_size = get_output_size(call.get_function());
 		std::uint32_t destination = variable;
 		for (const Expression* argument: call.get_arguments()) {
 			const std::uint32_t argument_size = get_type_size(argument->get_type());
@@ -235,7 +208,7 @@ public:
 			assembler.ADD(ESP, input_size - output_size);
 		}
 		Jump jump = assembler.CALL();
-		function_table.deferred_calls.emplace_back(jump, new_index);
+		deferred_calls.emplace_back(jump, call.get_function());
 		if (output_size < input_size) {
 			assembler.ADD(ESP, input_size - output_size);
 		}
@@ -266,35 +239,33 @@ public:
 		}
 	}
 	std::uint32_t visit_bind(const Bind& bind) override {}
-	static void codegen(const Function* main_function, const char* path) {
-		FunctionTable function_table;
+	static void codegen(const Program& program, const char* path) {
+		std::vector<DeferredCall> deferred_calls;
+		std::map<const Function*, std::size_t> function_locations;
 		A assembler;
 		assembler.write_elf_header();
 		assembler.write_program_header();
 		{
-			// the main function
-			CodegenX86 codegen(function_table, 0, assembler);
-			assembler.MOV(EBP, ESP);
-			codegen.evaluate(main_function->get_block());
+			Jump jump = assembler.CALL();
+			deferred_calls.emplace_back(jump, program.get_main_function());
 			assembler.comment("exit");
 			assembler.MOV(EAX, 0x01);
 			assembler.MOV(EBX, 0);
 			assembler.INT(0x80);
 		}
-		while (function_table.done < function_table.size()) {
-			const std::size_t index = function_table.done;
+		for (const Function* function: program) {
 			assembler.comment("function");
-			function_table[index].position = assembler.get_position();
+			function_locations[function] = assembler.get_position();
 			assembler.PUSH(EBP);
 			assembler.MOV(EBP, ESP);
 			assembler.comment("--");
-			CodegenX86 codegen(function_table, index, assembler);
-			const std::uint32_t result = codegen.evaluate(function_table[index].function->get_block());
+			CodegenX86 codegen(deferred_calls, function, assembler);
+			const std::uint32_t result = codegen.evaluate(function->get_block());
 			assembler.comment("--");
 			assembler.MOV(ESP, EBP);
 			assembler.ADD(ESP, result);
-			const std::uint32_t output_size = function_table[index].output_size;
-			const std::uint32_t size = std::max(function_table[index].input_size, output_size);
+			const std::uint32_t output_size = get_output_size(function);
+			const std::uint32_t size = std::max(get_input_size(function), output_size);
 			for (std::uint32_t i = 0; i < output_size; i += 4) {
 				assembler.POP(EAX);
 				assembler.MOV(PTR(EBP, 8 + size - output_size + i), EAX);
@@ -303,11 +274,10 @@ public:
 			assembler.MOV(ESP, EBP);
 			assembler.POP(EBP);
 			assembler.RET();
-			function_table.done += 1;
 		}
-		for (const DeferredCall& deferred_call: function_table.deferred_calls) {
-			const std::size_t target = function_table[deferred_call.function_index].position;
-			deferred_call.jump.set_target(target);
+		for (const DeferredCall& deferred_call: deferred_calls) {
+			const std::size_t target = function_locations[deferred_call.function];
+			deferred_call.jump.set_target(assembler, target);
 		}
 		assembler.write_file(path);
 	}

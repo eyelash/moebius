@@ -19,29 +19,17 @@ class CodegenJS: public Visitor<std::size_t> {
 			default: return StringView();
 		}
 	}
-	struct FunctionTableEntry {
-		const Function* function;
-		FunctionTableEntry(const Function* function): function(function) {}
-	};
 	class FunctionTable {
-		std::vector<FunctionTableEntry> functions;
+		std::map<const Function*, std::size_t> functions;
 	public:
-		std::size_t done = 0;
 		std::size_t look_up(const Function* function) {
-			std::size_t index;
-			for (index = 0; index < functions.size(); ++index) {
-				if (functions[index].function == function) {
-					return index;
-				}
+			auto iterator = functions.find(function);
+			if (iterator != functions.end()) {
+				return iterator->second;
 			}
-			functions.emplace_back(function);
+			const std::size_t index = functions.size();
+			functions[function] = index;
 			return index;
-		}
-		FunctionTableEntry& operator [](std::size_t index) {
-			return functions[index];
-		}
-		std::size_t size() const {
-			return functions.size();
 		}
 	};
 	FunctionTable& function_table;
@@ -132,32 +120,30 @@ public:
 		}
 	}
 	std::size_t visit_bind(const Bind& bind) override {}
-	static void codegen(const Function* main_function, const char* path) {
+	static void codegen(const Program& program, const char* path) {
 		FunctionTable function_table;
 		Printer printer(stdout);
 		printer.println("<!DOCTYPE html><html><head><script>");
-		printer.println("window.addEventListener('load', main);");
+		printer.println("window.addEventListener('load', start);");
 		{
-			// the main function
-			printer.println("function main() {");
-			CodegenJS codegen(function_table, 0, printer);
-			codegen.evaluate(main_function->get_block());
+			printer.println("function start() {");
+			const std::size_t index = function_table.look_up(program.get_main_function());
+			printer.println(format("  f%();", print_number(index)));
 			printer.println("}");
 		}
-		while (function_table.done < function_table.size()) {
-			const std::size_t index = function_table.done;
+		for (const Function* function: program) {
+			const std::size_t index = function_table.look_up(function);
 			printer.print(format("function f%(", print_number(index)));
-			const std::size_t arguments = function_table[index].function->get_argument_types().size();
+			const std::size_t arguments = function->get_argument_types().size();
 			for (std::size_t i = 0; i < arguments; ++i) {
 				printer.print(format("v%,", print_number(i)));
 			}
 			printer.println(") {");
 			CodegenJS codegen(function_table, index, printer);
 			codegen.variable = arguments;
-			const std::size_t result = codegen.evaluate(function_table[index].function->get_block());
+			const std::size_t result = codegen.evaluate(function->get_block());
 			printer.println(format("  return v%;", print_number(result)));
 			printer.println("}");
-			function_table.done += 1;
 		}
 		printer.println("</script></head><body></body></html>");
 	}

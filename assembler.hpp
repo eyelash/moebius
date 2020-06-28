@@ -96,12 +96,11 @@ class Assembler {
 	}
 public:
 	class Jump {
-		Assembler* assembler;
 		std::size_t position;
 	public:
-		Jump(Assembler* assembler, std::size_t position): assembler(assembler), position(position) {}
-		void set_target(std::size_t target) const {
-			assembler->write<std::uint32_t>(position, target - (position + 4));
+		constexpr Jump(std::size_t position): position(position) {}
+		void set_target(Assembler& assembler, std::size_t target) const {
+			assembler.write<std::uint32_t>(position, target - (position + 4));
 		}
 	};
 	void write_elf_header(std::size_t entry_point = 0) {
@@ -255,25 +254,25 @@ public:
 		opcode(0xE9);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
-		return Jump(this, position);
+		return Jump(position);
 	}
 	Jump JE() {
 		opcode_0F(0x84);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
-		return Jump(this, position);
+		return Jump(position);
 	}
 	Jump JNE() {
 		opcode_0F(0x85);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
-		return Jump(this, position);
+		return Jump(position);
 	}
 	Jump CALL() {
 		opcode(0xE8);
 		const std::size_t position = data.size();
 		write<std::uint32_t>(0);
-		return Jump(this, position);
+		return Jump(position);
 	}
 	void RET() {
 		opcode(0xC3);
@@ -314,7 +313,7 @@ class TextAssembler {
 public:
 	class Jump {
 	public:
-		void set_target(std::size_t target) const {}
+		void set_target(TextAssembler& assembler, std::size_t target) const {}
 	};
 	void write_elf_header(std::size_t entry_point = 0) {}
 	void write_program_header() {}

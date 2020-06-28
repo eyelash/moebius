@@ -84,10 +84,11 @@ class Pass1: public Visitor<Expression*> {
 			functions.erase(functions.begin() + index + 1, functions.end());
 		}
 	};
+	Program* program;
 	FunctionTable& function_table;
 	std::size_t index;
 	std::map<const Expression*, const Expression*> cache;
-	Pass1(FunctionTable& function_table, std::size_t index): function_table(function_table), index(index) {}
+	Pass1(Program* program, FunctionTable& function_table, std::size_t index): program(program), function_table(function_table), index(index) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
 		for (const Expression* expression: source_block) {
 			Expression* result = visit(*this, expression);
@@ -179,8 +180,9 @@ public:
 		const std::size_t new_index = function_table.look_up(old_function, argument_types);
 		if (new_index == function_table.size()) {
 			function_table.add_entry(old_function, argument_types);
-			Pass1 pass1(function_table, new_index);
+			Pass1 pass1(program, function_table, new_index);
 			Function* new_function = new Function();
+			program->add_function(new_function);
 			new_function->add_argument_types(argument_types);
 			pass1.evaluate(new_function->get_block(), old_function->get_block());
 			const Expression* new_expression = pass1.cache[old_function->get_expression()];
@@ -233,13 +235,15 @@ public:
 		const Expression* right = cache[bind.get_right()];
 		return new Bind(left, right);
 	}
-	static const Function* run(const Function* main_function) {
+	static const Program* run(const Function* main_function) {
+		Program* new_program = new Program();
 		FunctionTable function_table;
-		Pass1 pass1(function_table, 0);
+		Pass1 pass1(new_program, function_table, 0);
 		Function* new_function = new Function();
+		new_program->add_function(new_function);
 		pass1.evaluate(new_function->get_block(), main_function->get_block());
 		new_function->set_expression(pass1.cache[main_function->get_expression()]);
-		return new_function;
+		return new_program;
 	}
 };
 
@@ -306,6 +310,7 @@ class Pass2 {
 		void visit_bind(const Bind& bind) override {}
 	};
 	class Replace: public Visitor<Expression*> {
+		Program* program;
 		Block* current_block;
 		FunctionTable& function_table;
 		std::size_t index;
@@ -317,7 +322,7 @@ class Pass2 {
 			return expression;
 		}
 	public:
-		Replace(FunctionTable& function_table, std::size_t index): function_table(function_table), index(index) {}
+		Replace(Program* program, FunctionTable& function_table, std::size_t index): program(program), function_table(function_table), index(index) {}
 		void evaluate(Block* destination_block, const Block& source_block) {
 			Block* previous_block = current_block;
 			current_block = destination_block;
@@ -364,7 +369,7 @@ class Pass2 {
 		Expression* visit_call(const Call& call) override {
 			const std::size_t new_index = function_table.look_up(call.get_function());
 			if (function_table[new_index].should_inline()) {
-				Replace replace(function_table, new_index);
+				Replace replace(program, function_table, new_index);
 				for (const Expression* argument: call.get_arguments()) {
 					replace.arguments.push_back(cache[argument]);
 				}
@@ -378,9 +383,10 @@ class Pass2 {
 				}
 				if (function_table[new_index].new_function == nullptr) {
 					Function* new_function = new Function(call.get_function()->get_return_type());
+					program->add_function(new_function);
 					new_function->add_argument_types(call.get_function()->get_argument_types());
 					function_table[new_index].new_function = new_function;
-					Replace replace(function_table, new_index);
+					Replace replace(program, function_table, new_index);
 					replace.evaluate(new_function->get_block(), call.get_function()->get_block());
 				}
 				new_call->set_type(function_table[new_index].new_function->get_return_type());
@@ -403,13 +409,16 @@ class Pass2 {
 	};
 public:
 	Pass2() = delete;
-	static const Function* run(const Function* main_function) {
+	static const Program* run(const Program& program) {
+		const Function* main_function = program.get_main_function();
+		Program* new_program = new Program();
 		FunctionTable function_table;
 		Analyze analyze(function_table);
 		analyze.evaluate(main_function->get_block());
-		Replace replace(function_table, 0);
+		Replace replace(new_program, function_table, 0);
 		Function* new_function = new Function(main_function->get_return_type());
+		new_program->add_function(new_function);
 		replace.evaluate(new_function->get_block(), main_function->get_block());
-		return new_function;
+		return new_program;
 	}
 };

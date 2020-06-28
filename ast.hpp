@@ -288,6 +288,7 @@ class Function {
 	std::vector<const Type*> argument_types;
 	const Type* return_type;
 public:
+	const Function* next_function = nullptr;
 	Function(const Type* return_type = nullptr): return_type(return_type) {}
 	void set_expression(const Expression* expression) {
 		block.set_result(expression);
@@ -433,5 +434,44 @@ public:
 	}
 	static Expression* create(const Expression* left, const Expression* right) {
 		return new Bind(left, right);
+	}
+};
+
+class Program {
+	const Function* first = nullptr;
+	Function* last = nullptr;
+public:
+	void add_function(Function* function) {
+		if (first == nullptr) {
+			first = function;
+		}
+		if (last) {
+			last->next_function = function;
+		}
+		last = function;
+	}
+	const Function* get_main_function() const {
+		return first;
+	}
+	class Iterator {
+		const Function* function;
+	public:
+		constexpr Iterator(const Function* function): function(function) {}
+		constexpr bool operator !=(const Iterator& rhs) const {
+			return function != rhs.function;
+		}
+		Iterator& operator ++() {
+			function = function->next_function;
+			return *this;
+		}
+		constexpr const Function* operator *() const {
+			return function;
+		}
+	};
+	constexpr Iterator begin() const {
+		return Iterator(first);
+	}
+	constexpr Iterator end() const {
+		return Iterator(nullptr);
 	}
 };
