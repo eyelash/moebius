@@ -74,12 +74,36 @@ public:
 	}
 };
 
+class MemoryPrinter {
+	std::vector<char> data;
+public:
+	void print(char c) {
+		data.push_back(c);
+	}
+	void print(const StringView& s) {
+		data.insert(data.end(), s.begin(), s.end());
+	}
+	void print(const char* s) {
+		print(StringView(s));
+	}
+	template <class T> void print(const T& t) {
+		t.print(*this);
+	}
+	template <class T> void println(const T& t) {
+		print(t);
+		print('\n');
+	}
+	void print_to_file(FILE* file) {
+		fwrite(data.data(), 1, data.size(), file);
+	}
+};
+
 template <class... T> class PrintTuple;
 template <> class PrintTuple<> {
 public:
 	constexpr PrintTuple() {}
-	void print(Printer& p) const {}
-	void print_formatted(Printer& p, const char* s) const {
+	template <class P> void print(P& p) const {}
+	template <class P> void print_formatted(P& p, const char* s) const {
 		p.print(s);
 	}
 };
@@ -88,11 +112,11 @@ template <class T0, class... T> class PrintTuple<T0, T...> {
 	PrintTuple<T...> t;
 public:
 	constexpr PrintTuple(const T0& t0, const T&... t): t0(t0), t(t...) {}
-	void print(Printer& p) const {
+	template <class P> void print(P& p) const {
 		p.print(t0);
 		p.print(t);
 	}
-	void print_formatted(Printer& p, const char* s) const {
+	template <class P> void print_formatted(P& p, const char* s) const {
 		while (*s) {
 			if (*s == '%') {
 				++s;
@@ -116,7 +140,7 @@ template <class... T> class Format {
 	const char* s;
 public:
 	constexpr Format(const char* s, const T&... t): t(t...), s(s) {}
-	void print(Printer& p) const {
+	template <class P> void print(P& p) const {
 		t.print_formatted(p, s);
 	}
 };
@@ -141,7 +165,7 @@ class PrintNumber {
 	unsigned int n;
 public:
 	constexpr PrintNumber(unsigned int n): n(n) {}
-	void print(Printer& p) const {
+	template <class P> void print(P& p) const {
 		if (n >= 10) {
 			p.print(PrintNumber(n / 10));
 		}

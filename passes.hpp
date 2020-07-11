@@ -239,7 +239,7 @@ public:
 		Program* new_program = new Program();
 		FunctionTable function_table;
 		Pass1 pass1(new_program, function_table, 0);
-		Function* new_function = new Function();
+		Function* new_function = new Function(new VoidType());
 		new_program->add_function(new_function);
 		pass1.evaluate(new_function->get_block(), main_function->get_block());
 		new_function->set_expression(pass1.cache[main_function->get_expression()]);

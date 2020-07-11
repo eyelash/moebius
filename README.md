@@ -11,7 +11,7 @@
 
 - codegen
   - [x] x86
-  - [ ] C
+  - [x] C
   - [x] JavaScript
 - optimizations
   - [x] monomorphization
