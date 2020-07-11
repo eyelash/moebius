@@ -176,6 +176,19 @@ inline PrintNumber print_number(unsigned int n) {
 	return PrintNumber(n);
 }
 
+template <class T> class Indent {
+	const T& t;
+	unsigned int indentation;
+public:
+	constexpr Indent(const T& t, unsigned int indentation): t(t), indentation(indentation) {}
+	template <class P> void print(P& p) const {
+		for (std::size_t i = 0; i < indentation * 2; ++i) {
+			p.print(' ');
+		}
+		p.print(t);
+	}
+};
+
 class SourceFile {
 	const char* file_name;
 	std::vector<char> content;
