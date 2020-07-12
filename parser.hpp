@@ -196,7 +196,7 @@ public:
 class MoebiusParser: private Parser {
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const T& t) {
-		Printer printer(stderr);
+		FilePrinter printer(stderr);
 		cursor.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}
@@ -415,7 +415,7 @@ public:
 		Scope scope(current_scope, function->get_block());
 		const std::size_t index = function->add_argument();
 		const Expression* argument = current_scope->create<Argument>(index);
-		Intrinsic* intrinsic = current_scope->create<Intrinsic>("putChar", new VoidType());
+		Intrinsic* intrinsic = current_scope->create<Intrinsic>("putChar", VoidType::get());
 		intrinsic->add_argument(argument);
 		function->set_expression(intrinsic);
 		return closure;
@@ -424,7 +424,7 @@ public:
 		Function* function = new Function();
 		Closure* closure = current_scope->create<Closure>(function);
 		Scope scope(current_scope, function->get_block());
-		Intrinsic* intrinsic = current_scope->create<Intrinsic>("getChar", new NumberType());
+		Intrinsic* intrinsic = current_scope->create<Intrinsic>("getChar", NumberType::get());
 		function->set_expression(intrinsic);
 		return closure;
 	}

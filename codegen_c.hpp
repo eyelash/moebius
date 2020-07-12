@@ -188,7 +188,9 @@ public:
 		}
 		return result;
 	}
-	std::size_t visit_bind(const Bind& bind) override {}
+	std::size_t visit_bind(const Bind& bind) override {
+		return variable++;
+	}
 	static void codegen(const Program& program, const char* path) {
 		MemoryPrinter type_declarations;
 		MemoryPrinter function_declarations;

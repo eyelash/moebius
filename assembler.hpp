@@ -285,7 +285,7 @@ public:
 };
 
 class TextAssembler {
-	Printer printer;
+	FilePrinter printer;
 	static StringView print_register(Register r) {
 		switch (r) {
 			case EAX: return "EAX";
@@ -303,7 +303,7 @@ class TextAssembler {
 		Ptr ptr;
 	public:
 		constexpr PrintPtr(Ptr ptr): ptr(ptr) {}
-		void print(Printer& p) const {
+		void print(FilePrinter& p) const {
 			p.print(format("[% + %]", print_register(ptr.get_register()), print_number(ptr.get_offset())));
 		}
 	};

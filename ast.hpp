@@ -27,6 +27,10 @@ public:
 	int get_id() const override {
 		return id;
 	}
+	static const NumberType* get() {
+		static NumberType* type = new NumberType();
+		return type;
+	}
 };
 
 class ClosureType: public Type {
@@ -55,6 +59,10 @@ public:
 	int get_id() const override {
 		return id;
 	}
+	static const NeverType* get() {
+		static NeverType* type = new NeverType();
+		return type;
+	}
 };
 
 class VoidType: public Type {
@@ -62,6 +70,10 @@ public:
 	static constexpr int id = 5;
 	int get_id() const override {
 		return id;
+	}
+	static const VoidType* get() {
+		static VoidType* type = new VoidType();
+		return type;
 	}
 };
 
@@ -198,7 +210,7 @@ public:
 class Number: public Expression {
 	std::int32_t value;
 public:
-	Number(std::int32_t value): Expression(new NumberType()), value(value) {}
+	Number(std::int32_t value): Expression(NumberType::get()), value(value) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_number(*this);
 	}
@@ -226,7 +238,7 @@ class BinaryExpression: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(new NumberType()), operation(operation), left(left), right(right) {}
+	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(NumberType::get()), operation(operation), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_binary_expression(*this);
 	}
@@ -422,7 +434,7 @@ class Bind: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	Bind(const Expression* left, const Expression* right): Expression(new VoidType()), left(left), right(right) {}
+	Bind(const Expression* left, const Expression* right): Expression(VoidType::get()), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_bind(*this);
 	}

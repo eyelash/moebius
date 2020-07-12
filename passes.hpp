@@ -4,32 +4,32 @@
 
 // type checking and monomorphization
 class Pass1: public Visitor<Expression*> {
-	static bool equals(const Type* type1, const Type* type2) {
+	static std::ptrdiff_t compare(const Type* type1, const Type* type2) {
 		const int id1 = type1->get_id();
 		const int id2 = type2->get_id();
 		if (id1 != id2) {
-			return false;
+			return id1 - id2;
 		}
 		if (id1 == ClosureType::id) {
 			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
 			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
 			if (closure_type1->get_function() != closure_type2->get_function()) {
-				return false;
+				return closure_type1->get_function() - closure_type2->get_function();
 			}
-			return equals(closure_type1->get_environment_types(), closure_type2->get_environment_types());
+			return compare(closure_type1->get_environment_types(), closure_type2->get_environment_types());
 		}
-		return true;
+		return 0;
 	}
-	static bool equals(const std::vector<const Type*>& types1, const std::vector<const Type*>& types2) {
+	static std::ptrdiff_t compare(const std::vector<const Type*>& types1, const std::vector<const Type*>& types2) {
 		if (types1.size() != types2.size()) {
-			return false;
+			return types1.size() - types2.size();
 		}
 		for (std::size_t i = 0; i < types1.size(); ++i) {
-			if (!equals(types1[i], types2[i])) {
-				return false;
+			if (std::ptrdiff_t diff = compare(types1[i], types2[i])) {
+				return diff;
 			}
 		}
-		return true;
+		return 0;
 	}
 	static StringView print_type(const Type* type) {
 		switch (type->get_id()) {
@@ -40,12 +40,12 @@ class Pass1: public Visitor<Expression*> {
 		}
 	}
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
-		Printer printer(stderr);
+		FilePrinter printer(stderr);
 		expression.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}
 	template <class T> [[noreturn]] void error(const T& t) {
-		Printer printer(stderr);
+		FilePrinter printer(stderr);
 		printer.print(bold(red("error: ")));
 		printer.print(t);
 		printer.print('\n');
@@ -65,7 +65,7 @@ class Pass1: public Visitor<Expression*> {
 			std::size_t index;
 			for (index = 0; index < functions.size(); ++index) {
 				const FunctionTableEntry& entry = functions[index];
-				if (entry.old_function == old_function && equals(entry.argument_types, argument_types)) {
+				if (entry.old_function == old_function && compare(entry.argument_types, argument_types) == 0) {
 					return index;
 				}
 			}
@@ -120,7 +120,7 @@ public:
 			const Expression* else_expression = cache[if_.get_else_expression()];
 			new_if->set_then_expression(then_expression);
 			new_if->set_else_expression(else_expression);
-			if (equals(then_expression->get_type(), else_expression->get_type())) {
+			if (compare(then_expression->get_type(), else_expression->get_type()) == 0) {
 				new_if->set_type(then_expression->get_type());
 			}
 			else if (then_expression->get_type_id() == NeverType::id) {
@@ -208,7 +208,7 @@ public:
 				if (new_index < function_table.recursion) {
 					function_table.recursion = new_index;
 				}
-				new_call->set_type(new NeverType());
+				new_call->set_type(NeverType::get());
 			}
 			else {
 				new_call->set_type(function_table[new_index].new_function->get_return_type());
@@ -239,7 +239,7 @@ public:
 		Program* new_program = new Program();
 		FunctionTable function_table;
 		Pass1 pass1(new_program, function_table, 0);
-		Function* new_function = new Function(new VoidType());
+		Function* new_function = new Function(VoidType::get());
 		new_program->add_function(new_function);
 		pass1.evaluate(new_function->get_block(), main_function->get_block());
 		new_function->set_expression(pass1.cache[main_function->get_expression()]);

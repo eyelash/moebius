@@ -34,14 +34,14 @@ class CodegenJS: public Visitor<std::size_t> {
 	};
 	FunctionTable& function_table;
 	const std::size_t index;
-	Printer& printer;
+	FilePrinter& printer;
 	std::size_t variable = 1;
 	std::map<const Expression*, std::size_t> cache;
 	std::size_t indentation = 1;
 	template <class T> Indent<T> indent(const T& t) {
 		return Indent<T>(t, indentation);
 	}
-	CodegenJS(FunctionTable& function_table, std::size_t index, Printer& printer): function_table(function_table), index(index), printer(printer) {}
+	CodegenJS(FunctionTable& function_table, std::size_t index, FilePrinter& printer): function_table(function_table), index(index), printer(printer) {}
 	std::size_t evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
@@ -115,23 +115,27 @@ public:
 		return result;
 	}
 	std::size_t visit_intrinsic(const Intrinsic& intrinsic) override {
+		const std::size_t result = variable++;
 		if (intrinsic.name_equals("putChar")) {
 			const std::size_t argument = cache[intrinsic.get_arguments()[0]];
 			printer.println(indent(format("const s = String.fromCharCode(v%);", print_number(argument))));
 			printer.println(indent("document.body.appendChild(s === '\\n' ? document.createElement('br') : document.createTextNode(s));"));
-			const std::size_t result = variable++;
 			printer.println(indent(format("const v% = null;", print_number(result))));
-			return result;
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			// TODO
 		}
+		return result;
 	}
-	std::size_t visit_bind(const Bind& bind) override {}
+	std::size_t visit_bind(const Bind& bind) override {
+		const std::size_t result = variable++;
+		printer.println(indent(format("const v% = null;", print_number(result))));
+		return result;
+	}
 	static void codegen(const Program& program, const char* path) {
 		FunctionTable function_table;
-		Printer printer(stdout);
-		printer.println("<!DOCTYPE html><html><head><script>");
+		FilePrinter printer(stdout);
+		printer.println("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
 		printer.println("window.addEventListener('load', start);");
 		{
 			printer.println("function start() {");

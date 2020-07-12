@@ -52,10 +52,10 @@ public:
 	}
 };
 
-class Printer {
+class FilePrinter {
 	FILE* file;
 public:
-	Printer(FILE* file = stdout): file(file) {}
+	FilePrinter(FILE* file = stdout): file(file) {}
 	void print(char c) {
 		fputc(c, file);
 	}
@@ -214,7 +214,7 @@ class SourcePosition {
 public:
 	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
 	SourcePosition(): file_name(nullptr) {}
-	template <class T> void print_error(Printer& printer, const T& t) const {
+	template <class T> void print_error(FilePrinter& printer, const T& t) const {
 		SourceFile file(file_name);
 		unsigned int line_number = 1;
 		const char* c = file.begin();

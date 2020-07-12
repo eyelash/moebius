@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include "passes.hpp"
 #include "codegen_x86.hpp"
+#include "codegen_c.hpp"
 #include "codegen_js.hpp"
 #include <string>
 

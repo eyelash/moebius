@@ -238,7 +238,9 @@ public:
 			return result;
 		}
 	}
-	std::uint32_t visit_bind(const Bind& bind) override {}
+	std::uint32_t visit_bind(const Bind& bind) override {
+		return allocate(0);
+	}
 	static void codegen(const Program& program, const char* path) {
 		std::vector<DeferredCall> deferred_calls;
 		std::map<const Function*, std::size_t> function_locations;
