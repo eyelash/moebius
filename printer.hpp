@@ -254,3 +254,14 @@ public:
 		printer.print('\n');
 	}
 };
+
+class Variable {
+	std::size_t index;
+public:
+	constexpr Variable(std::size_t index): index(index) {}
+	Variable() {}
+	template <class P> void print(P& printer) const {
+		printer.print(format("v%", print_number(index)));
+	}
+	std::size_t get_index() const { return index; }
+};
