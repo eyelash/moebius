@@ -176,16 +176,32 @@ inline PrintNumber print_number(unsigned int n) {
 	return PrintNumber(n);
 }
 
-template <class T> class Indent {
-	const T& t;
-	unsigned int indentation;
-public:
-	constexpr Indent(const T& t, unsigned int indentation): t(t), indentation(indentation) {}
-	template <class P> void print(P& p) const {
-		for (std::size_t i = 0; i < indentation * 2; ++i) {
-			p.print(' ');
+template <class P> class IndentPrinter: public P {
+	unsigned int indentation = 0;
+	void print_indentation() {
+		for (unsigned int i = 0; i < indentation; ++i) {
+			print('\t');
 		}
-		p.print(t);
+	}
+public:
+	template <class... A> IndentPrinter(A&&... arguments): P(std::forward<A>(arguments)...) {}
+	using P::print;
+	using P::println;
+	template <class T> void print_indented(const T& t) {
+		print_indentation();
+		print(t);
+	}
+	template <class T> void println_indented(const T& t) {
+		for (unsigned int i = 0; i < indentation; ++i) {
+			print('\t');
+		}
+		println(t);
+	}
+	void increase_indentation() {
+		indentation += 1;
+	}
+	void decrease_indentation() {
+		indentation -= 1;
 	}
 };
 

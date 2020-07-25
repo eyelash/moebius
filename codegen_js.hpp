@@ -34,17 +34,13 @@ class CodegenJS: public Visitor<Variable> {
 	};
 	FunctionTable& function_table;
 	const std::size_t index;
-	FilePrinter& printer;
+	IndentPrinter<FilePrinter>& printer;
 	std::size_t variable = 1;
 	std::map<const Expression*, Variable> cache;
-	std::size_t indentation = 1;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	template <class T> Indent<T> indent(const T& t) {
-		return Indent<T>(t, indentation);
-	}
-	CodegenJS(FunctionTable& function_table, std::size_t index, FilePrinter& printer): function_table(function_table), index(index), printer(printer) {}
+	CodegenJS(FunctionTable& function_table, std::size_t index, IndentPrinter<FilePrinter>& printer): function_table(function_table), index(index), printer(printer) {}
 	Variable evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
@@ -54,31 +50,31 @@ class CodegenJS: public Visitor<Variable> {
 public:
 	Variable visit_number(const Number& number) override {
 		const Variable result = next_variable();
-		printer.println(indent(format("const % = %;", result, print_number(number.get_value()))));
+		printer.println_indented(format("const % = %;", result, print_number(number.get_value())));
 		return result;
 	}
 	Variable visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Variable left = cache[binary_expression.get_left()];
 		const Variable right = cache[binary_expression.get_right()];
 		const Variable result = next_variable();
-		printer.println(indent(format("const % = (% % %) | 0;", result, left, print_operator(binary_expression.get_operation()), right)));
+		printer.println_indented(format("const % = % % % | 0;", result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
 	Variable visit_if(const If& if_) override {
 		const Variable condition = cache[if_.get_condition()];
 		const Variable result = next_variable();
-		printer.println(indent(format("let %;", result)));
-		printer.println(indent(format("if (%) {", condition)));
-		++indentation;
+		printer.println_indented(format("let %;", result));
+		printer.println_indented(format("if (%) {", condition));
+		printer.increase_indentation();
 		const Variable then_result = evaluate(if_.get_then_block());
-		printer.println(indent(format("% = %;", result, then_result)));
-		--indentation;
-		printer.println(indent("} else {"));
-		++indentation;
+		printer.println_indented(format("% = %;", result, then_result));
+		printer.decrease_indentation();
+		printer.println_indented("} else {");
+		printer.increase_indentation();
 		const Variable else_result = evaluate(if_.get_else_block());
-		printer.println(indent(format("% = %;", result, else_result)));
-		--indentation;
-		printer.println(indent("}"));
+		printer.println_indented(format("% = %;", result, else_result));
+		printer.decrease_indentation();
+		printer.println_indented("}");
 		return result;
 	}
 	Variable visit_closure(const Closure& closure) override {
@@ -87,7 +83,7 @@ public:
 			elements.push_back(cache[element]);
 		}
 		const Variable result = next_variable();
-		printer.print(indent(format("const % = [", result)));
+		printer.print_indented(format("const % = [", result));
 		for (const Variable element: elements) {
 			printer.print(format("%,", element));
 		}
@@ -97,7 +93,7 @@ public:
 	Variable visit_closure_access(const ClosureAccess& closure_access) override {
 		const Variable closure = cache[closure_access.get_closure()];
 		const Variable result = next_variable();
-		printer.println(indent(format("const % = %[%];", result, closure, print_number(closure_access.get_index()))));
+		printer.println_indented(format("const % = %[%];", result, closure, print_number(closure_access.get_index())));
 		return result;
 	}
 	Variable visit_argument(const Argument& argument) override {
@@ -110,9 +106,10 @@ public:
 		}
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
-		printer.print(indent(format("const % = f%(", result, print_number(new_index))));
-		for (const Variable argument: arguments) {
-			printer.print(format("%,", argument));
+		printer.print_indented(format("const % = f%(", result, print_number(new_index)));
+		for (std::size_t i = 0; i < arguments.size(); ++i) {
+			if (i > 0) printer.print(", ");
+			printer.print(arguments[i]);
 		}
 		printer.println(");");
 		return result;
@@ -121,9 +118,9 @@ public:
 		const Variable result = next_variable();
 		if (intrinsic.name_equals("putChar")) {
 			const Variable argument = cache[intrinsic.get_arguments()[0]];
-			printer.println(indent(format("const s = String.fromCharCode(%);", argument)));
-			printer.println(indent("document.body.appendChild(s === '\\n' ? document.createElement('br') : document.createTextNode(s));"));
-			printer.println(indent(format("const % = null;", result)));
+			printer.println_indented(format("const s = String.fromCharCode(%);", argument));
+			printer.println_indented("document.body.appendChild(s === '\\n' ? document.createElement('br') : document.createTextNode(s));");
+			printer.println_indented(format("const % = null;", result));
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			// TODO
@@ -132,18 +129,20 @@ public:
 	}
 	Variable visit_bind(const Bind& bind) override {
 		const Variable result = next_variable();
-		printer.println(indent(format("const % = null;", result)));
+		printer.println_indented(format("const % = null;", result));
 		return result;
 	}
 	static void codegen(const Program& program, const char* path) {
 		FunctionTable function_table;
-		FilePrinter printer(stdout);
+		IndentPrinter<FilePrinter> printer(stdout);
 		printer.println("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
 		printer.println("window.addEventListener('load', start);");
 		{
 			printer.println("function start() {");
+			printer.increase_indentation();
 			const std::size_t index = function_table.look_up(program.get_main_function());
-			printer.println(format("  f%();", print_number(index)));
+			printer.println_indented(format("f%();", print_number(index)));
+			printer.decrease_indentation();
 			printer.println("}");
 		}
 		for (const Function* function: program) {
@@ -151,13 +150,16 @@ public:
 			printer.print(format("function f%(", print_number(index)));
 			const std::size_t arguments = function->get_argument_types().size();
 			for (std::size_t i = 0; i < arguments; ++i) {
-				printer.print(format("v%,", print_number(i)));
+				if (i > 0) printer.print(", ");
+				printer.print(format("v%", print_number(i)));
 			}
 			printer.println(") {");
+			printer.increase_indentation();
 			CodegenJS codegen(function_table, index, printer);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
-			printer.println(format("  return %;", result));
+			printer.println_indented(format("return %;", result));
+			printer.decrease_indentation();
 			printer.println("}");
 		}
 		printer.println("</script></head><body></body></html>");
