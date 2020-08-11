@@ -172,7 +172,7 @@ public:
 		p.print(static_cast<char>('0' + n % 10));
 	}
 };
-inline PrintNumber print_number(unsigned int n) {
+constexpr PrintNumber print_number(unsigned int n) {
 	return PrintNumber(n);
 }
 

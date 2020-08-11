@@ -78,14 +78,11 @@ public:
 		return result;
 	}
 	Variable visit_closure(const Closure& closure) override {
-		std::vector<Variable> elements;
-		for (const Expression* element: closure.get_environment_expressions()) {
-			elements.push_back(cache[element]);
-		}
 		const Variable result = next_variable();
 		printer.print_indented(format("const % = [", result));
-		for (const Variable element: elements) {
-			printer.print(format("%,", element));
+		for (std::size_t i = 0; i < closure.get_environment_expressions().size(); ++i) {
+			if (i > 0) printer.print(", ");
+			printer.print(cache[closure.get_environment_expressions()[i]]);
 		}
 		printer.println("];");
 		return result;
@@ -100,16 +97,12 @@ public:
 		return Variable(argument.get_index());
 	}
 	Variable visit_call(const Call& call) override {
-		std::vector<Variable> arguments;
-		for (const Expression* argument: call.get_arguments()) {
-			arguments.push_back(cache[argument]);
-		}
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
 		printer.print_indented(format("const % = f%(", result, print_number(new_index)));
-		for (std::size_t i = 0; i < arguments.size(); ++i) {
+		for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 			if (i > 0) printer.print(", ");
-			printer.print(arguments[i]);
+			printer.print(cache[call.get_arguments()[i]]);
 		}
 		printer.println(");");
 		return result;
@@ -136,9 +129,9 @@ public:
 		FunctionTable function_table;
 		IndentPrinter<FilePrinter> printer(stdout);
 		printer.println("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
-		printer.println("window.addEventListener('load', start);");
+		printer.println("window.addEventListener('load', main);");
 		{
-			printer.println("function start() {");
+			printer.println("function main() {");
 			printer.increase_indentation();
 			const std::size_t index = function_table.look_up(program.get_main_function());
 			printer.println_indented(format("f%();", print_number(index)));
