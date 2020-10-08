@@ -44,13 +44,6 @@ class Pass1: public Visitor<Expression*> {
 		expression.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}
-	template <class T> [[noreturn]] void error(const T& t) {
-		FilePrinter printer(stderr);
-		printer.print(bold(red("error: ")));
-		printer.print(t);
-		printer.print('\n');
-		std::exit(EXIT_FAILURE);
-	}
 	struct FunctionTableEntry {
 		const Function* old_function;
 		std::vector<const Type*> argument_types;
@@ -170,11 +163,11 @@ public:
 		}
 		const Expression* object = new_call->get_object();
 		if (object->get_type_id() != ClosureType::id) {
-			error("call to a value that is not a function");
+			error(call, "call to a value that is not a function");
 		}
 		const Function* old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
 		if (call.get_arguments().size() != old_function->get_arguments()) {
-			error(format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size() - 1), print_number(old_function->get_arguments() - 1)));
+			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size() - 1), print_number(old_function->get_arguments() - 1)));
 		}
 
 		const std::size_t new_index = function_table.look_up(old_function, argument_types);
@@ -224,16 +217,16 @@ public:
 		}
 		if (intrinsic.name_equals("putChar")) {
 			if (new_intrinsic->get_arguments().size() != 1) {
-				error("putChar takes exactly 1 argument");
+				error(intrinsic, "putChar takes exactly 1 argument");
 			}
 			if (new_intrinsic->get_arguments()[0]->get_type_id() != NumberType::id) {
-				error("argument of putChar must be a number");
+				error(intrinsic, "argument of putChar must be a number");
 			}
 			new_intrinsic->set_type(VoidType::get());
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			if (new_intrinsic->get_arguments().size() != 0) {
-				error("getChar takes no argument");
+				error(intrinsic, "getChar takes no argument");
 			}
 			new_intrinsic->set_type(NumberType::get());
 		}

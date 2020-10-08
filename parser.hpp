@@ -319,6 +319,7 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			Function* function = new Function();
 			Closure* closure = new Closure(function);
+			closure->set_position(position);
 			{
 				Scope scope(current_scope, closure, function->get_block());
 				while (cursor && *cursor != ')') {
@@ -359,6 +360,7 @@ class MoebiusParser: private Parser {
 			expect("(");
 			parse_white_space();
 			Intrinsic* intrinsic = new Intrinsic(name);
+			intrinsic->set_position(position);
 			while (cursor && *cursor != ')') {
 				intrinsic->add_argument(parse_expression());
 				parse_white_space();
@@ -378,9 +380,11 @@ class MoebiusParser: private Parser {
 		if (level == 5) {
 			const Expression* expression = parse_expression_last();
 			parse_white_space();
+			SourcePosition position = cursor.get_position();
 			while (parse("(")) {
 				parse_white_space();
 				Call* call = new Call();
+				call->set_position(position);
 				call->add_argument(expression);
 				while (cursor && *cursor != ')') {
 					call->add_argument(parse_expression());
@@ -393,6 +397,7 @@ class MoebiusParser: private Parser {
 				current_scope->add_expression(call);
 				expression = call;
 				parse_white_space();
+				position = cursor.get_position();
 			}
 			return expression;
 		}
