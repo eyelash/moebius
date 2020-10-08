@@ -259,6 +259,18 @@ class MoebiusParser: private Parser {
 		}
 		return BinaryOperator();
 	}
+	const char* parse_intrinsic_name() {
+		StringView name = parse_identifier();
+		if (name == "putChar") {
+			return "putChar";
+		}
+		else if (name == "getChar") {
+			return "getChar";
+		}
+		else {
+			error(format("unknown intrinsic \"%\"", name));
+		}
+	}
 	const Expression* parse_expression_last() {
 		const SourcePosition position = cursor.get_position();
 		if (parse("{")) {
@@ -341,6 +353,23 @@ class MoebiusParser: private Parser {
 		else if (copy().parse(alphabetic)) {
 			return parse_variable();
 		}
+		else if (parse("@")) {
+			const char* name = parse_intrinsic_name();
+			parse_white_space();
+			expect("(");
+			parse_white_space();
+			Intrinsic* intrinsic = new Intrinsic(name);
+			while (cursor && *cursor != ')') {
+				intrinsic->add_argument(parse_expression());
+				parse_white_space();
+				if (parse(",")) {
+					parse_white_space();
+				}
+			}
+			expect(")");
+			current_scope->add_expression(intrinsic);
+			return intrinsic;
+		}
 		else {
 			error("unexpected character");
 		}
@@ -409,31 +438,10 @@ class MoebiusParser: private Parser {
 	}
 public:
 	MoebiusParser(const SourceFile* file): Parser(file) {}
-	const Expression* create_putChar() {
-		Function* function = new Function();
-		Closure* closure = current_scope->create<Closure>(function);
-		Scope scope(current_scope, function->get_block());
-		const std::size_t index = function->add_argument();
-		const Expression* argument = current_scope->create<Argument>(index);
-		Intrinsic* intrinsic = current_scope->create<Intrinsic>("putChar", VoidType::get());
-		intrinsic->add_argument(argument);
-		function->set_expression(intrinsic);
-		return closure;
-	}
-	const Expression* create_getChar() {
-		Function* function = new Function();
-		Closure* closure = current_scope->create<Closure>(function);
-		Scope scope(current_scope, function->get_block());
-		Intrinsic* intrinsic = current_scope->create<Intrinsic>("getChar", NumberType::get());
-		function->set_expression(intrinsic);
-		return closure;
-	}
 	const Function* parse_program() {
 		parse_white_space();
 		Function* main_function = new Function();
 		Scope scope(current_scope, main_function->get_block());
-		scope.add_variable("putChar", create_putChar());
-		scope.add_variable("getChar", create_getChar());
 		main_function->set_expression(parse_scope());
 		return main_function;
 	}

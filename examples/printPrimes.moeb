@@ -1,3 +1,5 @@
+let putChar = fn(c) @putChar(c)
+
 let false = 0
 let true = 1
 let newline = 10

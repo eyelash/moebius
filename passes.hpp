@@ -223,10 +223,19 @@ public:
 			new_intrinsic->add_argument(cache[argument]);
 		}
 		if (intrinsic.name_equals("putChar")) {
-			// assert(new_intrinsic->get_arguments().size() == 1);
+			if (new_intrinsic->get_arguments().size() != 1) {
+				error("putChar takes exactly 1 argument");
+			}
 			if (new_intrinsic->get_arguments()[0]->get_type_id() != NumberType::id) {
 				error("argument of putChar must be a number");
 			}
+			new_intrinsic->set_type(VoidType::get());
+		}
+		else if (intrinsic.name_equals("getChar")) {
+			if (new_intrinsic->get_arguments().size() != 0) {
+				error("getChar takes no argument");
+			}
+			new_intrinsic->set_type(NumberType::get());
 		}
 		return new_intrinsic;
 	}
