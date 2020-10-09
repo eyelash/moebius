@@ -79,12 +79,14 @@ public:
 	}
 	Variable visit_closure(const Closure& closure) override {
 		const Variable result = next_variable();
-		printer.print_indented(format("const % = [", result));
-		for (std::size_t i = 0; i < closure.get_environment_expressions().size(); ++i) {
-			if (i > 0) printer.print(", ");
-			printer.print(cache[closure.get_environment_expressions()[i]]);
-		}
-		printer.println("];");
+		printer.println_indented(print_functor([&](auto& printer) {
+			printer.print(format("const % = [", result));
+			for (std::size_t i = 0; i < closure.get_environment_expressions().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(cache[closure.get_environment_expressions()[i]]);
+			}
+			printer.print("];");
+		}));
 		return result;
 	}
 	Variable visit_closure_access(const ClosureAccess& closure_access) override {
@@ -99,12 +101,14 @@ public:
 	Variable visit_call(const Call& call) override {
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
-		printer.print_indented(format("const % = f%(", result, print_number(new_index)));
-		for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
-			if (i > 0) printer.print(", ");
-			printer.print(cache[call.get_arguments()[i]]);
-		}
-		printer.println(");");
+		printer.println_indented(print_functor([&](auto& printer) {
+			printer.print(format("const % = f%(", result, print_number(new_index)));
+			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(cache[call.get_arguments()[i]]);
+			}
+			printer.print(");");
+		}));
 		return result;
 	}
 	Variable visit_intrinsic(const Intrinsic& intrinsic) override {
@@ -128,33 +132,35 @@ public:
 	static void codegen(const Program& program, const char* path) {
 		FunctionTable function_table;
 		IndentPrinter<FilePrinter> printer(stdout);
-		printer.println("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
-		printer.println("window.addEventListener('load', main);");
+		printer.println_indented("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
+		printer.println_indented("window.addEventListener('load', main);");
 		{
-			printer.println("function main() {");
+			printer.println_indented("function main() {");
 			printer.increase_indentation();
 			const std::size_t index = function_table.look_up(program.get_main_function());
 			printer.println_indented(format("f%();", print_number(index)));
 			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_indented("}");
 		}
 		for (const Function* function: program) {
 			const std::size_t index = function_table.look_up(function);
-			printer.print(format("function f%(", print_number(index)));
 			const std::size_t arguments = function->get_argument_types().size();
-			for (std::size_t i = 0; i < arguments; ++i) {
-				if (i > 0) printer.print(", ");
-				printer.print(format("v%", print_number(i)));
-			}
-			printer.println(") {");
+			printer.println_indented(print_functor([&](auto& printer) {
+				printer.print(format("function f%(", print_number(index)));
+				for (std::size_t i = 0; i < arguments; ++i) {
+					if (i > 0) printer.print(", ");
+					printer.print(format("v%", print_number(i)));
+				}
+				printer.print(") {");
+			}));
 			printer.increase_indentation();
 			CodegenJS codegen(function_table, index, printer);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
 			printer.println_indented(format("return %;", result));
 			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_indented("}");
 		}
-		printer.println("</script></head><body></body></html>");
+		printer.println_indented("</script></head><body></body></html>");
 	}
 };

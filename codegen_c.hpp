@@ -137,13 +137,15 @@ public:
 	}
 	Variable visit_closure(const Closure& closure) override {
 		const Variable result = next_variable();
-		const std::size_t type = function_table.get_type(closure.get_type());
-		printer.print_indented(format("t% % = {", print_number(type), result));
-		for (std::size_t i = 0; i < closure.get_environment_expressions().size(); ++i) {
-			if (i > 0) printer.print(", ");
-			printer.print(cache[closure.get_environment_expressions()[i]]);
-		}
-		printer.println("};");
+		printer.println_indented(print_functor([&](auto& printer) {
+			const std::size_t type = function_table.get_type(closure.get_type());
+			printer.print(format("t% % = {", print_number(type), result));
+			for (std::size_t i = 0; i < closure.get_environment_expressions().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(cache[closure.get_environment_expressions()[i]]);
+			}
+			printer.print("};");
+		}));
 		return result;
 	}
 	Variable visit_closure_access(const ClosureAccess& closure_access) override {
@@ -159,18 +161,18 @@ public:
 	Variable visit_call(const Call& call) override {
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
-		if (call.get_function()->get_return_type()->get_id() == VoidType::id) {
-			printer.print_indented(format("f%(", print_number(new_index)));
-		}
-		else {
-			const std::size_t result_type = function_table.get_type(call.get_function()->get_return_type());
-			printer.print_indented(format("t% % = f%(", print_number(result_type), result, print_number(new_index)));
-		}
-		for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
-			if (i > 0) printer.print(", ");
-			printer.print(cache[call.get_arguments()[i]]);
-		}
-		printer.println(");");
+		printer.println_indented(print_functor([&](auto& printer) {
+			if (call.get_function()->get_return_type()->get_id() != VoidType::id) {
+				const std::size_t result_type = function_table.get_type(call.get_function()->get_return_type());
+				printer.print(format("t% % = ", print_number(result_type), result));
+			}
+			printer.print(format("f%(", print_number(new_index)));
+			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(cache[call.get_arguments()[i]]);
+			}
+			printer.print(");");
+		}));
 		return result;
 	}
 	Variable visit_intrinsic(const Intrinsic& intrinsic) override {
@@ -193,34 +195,39 @@ public:
 		IndentPrinter<MemoryPrinter> function_declarations;
 		IndentPrinter<MemoryPrinter> printer;
 		FunctionTable function_table(type_declarations);
-		type_declarations.println("#include <stdio.h>");
-		type_declarations.println("#include <stdint.h>");
+		type_declarations.println_indented("#include <stdio.h>");
+		type_declarations.println_indented("#include <stdint.h>");
 		{
-			printer.println("int main(int argc, char** argv) {");
+			printer.println_indented("int main(int argc, char** argv) {");
 			printer.increase_indentation();
 			const std::size_t index = function_table.look_up(program.get_main_function());
 			printer.println_indented(format("f%();", print_number(index)));
 			printer.println_indented("return 0;");
 			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_indented("}");
 		}
 		for (const Function* function: program) {
 			const std::size_t return_type = function_table.get_type(function->get_return_type());
 			const std::size_t index = function_table.look_up(function);
 			const std::size_t arguments = function->get_argument_types().size();
-			function_declarations.print(format("t% f%(", print_number(return_type), print_number(index)));
-			printer.print(format("t% f%(", print_number(return_type), print_number(index)));
-			for (std::size_t i = 0; i < arguments; ++i) {
-				if (i > 0) {
-					function_declarations.print(", ");
-					printer.print(", ");
+			function_declarations.println_indented(print_functor([&](auto& printer) {
+				printer.print(format("t% f%(", print_number(return_type), print_number(index)));
+				for (std::size_t i = 0; i < arguments; ++i) {
+					if (i > 0) printer.print(", ");
+					const std::size_t argument_type = function_table.get_type(function->get_argument_types()[i]);
+					printer.print(format("t% v%", print_number(argument_type), print_number(i)));
 				}
-				const std::size_t argument_type = function_table.get_type(function->get_argument_types()[i]);
-				function_declarations.print(format("t% v%", print_number(argument_type), print_number(i)));
-				printer.print(format("t% v%", print_number(argument_type), print_number(i)));
-			}
-			function_declarations.println(");");
-			printer.println(") {");
+				printer.print(");");
+			}));
+			printer.println_indented(print_functor([&](auto& printer) {
+				printer.print(format("t% f%(", print_number(return_type), print_number(index)));
+				for (std::size_t i = 0; i < arguments; ++i) {
+					if (i > 0) printer.print(", ");
+					const std::size_t argument_type = function_table.get_type(function->get_argument_types()[i]);
+					printer.print(format("t% v%", print_number(argument_type), print_number(i)));
+				}
+				printer.print(") {");
+			}));
 			printer.increase_indentation();
 			CodegenC codegen(function_table, index, printer);
 			codegen.variable = arguments;
@@ -229,7 +236,7 @@ public:
 				printer.println_indented(format("return %;", result));
 			}
 			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_indented("}");
 		}
 		type_declarations.print_to_file(stdout);
 		function_declarations.print_to_file(stdout);

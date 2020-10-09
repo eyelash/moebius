@@ -98,6 +98,18 @@ public:
 	}
 };
 
+template <class F> class PrintFunctor {
+	F f;
+public:
+	constexpr PrintFunctor(F f): f(f) {}
+	template <class P> void print(P& p) const {
+		f(p);
+	}
+};
+template <class F> constexpr PrintFunctor<F> print_functor(F f) {
+	return PrintFunctor<F>(f);
+}
+
 template <class... T> class PrintTuple;
 template <> class PrintTuple<> {
 public:
@@ -178,24 +190,13 @@ constexpr PrintNumber print_number(unsigned int n) {
 
 template <class P> class IndentPrinter: public P {
 	unsigned int indentation = 0;
-	void print_indentation() {
-		for (unsigned int i = 0; i < indentation; ++i) {
-			print('\t');
-		}
-	}
 public:
 	template <class... A> IndentPrinter(A&&... arguments): P(std::forward<A>(arguments)...) {}
-	using P::print;
-	using P::println;
-	template <class T> void print_indented(const T& t) {
-		print_indentation();
-		print(t);
-	}
 	template <class T> void println_indented(const T& t) {
 		for (unsigned int i = 0; i < indentation; ++i) {
-			print('\t');
+			P::print('\t');
 		}
-		println(t);
+		P::println(t);
 	}
 	void increase_indentation() {
 		indentation += 1;
