@@ -2,7 +2,6 @@
 
 #include "printer.hpp"
 #include <cstdint>
-#include <initializer_list>
 #include <vector>
 #include <algorithm>
 #include <fstream>

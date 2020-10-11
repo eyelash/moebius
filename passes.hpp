@@ -211,7 +211,7 @@ public:
 		return new_call;
 	}
 	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
-		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
+		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name());
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(cache[argument]);
 		}
@@ -237,7 +237,8 @@ public:
 		const Expression* right = cache[bind.get_right()];
 		return new Bind(left, right);
 	}
-	static const Program* run(const Function* main_function) {
+	static const Program* run(const Program& program) {
+		const Function* main_function = program.get_main_function();
 		Program* new_program = new Program();
 		FunctionTable function_table;
 		Pass1 pass1(new_program, function_table, 0);

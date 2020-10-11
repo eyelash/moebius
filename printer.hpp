@@ -248,7 +248,7 @@ public:
 				++c;
 			}
 		}
-		unsigned int column = 1 + (c - line_start);
+		const unsigned int column = 1 + (c - line_start);
 
 		printer.print(bold(format("%:%:%: ", file_name, print_number(line_number), print_number(column))));
 		printer.print(bold(red("error: ")));
@@ -280,5 +280,4 @@ public:
 	template <class P> void print(P& printer) const {
 		printer.print(format("v%", print_number(index)));
 	}
-	std::size_t get_index() const { return index; }
 };

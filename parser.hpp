@@ -16,7 +16,7 @@ struct BinaryOperator {
 	}
 };
 
-static constexpr BinaryOperator operators[][5] = {
+constexpr BinaryOperator operators[][5] = {
 	{
 		BinaryOperator(">>", Bind::create)
 	},
@@ -39,6 +39,11 @@ static constexpr BinaryOperator operators[][5] = {
 		BinaryOperator("/", BinaryExpression::create<BinaryOperation::DIV>),
 		BinaryOperator("%", BinaryExpression::create<BinaryOperation::REM>)
 	}
+};
+
+constexpr const char* intrinsics[] = {
+	"putChar",
+	"getChar"
 };
 
 class Scope {
@@ -194,6 +199,7 @@ public:
 };
 
 class MoebiusParser: private Parser {
+	Program* program;
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const T& t) {
 		FilePrinter printer(stderr);
@@ -261,15 +267,12 @@ class MoebiusParser: private Parser {
 	}
 	const char* parse_intrinsic_name() {
 		StringView name = parse_identifier();
-		if (name == "putChar") {
-			return "putChar";
+		for (const char* intrinsic_name: intrinsics) {
+			if (name == intrinsic_name) {
+				return intrinsic_name;
+			}
 		}
-		else if (name == "getChar") {
-			return "getChar";
-		}
-		else {
-			error(format("unknown intrinsic \"%\"", name));
-		}
+		error(format("unknown intrinsic \"%\"", name));
 	}
 	const Expression* parse_expression_last() {
 		const SourcePosition position = cursor.get_position();
@@ -318,6 +321,7 @@ class MoebiusParser: private Parser {
 			expect("(");
 			parse_white_space();
 			Function* function = new Function();
+			program->add_function(function);
 			Closure* closure = new Closure(function);
 			closure->set_position(position);
 			{
@@ -443,16 +447,18 @@ class MoebiusParser: private Parser {
 	}
 public:
 	MoebiusParser(const SourceFile* file): Parser(file) {}
-	const Function* parse_program() {
+	const Program* parse_program() {
+		program = new Program();
 		parse_white_space();
 		Function* main_function = new Function();
+		program->add_function(main_function);
 		Scope scope(current_scope, main_function->get_block());
 		main_function->set_expression(parse_scope());
-		return main_function;
+		return program;
 	}
 };
 
-const Function* parse(const char* file_name) {
+const Program* parse(const char* file_name) {
 	SourceFile file(file_name);
 	MoebiusParser parser(&file);
 	return parser.parse_program();

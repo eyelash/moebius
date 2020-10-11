@@ -6,8 +6,8 @@
 #include <string>
 
 int main(int argc, char** argv) {
-	const Function* main_function = parse(argv[1]);
-	const Program* program = Pass1::run(main_function);
+	const Program* program = parse(argv[1]);
+	program = Pass1::run(*program);
 	program = Pass2::run(*program);
 	CodegenX86::codegen(*program, (std::string(argv[1]) + ".exe").c_str());
 }

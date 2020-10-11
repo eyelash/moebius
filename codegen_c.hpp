@@ -20,10 +20,10 @@ class CodegenC: public Visitor<Variable> {
 		}
 	}
 	class FunctionTable {
-		std::map<const Type*, std::size_t> types;
 		std::map<const Function*, std::size_t> functions;
-	public:
+		std::map<const Type*, std::size_t> types;
 		IndentPrinter<MemoryPrinter>& declarations;
+	public:
 		FunctionTable(IndentPrinter<MemoryPrinter>& declarations): declarations(declarations) {}
 		std::size_t look_up(const Function* function) {
 			auto iterator = functions.find(function);
@@ -75,14 +75,13 @@ class CodegenC: public Visitor<Variable> {
 		}
 	};
 	FunctionTable& function_table;
-	const std::size_t index;
 	IndentPrinter<MemoryPrinter>& printer;
 	std::size_t variable = 1;
 	std::map<const Expression*, Variable> cache;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	CodegenC(FunctionTable& function_table, std::size_t index, IndentPrinter<MemoryPrinter>& printer): function_table(function_table), index(index), printer(printer) {}
+	CodegenC(FunctionTable& function_table, IndentPrinter<MemoryPrinter>& printer): function_table(function_table), printer(printer) {}
 	Variable evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
@@ -229,7 +228,7 @@ public:
 				printer.print(") {");
 			}));
 			printer.increase_indentation();
-			CodegenC codegen(function_table, index, printer);
+			CodegenC codegen(function_table, printer);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
 			if (function->get_return_type()->get_id() != VoidType::id) {
