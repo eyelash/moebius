@@ -48,13 +48,15 @@ class Pass1: public Visitor<Expression*> {
 		const Function* old_function;
 		std::vector<const Type*> argument_types;
 		const Function* new_function = nullptr;
+		std::size_t pass = 0;
 		FunctionTableEntry(const Function* old_function, const std::vector<const Type*>& argument_types): old_function(old_function), argument_types(argument_types) {}
 	};
 	class FunctionTable {
 		std::vector<FunctionTableEntry> functions;
 	public:
-		std::size_t recursion = -1;
-		std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types) const {
+		bool recursion = true;
+		std::size_t pass = 0;
+		std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types) {
 			std::size_t index;
 			for (index = 0; index < functions.size(); ++index) {
 				const FunctionTableEntry& entry = functions[index];
@@ -62,10 +64,8 @@ class Pass1: public Visitor<Expression*> {
 					return index;
 				}
 			}
-			return index;
-		}
-		void add_entry(const Function* old_function, const std::vector<const Type*>& argument_types) {
 			functions.emplace_back(old_function, argument_types);
+			return index;
 		}
 		FunctionTableEntry& operator [](std::size_t index) {
 			return functions[index];
@@ -171,42 +171,33 @@ public:
 		}
 
 		const std::size_t new_index = function_table.look_up(old_function, argument_types);
-		if (new_index == function_table.size()) {
-			function_table.add_entry(old_function, argument_types);
+		if (function_table[new_index].pass < function_table.pass) {
+			function_table[new_index].pass = function_table.pass;
 			Pass1 pass1(program, function_table, new_index);
 			Function* new_function = new Function();
 			program->add_function(new_function);
 			new_function->add_argument_types(argument_types);
+			if (function_table[new_index].new_function) {
+				new_function->set_return_type(function_table[new_index].new_function->get_return_type());
+			}
+			else {
+				new_function->set_return_type(NeverType::get());
+			}
+			function_table[new_index].new_function = new_function;
 			pass1.evaluate(new_function->get_block(), old_function->get_block());
 			const Expression* new_expression = pass1.cache[old_function->get_expression()];
 			new_function->set_expression(new_expression);
 			new_function->set_return_type(new_expression->get_type());
-			function_table[new_index].new_function = new_function;
-			if (function_table.recursion == new_index) {
-				// reevaluate the expression in case of recursion
-				function_table.recursion = -1;
-				function_table.clear(new_index);
-				new_function->get_block()->clear();
-				pass1.evaluate(new_function->get_block(), old_function->get_block());
-				new_expression = pass1.cache[old_function->get_expression()];
-				new_function->set_expression(new_expression);
-				new_function->set_return_type(new_expression->get_type());
-			}
 			new_call->set_type(new_expression->get_type());
 			new_call->set_function(new_function);
 		}
 		else {
 			// detect recursion
-			if (function_table[new_index].new_function == nullptr) {
-				if (new_index < function_table.recursion) {
-					function_table.recursion = new_index;
-				}
-				new_call->set_type(NeverType::get());
+			if (function_table[new_index].new_function->get_return_type()->get_id() == NeverType::id) {
+				function_table.recursion = true;
 			}
-			else {
-				new_call->set_type(function_table[new_index].new_function->get_return_type());
-				new_call->set_function(function_table[new_index].new_function);
-			}
+			new_call->set_type(function_table[new_index].new_function->get_return_type());
+			new_call->set_function(function_table[new_index].new_function);
 		}
 		return new_call;
 	}
@@ -239,13 +230,19 @@ public:
 	}
 	static const Program* run(const Program& program) {
 		const Function* main_function = program.get_main_function();
-		Program* new_program = new Program();
+		Program* new_program;
 		FunctionTable function_table;
-		Pass1 pass1(new_program, function_table, 0);
-		Function* new_function = new Function(VoidType::get());
-		new_program->add_function(new_function);
-		pass1.evaluate(new_function->get_block(), main_function->get_block());
-		new_function->set_expression(pass1.cache[main_function->get_expression()]);
+		// TODO: prevent infinite loop
+		while (function_table.recursion) {
+			new_program = new Program();
+			Pass1 pass1(new_program, function_table, 0);
+			Function* new_function = new Function(VoidType::get());
+			new_program->add_function(new_function);
+			function_table.recursion = false;
+			function_table.pass += 1;
+			pass1.evaluate(new_function->get_block(), main_function->get_block());
+			new_function->set_expression(pass1.cache[main_function->get_expression()]);
+		}
 		return new_program;
 	}
 };
