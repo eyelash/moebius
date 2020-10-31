@@ -44,44 +44,37 @@ class Pass1: public Visitor<Expression*> {
 		expression.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}
-	struct FunctionTableEntry {
+	struct FunctionTableKey {
 		const Function* old_function;
 		std::vector<const Type*> argument_types;
+		FunctionTableKey(const Function* old_function, const std::vector<const Type*>& argument_types): old_function(old_function), argument_types(argument_types) {}
+		FunctionTableKey(const Function* old_function): old_function(old_function) {}
+		FunctionTableKey() {}
+		bool operator <(const FunctionTableKey& rhs) const {
+			if (old_function != rhs.old_function) {
+				return old_function < rhs.old_function;
+			}
+			return compare(argument_types, rhs.argument_types) < 0;
+		}
+	};
+	struct FunctionTableValue {
 		const Function* new_function = nullptr;
 		std::size_t pass = 0;
-		FunctionTableEntry(const Function* old_function, const std::vector<const Type*>& argument_types): old_function(old_function), argument_types(argument_types) {}
 	};
 	class FunctionTable {
-		std::vector<FunctionTableEntry> functions;
+		std::map<FunctionTableKey, FunctionTableValue> functions;
 	public:
 		bool recursion = true;
 		std::size_t pass = 0;
-		std::size_t look_up(const Function* old_function, const std::vector<const Type*>& argument_types) {
-			std::size_t index;
-			for (index = 0; index < functions.size(); ++index) {
-				const FunctionTableEntry& entry = functions[index];
-				if (entry.old_function == old_function && compare(entry.argument_types, argument_types) == 0) {
-					return index;
-				}
-			}
-			functions.emplace_back(old_function, argument_types);
-			return index;
-		}
-		FunctionTableEntry& operator [](std::size_t index) {
-			return functions[index];
-		}
-		std::size_t size() const {
-			return functions.size();
-		}
-		void clear(std::size_t index) {
-			functions.erase(functions.begin() + index + 1, functions.end());
+		FunctionTableValue& operator [](const FunctionTableKey& key) {
+			return functions[key];
 		}
 	};
 	Program* program;
 	FunctionTable& function_table;
-	std::size_t index;
+	const FunctionTableKey& key;
 	std::map<const Expression*, const Expression*> cache;
-	Pass1(Program* program, FunctionTable& function_table, std::size_t index): program(program), function_table(function_table), index(index) {}
+	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key): program(program), function_table(function_table), key(key) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
 		for (const Expression* expression: source_block) {
 			Expression* result = visit(*this, expression);
@@ -150,15 +143,15 @@ public:
 	}
 	Expression* visit_argument(const Argument& argument) override {
 		const std::size_t argument_index = argument.get_index();
-		const Type* type = function_table[index].argument_types[argument_index];
+		const Type* type = key.argument_types[argument_index];
 		return new Argument(argument_index, type);
 	}
 	Expression* visit_call(const Call& call) override {
 		Call* new_call = new Call();
-		std::vector<const Type*> argument_types;
+		FunctionTableKey new_key;
 		for (const Expression* argument: call.get_arguments()) {
 			const Expression* new_argument = cache[argument];
-			argument_types.push_back(new_argument->get_type());
+			new_key.argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
 		}
 		const Expression* object = new_call->get_object();
@@ -166,24 +159,24 @@ public:
 			error(call, "call to a value that is not a function");
 		}
 		const Function* old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
+		new_key.old_function = old_function;
 		if (call.get_arguments().size() != old_function->get_arguments()) {
 			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size() - 1), print_number(old_function->get_arguments() - 1)));
 		}
 
-		const std::size_t new_index = function_table.look_up(old_function, argument_types);
-		if (function_table[new_index].pass < function_table.pass) {
-			function_table[new_index].pass = function_table.pass;
-			Pass1 pass1(program, function_table, new_index);
+		if (function_table[new_key].pass < function_table.pass) {
+			function_table[new_key].pass = function_table.pass;
+			Pass1 pass1(program, function_table, new_key);
 			Function* new_function = new Function();
 			program->add_function(new_function);
-			new_function->add_argument_types(argument_types);
-			if (function_table[new_index].new_function) {
-				new_function->set_return_type(function_table[new_index].new_function->get_return_type());
+			new_function->add_argument_types(new_key.argument_types);
+			if (function_table[new_key].new_function) {
+				new_function->set_return_type(function_table[new_key].new_function->get_return_type());
 			}
 			else {
 				new_function->set_return_type(NeverType::get());
 			}
-			function_table[new_index].new_function = new_function;
+			function_table[new_key].new_function = new_function;
 			pass1.evaluate(new_function->get_block(), old_function->get_block());
 			const Expression* new_expression = pass1.cache[old_function->get_expression()];
 			new_function->set_expression(new_expression);
@@ -193,11 +186,11 @@ public:
 		}
 		else {
 			// detect recursion
-			if (function_table[new_index].new_function->get_return_type()->get_id() == NeverType::id) {
+			if (function_table[new_key].new_function->get_return_type()->get_id() == NeverType::id) {
 				function_table.recursion = true;
 			}
-			new_call->set_type(function_table[new_index].new_function->get_return_type());
-			new_call->set_function(function_table[new_index].new_function);
+			new_call->set_type(function_table[new_key].new_function->get_return_type());
+			new_call->set_function(function_table[new_key].new_function);
 		}
 		return new_call;
 	}
@@ -235,7 +228,7 @@ public:
 		// TODO: prevent infinite loop
 		while (function_table.recursion) {
 			new_program = new Program();
-			Pass1 pass1(new_program, function_table, 0);
+			Pass1 pass1(new_program, function_table, FunctionTableKey(main_function));
 			Function* new_function = new Function(VoidType::get());
 			new_program->add_function(new_function);
 			function_table.recursion = false;
@@ -250,36 +243,13 @@ public:
 // inlining
 class Pass2 {
 	struct FunctionTableEntry {
-		const Function* function;
 		const Function* new_function = nullptr;
 		std::size_t callers = 0;
-		FunctionTableEntry(const Function* function): function(function) {}
 		bool should_inline() const {
 			return callers == 1;
 		}
 	};
-	class FunctionTable {
-		std::vector<FunctionTableEntry> functions;
-	public:
-		std::size_t look_up(const Function* function) const {
-			std::size_t index;
-			for (index = 0; index < functions.size(); ++index) {
-				if (functions[index].function == function) {
-					return index;
-				}
-			}
-			return index;
-		}
-		void add_entry(const Function* function) {
-			functions.emplace_back(function);
-		}
-		FunctionTableEntry& operator [](std::size_t index) {
-			return functions[index];
-		}
-		std::size_t size() const {
-			return functions.size();
-		}
-	};
+	using FunctionTable = std::map<const Function*, FunctionTableEntry>;
 	class Analyze: public Visitor<void> {
 		FunctionTable& function_table;
 	public:
@@ -299,12 +269,13 @@ class Pass2 {
 		void visit_closure_access(const ClosureAccess& closure_access) override {}
 		void visit_argument(const Argument& argument) override {}
 		void visit_call(const Call& call) override {
-			const std::size_t new_index = function_table.look_up(call.get_function());
-			if (new_index == function_table.size()) {
-				function_table.add_entry(call.get_function());
+			if (function_table[call.get_function()].callers == 0) {
+				function_table[call.get_function()].callers += 1;
 				evaluate(call.get_function()->get_block());
 			}
-			++function_table[new_index].callers;
+			else {
+				function_table[call.get_function()].callers += 1;
+			}
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {}
 		void visit_bind(const Bind& bind) override {}
@@ -313,7 +284,7 @@ class Pass2 {
 		Program* program;
 		Block* current_block;
 		FunctionTable& function_table;
-		std::size_t index;
+		const Function* function;
 		std::vector<Expression*> arguments;
 		std::map<const Expression*, Expression*> cache;
 		template <class T, class... A> T* create(A&&... arguments) {
@@ -322,7 +293,7 @@ class Pass2 {
 			return expression;
 		}
 	public:
-		Replace(Program* program, FunctionTable& function_table, std::size_t index): program(program), function_table(function_table), index(index) {}
+		Replace(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function) {}
 		void evaluate(Block* destination_block, const Block& source_block) {
 			Block* previous_block = current_block;
 			current_block = destination_block;
@@ -359,7 +330,7 @@ class Pass2 {
 			return create<ClosureAccess>(closure, closure_access.get_index(), closure_access.get_type());
 		}
 		Expression* visit_argument(const Argument& argument) override {
-			if (function_table[index].should_inline()) {
+			if (function_table[function].should_inline()) {
 				return arguments[argument.get_index()];
 			}
 			else {
@@ -367,9 +338,8 @@ class Pass2 {
 			}
 		}
 		Expression* visit_call(const Call& call) override {
-			const std::size_t new_index = function_table.look_up(call.get_function());
-			if (function_table[new_index].should_inline()) {
-				Replace replace(program, function_table, new_index);
+			if (function_table[call.get_function()].should_inline()) {
+				Replace replace(program, function_table, call.get_function());
 				for (const Expression* argument: call.get_arguments()) {
 					replace.arguments.push_back(cache[argument]);
 				}
@@ -381,16 +351,16 @@ class Pass2 {
 				for (const Expression* argument: call.get_arguments()) {
 					new_call->add_argument(cache[argument]);
 				}
-				if (function_table[new_index].new_function == nullptr) {
+				if (function_table[call.get_function()].new_function == nullptr) {
 					Function* new_function = new Function(call.get_function()->get_return_type());
 					program->add_function(new_function);
 					new_function->add_argument_types(call.get_function()->get_argument_types());
-					function_table[new_index].new_function = new_function;
-					Replace replace(program, function_table, new_index);
+					function_table[call.get_function()].new_function = new_function;
+					Replace replace(program, function_table, call.get_function());
 					replace.evaluate(new_function->get_block(), call.get_function()->get_block());
 				}
-				new_call->set_type(function_table[new_index].new_function->get_return_type());
-				new_call->set_function(function_table[new_index].new_function);
+				new_call->set_type(function_table[call.get_function()].new_function->get_return_type());
+				new_call->set_function(function_table[call.get_function()].new_function);
 				return new_call;
 			}
 		}
@@ -415,7 +385,7 @@ public:
 		FunctionTable function_table;
 		Analyze analyze(function_table);
 		analyze.evaluate(main_function->get_block());
-		Replace replace(new_program, function_table, 0);
+		Replace replace(new_program, function_table, main_function);
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
 		replace.evaluate(new_function->get_block(), main_function->get_block());
