@@ -26,7 +26,7 @@
   - [x] closures
   - [ ] strings
   - [ ] arrays
-  - [ ] structs
+  - [x] structs
   - [ ] sum types
   - [ ] interfaces
 - operators

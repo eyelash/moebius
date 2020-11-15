@@ -76,6 +76,12 @@ public:
 		printer.println_indented("}");
 		return result;
 	}
+	Variable visit_struct(const Struct& struct_) override {
+		return next_variable();
+	}
+	Variable visit_struct_access(const StructAccess& struct_access) override {
+		return next_variable();
+	}
 	Variable visit_closure(const Closure& closure) override {
 		const Variable result = next_variable();
 		printer.println_indented(print_functor([&](auto& printer) {

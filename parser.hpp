@@ -352,6 +352,28 @@ class MoebiusParser: private Parser {
 			expect("'");
 			return current_scope->create<Number>(c);
 		}
+		else if (parse("struct", alphanumeric)) {
+			parse_white_space();
+			expect("{");
+			parse_white_space();
+			Struct* struct_ = new Struct();
+			struct_->set_position(position);
+			while (cursor && *cursor != '}') {
+				StringView name = parse_identifier();
+				parse_white_space();
+				expect(":");
+				parse_white_space();
+				const Expression* expression = parse_expression();
+				struct_->add_field(name, expression);
+				parse_white_space();
+				if (parse(",")) {
+					parse_white_space();
+				}
+			}
+			expect("}");
+			current_scope->add_expression(struct_);
+			return struct_;
+		}
 		else if (copy().parse(numeric)) {
 			return parse_number();
 		}
@@ -384,24 +406,37 @@ class MoebiusParser: private Parser {
 		if (level == 5) {
 			const Expression* expression = parse_expression_last();
 			parse_white_space();
-			SourcePosition position = cursor.get_position();
-			while (parse("(")) {
-				parse_white_space();
-				Call* call = new Call();
-				call->set_position(position);
-				call->add_argument(expression);
-				while (cursor && *cursor != ')') {
-					call->add_argument(parse_expression());
+			while (true) {
+				SourcePosition position = cursor.get_position();
+				if (parse("(")) {
 					parse_white_space();
-					if (parse(",")) {
+					Call* call = new Call();
+					call->set_position(position);
+					call->add_argument(expression);
+					while (cursor && *cursor != ')') {
+						call->add_argument(parse_expression());
 						parse_white_space();
+						if (parse(",")) {
+							parse_white_space();
+						}
 					}
+					expect(")");
+					current_scope->add_expression(call);
+					expression = call;
+					parse_white_space();
 				}
-				expect(")");
-				current_scope->add_expression(call);
-				expression = call;
-				parse_white_space();
-				position = cursor.get_position();
+				else if (parse(".")) {
+					parse_white_space();
+					StringView name = parse_identifier();
+					StructAccess* struct_access = new StructAccess(expression, name);
+					struct_access->set_position(position);
+					current_scope->add_expression(struct_access);
+					expression = struct_access;
+					parse_white_space();
+				}
+				else {
+					break;
+				}
 			}
 			return expression;
 		}

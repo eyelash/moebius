@@ -162,6 +162,12 @@ public:
 		jump_end.set_target(assembler, assembler.get_position());
 		return result;
 	}
+	std::uint32_t visit_struct(const Struct& struct_) override {
+		return allocate(0);
+	}
+	std::uint32_t visit_struct_access(const StructAccess& struct_access) override {
+		return allocate(0);
+	}
 	std::uint32_t visit_closure(const Closure& closure) override {
 		const std::uint32_t size = get_type_size(closure.get_type());
 		const std::vector<const Expression*>& environment = closure.get_environment_expressions();

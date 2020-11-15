@@ -7,6 +7,8 @@
 class Number;
 class BinaryExpression;
 class If;
+class Struct;
+class StructAccess;
 class Function;
 class Closure;
 class ClosureAccess;
@@ -77,11 +79,49 @@ public:
 	}
 };
 
+class StructType: public Type {
+	std::vector<std::string> field_names;
+	std::vector<const Type*> field_types;
+public:
+	static constexpr int id = 8;
+	int get_id() const override {
+		return id;
+	}
+	void add_field(const std::string& name, const Type* type) {
+		field_names.push_back(name);
+		field_types.push_back(type);
+	}
+	const std::vector<std::string>& get_field_names() const {
+		return field_names;
+	}
+	const std::vector<const Type*>& get_field_types() const {
+		return field_types;
+	}
+	bool has_field(const std::string& name) const {
+		for (std::size_t i = 0; i < field_names.size(); ++i) {
+			if (field_names[i] == name) {
+				return true;
+			}
+		}
+		return false;
+	}
+	std::size_t get_index(const std::string& name) const {
+		for (std::size_t i = 0; i < field_names.size(); ++i) {
+			if (field_names[i] == name) {
+				return i;
+			}
+		}
+		return 0;
+	}
+};
+
 template <class T> class Visitor {
 public:
 	virtual T visit_number(const Number& number) = 0;
 	virtual T visit_binary_expression(const BinaryExpression& binary_expression) = 0;
 	virtual T visit_if(const If& if_) = 0;
+	virtual T visit_struct(const Struct& struct_) = 0;
+	virtual T visit_struct_access(const StructAccess& struct_access) = 0;
 	virtual T visit_closure(const Closure& closure) = 0;
 	virtual T visit_closure_access(const ClosureAccess& closure_access) = 0;
 	virtual T visit_argument(const Argument& argument) = 0;
@@ -128,6 +168,12 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_if(const If& if_) override {
 			result = visitor.visit_if(if_);
+		}
+		void visit_struct(const Struct& struct_) override {
+			result = visitor.visit_struct(struct_);
+		}
+		void visit_struct_access(const StructAccess& struct_access) override {
+			result = visitor.visit_struct_access(struct_access);
 		}
 		void visit_closure(const Closure& closure) override {
 			result = visitor.visit_closure(closure);
@@ -291,6 +337,42 @@ public:
 	}
 	const Block& get_else_block() const {
 		return else_block;
+	}
+};
+
+class Struct: public Expression {
+	std::vector<std::string> names;
+	std::vector<const Expression*> expressions;
+public:
+	Struct(const Type* type = nullptr): Expression(type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_struct(*this);
+	}
+	void add_field(const StringView& name, const Expression* expression) {
+		names.emplace_back(name.begin(), name.end());
+		expressions.push_back(expression);
+	}
+	const std::vector<std::string>& get_names() const {
+		return names;
+	}
+	const std::vector<const Expression*>& get_expressions() const {
+		return expressions;
+	}
+};
+
+class StructAccess: public Expression {
+	const Expression* struct_;
+	std::string name;
+public:
+	StructAccess(const Expression* struct_, const StringView& name, const Type* type = nullptr): Expression(type), struct_(struct_), name(name.begin(), name.end()) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_struct_access(*this);
+	}
+	const Expression* get_struct() const {
+		return struct_;
+	}
+	const std::string& get_name() const {
+		return name;
 	}
 };
 

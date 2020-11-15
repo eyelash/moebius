@@ -68,6 +68,22 @@ class CodegenC: public Visitor<Variable> {
 					types[type] = index;
 					return index;
 				}
+				case StructType::id: {
+					std::vector<std::size_t> field_types;
+					for (const Type* field_type: static_cast<const StructType*>(type)->get_field_types()) {
+						field_types.push_back(get_type(field_type));
+					}
+					const std::size_t index = types.size();
+					declarations.println_indented("typedef struct {");
+					declarations.increase_indentation();
+					for (std::size_t i = 0; i < field_types.size(); ++i) {
+						declarations.println_indented(format("t% v%;", print_number(field_types[i]), print_number(i)));
+					}
+					declarations.decrease_indentation();
+					declarations.println_indented(format("} t%;", print_number(index)));
+					types[type] = index;
+					return index;
+				}
 				default: {
 					return 0;
 				}
@@ -133,6 +149,12 @@ public:
 			printer.println_indented("}");
 		}
 		return result;
+	}
+	Variable visit_struct(const Struct& struct_) override {
+		return next_variable();
+	}
+	Variable visit_struct_access(const StructAccess& struct_access) override {
+		return next_variable();
 	}
 	Variable visit_closure(const Closure& closure) override {
 		const Variable result = next_variable();

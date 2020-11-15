@@ -18,6 +18,14 @@ class Pass1: public Visitor<Expression*> {
 			}
 			return compare(closure_type1->get_environment_types(), closure_type2->get_environment_types());
 		}
+		if (id1 == StructType::id) {
+			const StructType* struct_type1 = static_cast<const StructType*>(type1);
+			const StructType* struct_type2 = static_cast<const StructType*>(type2);
+			if (std::ptrdiff_t diff = compare(struct_type1->get_field_names(), struct_type2->get_field_names())) {
+				return diff;
+			}
+			return compare(struct_type1->get_field_types(), struct_type2->get_field_types());
+		}
 		return 0;
 	}
 	static std::ptrdiff_t compare(const std::vector<const Type*>& types1, const std::vector<const Type*>& types2) {
@@ -26,6 +34,17 @@ class Pass1: public Visitor<Expression*> {
 		}
 		for (std::size_t i = 0; i < types1.size(); ++i) {
 			if (std::ptrdiff_t diff = compare(types1[i], types2[i])) {
+				return diff;
+			}
+		}
+		return 0;
+	}
+	static std::ptrdiff_t compare(const std::vector<std::string>& strings1, const std::vector<std::string>& strings2) {
+		if (strings1.size() != strings2.size()) {
+			return strings1.size() - strings2.size();
+		}
+		for (std::size_t i = 0; i < strings1.size(); ++i) {
+			if (int diff = strings1[i].compare(strings2[i])) {
 				return diff;
 			}
 		}
@@ -123,6 +142,29 @@ public:
 		else {
 			error(if_, "type of condition must be a number");
 		}
+	}
+	Expression* visit_struct(const Struct& struct_) override {
+		StructType* type = new StructType();
+		Closure* new_struct = new Closure(nullptr, type);
+		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
+			const Expression* new_expression = cache[struct_.get_expressions()[i]];
+			type->add_field(struct_.get_names()[i], new_expression->get_type());
+			new_struct->add_environment_expression(new_expression);
+		}
+		return new_struct;
+	}
+	Expression* visit_struct_access(const StructAccess& struct_access) override {
+		const Expression* struct_ = cache[struct_access.get_struct()];
+		if (struct_->get_type_id() != StructType::id) {
+			error(struct_access, "struct access to non-struct");
+		}
+		const StructType* struct_type = static_cast<const StructType*>(struct_->get_type());
+		if (!struct_type->has_field(struct_access.get_name())) {
+			error(struct_access, "struct has no such field");
+		}
+		const std::size_t index = struct_type->get_index(struct_access.get_name());
+		const Type* type = struct_type->get_field_types()[index];
+		return new ClosureAccess(struct_, index, type);
 	}
 	Expression* visit_closure(const Closure& closure) override {
 		ClosureType* type = new ClosureType(closure.get_function());
@@ -265,6 +307,8 @@ class Pass2 {
 			evaluate(if_.get_then_block());
 			evaluate(if_.get_else_block());
 		}
+		void visit_struct(const Struct& struct_) override {}
+		void visit_struct_access(const StructAccess& struct_access) override {}
 		void visit_closure(const Closure& closure) override {}
 		void visit_closure_access(const ClosureAccess& closure_access) override {}
 		void visit_argument(const Argument& argument) override {}
@@ -317,6 +361,12 @@ class Pass2 {
 			evaluate(new_if->get_then_block(), if_.get_then_block());
 			evaluate(new_if->get_else_block(), if_.get_else_block());
 			return new_if;
+		}
+		Expression* visit_struct(const Struct& struct_) override {
+			return nullptr;
+		}
+		Expression* visit_struct_access(const StructAccess& struct_access) override {
+			return nullptr;
 		}
 		Expression* visit_closure(const Closure& closure) override {
 			Closure* new_closure = create<Closure>(nullptr, closure.get_type());
