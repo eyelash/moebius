@@ -10,9 +10,9 @@ class CodegenX86: public Visitor<std::uint32_t> {
 		switch (type->get_id()) {
 			case NumberType::id:
 				return 4;
-			case ClosureType::id: {
+			case TupleType::id: {
 				int size = 0;
-				for (const Type* type: static_cast<const ClosureType*>(type)->get_environment_types()) {
+				for (const Type* type: static_cast<const TupleType*>(type)->get_types()) {
 					size += get_type_size(type);
 				}
 				return size;
@@ -162,22 +162,16 @@ public:
 		jump_end.set_target(assembler, assembler.get_position());
 		return result;
 	}
-	std::uint32_t visit_struct(const Struct& struct_) override {
-		return allocate(0);
-	}
-	std::uint32_t visit_struct_access(const StructAccess& struct_access) override {
-		return allocate(0);
-	}
-	std::uint32_t visit_closure(const Closure& closure) override {
-		const std::uint32_t size = get_type_size(closure.get_type());
-		const std::vector<const Expression*>& environment = closure.get_environment_expressions();
-		if (environment.size() == 1) {
-			return cache[environment[0]];
+	std::uint32_t visit_tuple(const Tuple& tuple) override {
+		const std::uint32_t size = get_type_size(tuple.get_type());
+		const std::vector<const Expression*>& expressions = tuple.get_expressions();
+		if (expressions.size() == 1) {
+			return cache[expressions[0]];
 		}
-		else if (environment.size() > 1) {
+		else if (expressions.size() > 1) {
 			std::uint32_t destination = allocate(size);
 			const std::uint32_t result = destination;
-			for (const Expression* expression: environment) {
+			for (const Expression* expression: expressions) {
 				const std::uint32_t element_size = get_type_size(expression->get_type());
 				memcopy(destination, cache[expression], element_size);
 				destination += element_size;
@@ -185,15 +179,26 @@ public:
 			return result;
 		}
 	}
-	std::uint32_t visit_closure_access(const ClosureAccess& closure_access) override {
-		const std::uint32_t closure = cache[closure_access.get_closure()];
-		// assert(closure_access.get_closure()->get_type_id() == ClosureType::id);
-		const std::vector<const Type*>& types = static_cast<const ClosureType*>(closure_access.get_closure()->get_type())->get_environment_types();
+	std::uint32_t visit_tuple_access(const TupleAccess& tuple_access) override {
+		const std::uint32_t tuple = cache[tuple_access.get_tuple()];
+		const std::vector<const Type*>& types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_types();
 		std::uint32_t before = 0;
-		for (std::size_t i = 0; i < closure_access.get_index(); ++i) {
+		for (std::size_t i = 0; i < tuple_access.get_index(); ++i) {
 			before += get_type_size(types[i]);
 		}
-		return closure + before;
+		return tuple + before;
+	}
+	std::uint32_t visit_struct(const Struct& struct_) override {
+		return allocate(0);
+	}
+	std::uint32_t visit_struct_access(const StructAccess& struct_access) override {
+		return allocate(0);
+	}
+	std::uint32_t visit_closure(const Closure& closure) override {
+		return allocate(0);
+	}
+	std::uint32_t visit_closure_access(const ClosureAccess& closure_access) override {
+		return allocate(0);
 	}
 	std::uint32_t visit_argument(const Argument& argument) override {
 		const std::uint32_t location = get_argument_location(function, argument.get_index());

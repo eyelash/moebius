@@ -7,6 +7,8 @@
 class Number;
 class BinaryExpression;
 class If;
+class Tuple;
+class TupleAccess;
 class Struct;
 class StructAccess;
 class Function;
@@ -79,6 +81,21 @@ public:
 	}
 };
 
+class TupleType: public Type {
+	std::vector<const Type*> types;
+public:
+	static constexpr int id = 9;
+	int get_id() const override {
+		return id;
+	}
+	void add_type(const Type* type) {
+		types.push_back(type);
+	}
+	const std::vector<const Type*>& get_types() const {
+		return types;
+	}
+};
+
 class StructType: public Type {
 	std::vector<std::string> field_names;
 	std::vector<const Type*> field_types;
@@ -120,6 +137,8 @@ public:
 	virtual T visit_number(const Number& number) = 0;
 	virtual T visit_binary_expression(const BinaryExpression& binary_expression) = 0;
 	virtual T visit_if(const If& if_) = 0;
+	virtual T visit_tuple(const Tuple& tuple) = 0;
+	virtual T visit_tuple_access(const TupleAccess& tuple_access) = 0;
 	virtual T visit_struct(const Struct& struct_) = 0;
 	virtual T visit_struct_access(const StructAccess& struct_access) = 0;
 	virtual T visit_closure(const Closure& closure) = 0;
@@ -168,6 +187,12 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_if(const If& if_) override {
 			result = visitor.visit_if(if_);
+		}
+		void visit_tuple(const Tuple& tuple) override {
+			result = visitor.visit_tuple(tuple);
+		}
+		void visit_tuple_access(const TupleAccess& tuple_access) override {
+			result = visitor.visit_tuple_access(tuple_access);
 		}
 		void visit_struct(const Struct& struct_) override {
 			result = visitor.visit_struct(struct_);
@@ -340,6 +365,37 @@ public:
 	}
 };
 
+class Tuple: public Expression {
+	std::vector<const Expression*> expressions;
+public:
+	Tuple(const Type* type = nullptr): Expression(type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_tuple(*this);
+	}
+	void add_expression(const Expression* expression) {
+		expressions.push_back(expression);
+	}
+	const std::vector<const Expression*>& get_expressions() const {
+		return expressions;
+	}
+};
+
+class TupleAccess: public Expression {
+	const Expression* tuple;
+	std::size_t index;
+public:
+	TupleAccess(const Expression* tuple, std::size_t index, const Type* type = nullptr): Expression(type), tuple(tuple), index(index) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_tuple_access(*this);
+	}
+	const Expression* get_tuple() const {
+		return tuple;
+	}
+	std::size_t get_index() const {
+		return index;
+	}
+};
+
 class Struct: public Expression {
 	std::vector<std::string> names;
 	std::vector<const Expression*> expressions;
@@ -347,6 +403,10 @@ public:
 	Struct(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct(*this);
+	}
+	void add_field(const std::string& name, const Expression* expression) {
+		names.push_back(name);
+		expressions.push_back(expression);
 	}
 	void add_field(const StringView& name, const Expression* expression) {
 		names.emplace_back(name.begin(), name.end());
@@ -364,6 +424,7 @@ class StructAccess: public Expression {
 	const Expression* struct_;
 	std::string name;
 public:
+	StructAccess(const Expression* struct_, const std::string& name, const Type* type = nullptr): Expression(type), struct_(struct_), name(name) {}
 	StructAccess(const Expression* struct_, const StringView& name, const Type* type = nullptr): Expression(type), struct_(struct_), name(name.begin(), name.end()) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_access(*this);
@@ -383,15 +444,13 @@ class Function {
 	const Type* return_type;
 public:
 	const Function* next_function = nullptr;
-	Function(const Type* return_type = nullptr): return_type(return_type) {}
+	Function(const Type* return_type = nullptr): arguments(1), return_type(return_type) {}
+	Function(const std::vector<const Type*>& argument_types, const Type* return_type = nullptr): arguments(argument_types.size()), argument_types(argument_types), return_type(return_type) {}
 	void set_expression(const Expression* expression) {
 		block.set_result(expression);
 	}
 	std::size_t add_argument() {
 		return arguments++;
-	}
-	void add_argument_types(const std::vector<const Type*>& argument_types) {
-		this->argument_types.insert(this->argument_types.end(), argument_types.begin(), argument_types.end());
 	}
 	void set_return_type(const Type* type) {
 		this->return_type = type;

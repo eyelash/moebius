@@ -52,32 +52,16 @@ class CodegenC: public Visitor<Variable> {
 					types[type] = index;
 					return index;
 				}
-				case ClosureType::id: {
-					std::vector<std::size_t> environment_types;
-					for (const Type* environment_type: static_cast<const ClosureType*>(type)->get_environment_types()) {
-						environment_types.push_back(get_type(environment_type));
+				case TupleType::id: {
+					std::vector<std::size_t> element_types;
+					for (const Type* element_type: static_cast<const TupleType*>(type)->get_types()) {
+						element_types.push_back(get_type(element_type));
 					}
 					const std::size_t index = types.size();
 					declarations.println_indented("typedef struct {");
 					declarations.increase_indentation();
-					for (std::size_t i = 0; i < environment_types.size(); ++i) {
-						declarations.println_indented(format("t% v%;", print_number(environment_types[i]), print_number(i)));
-					}
-					declarations.decrease_indentation();
-					declarations.println_indented(format("} t%;", print_number(index)));
-					types[type] = index;
-					return index;
-				}
-				case StructType::id: {
-					std::vector<std::size_t> field_types;
-					for (const Type* field_type: static_cast<const StructType*>(type)->get_field_types()) {
-						field_types.push_back(get_type(field_type));
-					}
-					const std::size_t index = types.size();
-					declarations.println_indented("typedef struct {");
-					declarations.increase_indentation();
-					for (std::size_t i = 0; i < field_types.size(); ++i) {
-						declarations.println_indented(format("t% v%;", print_number(field_types[i]), print_number(i)));
+					for (std::size_t i = 0; i < element_types.size(); ++i) {
+						declarations.println_indented(format("t% v%;", print_number(element_types[i]), print_number(i)));
 					}
 					declarations.decrease_indentation();
 					declarations.println_indented(format("} t%;", print_number(index)));
@@ -150,6 +134,26 @@ public:
 		}
 		return result;
 	}
+	Variable visit_tuple(const Tuple& tuple) override {
+		const Variable result = next_variable();
+		printer.println_indented(print_functor([&](auto& printer) {
+			const std::size_t type = function_table.get_type(tuple.get_type());
+			printer.print(format("t% % = {", print_number(type), result));
+			for (std::size_t i = 0; i < tuple.get_expressions().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(cache[tuple.get_expressions()[i]]);
+			}
+			printer.print("};");
+		}));
+		return result;
+	}
+	Variable visit_tuple_access(const TupleAccess& tuple_access) override {
+		const Variable tuple = cache[tuple_access.get_tuple()];
+		const Variable result = next_variable();
+		const std::size_t result_type = function_table.get_type(tuple_access.get_type());
+		printer.println_indented(format("t% % = %.v%;", print_number(result_type), result, tuple, print_number(tuple_access.get_index())));
+		return result;
+	}
 	Variable visit_struct(const Struct& struct_) override {
 		return next_variable();
 	}
@@ -157,24 +161,10 @@ public:
 		return next_variable();
 	}
 	Variable visit_closure(const Closure& closure) override {
-		const Variable result = next_variable();
-		printer.println_indented(print_functor([&](auto& printer) {
-			const std::size_t type = function_table.get_type(closure.get_type());
-			printer.print(format("t% % = {", print_number(type), result));
-			for (std::size_t i = 0; i < closure.get_environment_expressions().size(); ++i) {
-				if (i > 0) printer.print(", ");
-				printer.print(cache[closure.get_environment_expressions()[i]]);
-			}
-			printer.print("};");
-		}));
-		return result;
+		return next_variable();
 	}
 	Variable visit_closure_access(const ClosureAccess& closure_access) override {
-		const Variable closure = cache[closure_access.get_closure()];
-		const Variable result = next_variable();
-		const std::size_t result_type = function_table.get_type(closure_access.get_type());
-		printer.println_indented(format("t% % = %.v%;", print_number(result_type), result, closure, print_number(closure_access.get_index())));
-		return result;
+		return next_variable();
 	}
 	Variable visit_argument(const Argument& argument) override {
 		return Variable(argument.get_index());

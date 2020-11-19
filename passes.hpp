@@ -10,6 +10,11 @@ class Pass1: public Visitor<Expression*> {
 		if (id1 != id2) {
 			return id1 - id2;
 		}
+		if (id1 == TupleType::id) {
+			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
+			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
+			return compare(tuple_type1->get_types(), tuple_type2->get_types());
+		}
 		if (id1 == ClosureType::id) {
 			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
 			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
@@ -143,13 +148,31 @@ public:
 			error(if_, "type of condition must be a number");
 		}
 	}
+	Expression* visit_tuple(const Tuple& tuple) override {
+		TupleType* type = new TupleType();
+		Tuple* new_tuple = new Tuple(type);
+		for (const Expression* expression: tuple.get_expressions()) {
+			const Expression* new_expression = cache[expression];
+			type->add_type(new_expression->get_type());
+			new_tuple->add_expression(new_expression);
+		}
+		return new_tuple;
+	}
+	Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
+		const std::size_t argument_index = tuple_access.get_index();
+		const Expression* tuple = cache[tuple_access.get_tuple()];
+		const TupleType* tuple_type = static_cast<const TupleType*>(tuple->get_type());
+		const Type* type = tuple_type->get_types()[argument_index];
+		return new TupleAccess(tuple, argument_index, type);
+	}
 	Expression* visit_struct(const Struct& struct_) override {
 		StructType* type = new StructType();
-		Closure* new_struct = new Closure(nullptr, type);
+		Struct* new_struct = new Struct(type);
 		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
+			const std::string& name = struct_.get_names()[i];
 			const Expression* new_expression = cache[struct_.get_expressions()[i]];
-			type->add_field(struct_.get_names()[i], new_expression->get_type());
-			new_struct->add_environment_expression(new_expression);
+			type->add_field(name, new_expression->get_type());
+			new_struct->add_field(name, new_expression);
 		}
 		return new_struct;
 	}
@@ -164,7 +187,7 @@ public:
 		}
 		const std::size_t index = struct_type->get_index(struct_access.get_name());
 		const Type* type = struct_type->get_field_types()[index];
-		return new ClosureAccess(struct_, index, type);
+		return new StructAccess(struct_, struct_access.get_name(), type);
 	}
 	Expression* visit_closure(const Closure& closure) override {
 		ClosureType* type = new ClosureType(closure.get_function());
@@ -197,10 +220,13 @@ public:
 			new_call->add_argument(new_argument);
 		}
 		const Expression* object = new_call->get_object();
-		if (object->get_type_id() != ClosureType::id) {
-			error(call, "call to a value that is not a function");
+		const Function* old_function = call.get_function();
+		if (old_function == nullptr) {
+			if (object->get_type_id() != ClosureType::id) {
+				error(call, "call to a value that is not a function");
+			}
+			old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
 		}
-		const Function* old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
 		new_key.old_function = old_function;
 		if (call.get_arguments().size() != old_function->get_arguments()) {
 			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size() - 1), print_number(old_function->get_arguments() - 1)));
@@ -209,9 +235,8 @@ public:
 		if (function_table[new_key].pass < function_table.pass) {
 			function_table[new_key].pass = function_table.pass;
 			Pass1 pass1(program, function_table, new_key);
-			Function* new_function = new Function();
+			Function* new_function = new Function(new_key.argument_types);
 			program->add_function(new_function);
-			new_function->add_argument_types(new_key.argument_types);
 			if (function_table[new_key].new_function) {
 				new_function->set_return_type(function_table[new_key].new_function->get_return_type());
 			}
@@ -282,6 +307,113 @@ public:
 	}
 };
 
+class Lowering: public Visitor<Expression*> {
+	Program* program;
+	std::map<const Function*, const Function*>& function_table;
+	std::map<const Expression*, Expression*> cache;
+	void evaluate(Block* destination_block, const Block& source_block) {
+		for (const Expression* expression: source_block) {
+			Expression* result = visit(*this, expression);
+			cache[expression] = result;
+			destination_block->add_expression(result);
+		}
+		destination_block->set_result(cache[source_block.get_result()]);
+	}
+	Lowering(Program* program, std::map<const Function*, const Function*>& function_table): program(program), function_table(function_table) {}
+public:
+	Expression* visit_number(const Number& number) override {
+		return new Number(number.get_value());
+	}
+	Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
+		const Expression* left = cache[binary_expression.get_left()];
+		const Expression* right = cache[binary_expression.get_right()];
+		return new BinaryExpression(binary_expression.get_operation(), left, right);
+	}
+	Expression* visit_if(const If& if_) override {
+		const Expression* condition = cache[if_.get_condition()];
+		If* new_if = new If(condition, if_.get_type());
+		evaluate(new_if->get_then_block(), if_.get_then_block());
+		evaluate(new_if->get_else_block(), if_.get_else_block());
+		return new_if;
+	}
+	Expression* visit_tuple(const Tuple& tuple) override {
+		Tuple* new_tuple = new Tuple();
+		for (const Expression* expression: tuple.get_expressions()) {
+			new_tuple->add_expression(cache[expression]);
+		}
+		return new_tuple;
+	}
+	Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
+		const Expression* tuple = cache[tuple_access.get_tuple()];
+		return new TupleAccess(tuple, tuple_access.get_index());
+	}
+	Expression* visit_struct(const Struct& struct_) override {
+		Tuple* tuple = new Tuple();
+		for (const Expression* expression: struct_.get_expressions()) {
+			tuple->add_expression(cache[expression]);
+		}
+		return tuple;
+	}
+	Expression* visit_struct_access(const StructAccess& struct_access) override {
+		const Expression* tuple = cache[struct_access.get_struct()];
+		const StructType* struct_type = static_cast<const StructType*>(struct_access.get_struct()->get_type());
+		const std::size_t index = struct_type->get_index(struct_access.get_name());
+		return new TupleAccess(tuple, index);
+	}
+	Expression* visit_closure(const Closure& closure) override {
+		Tuple* tuple = new Tuple();
+		for (const Expression* expression: closure.get_environment_expressions()) {
+			tuple->add_expression(cache[expression]);
+		}
+		return tuple;
+	}
+	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
+		const Expression* tuple = cache[closure_access.get_closure()];
+		return new TupleAccess(tuple, closure_access.get_index());
+	}
+	Expression* visit_argument(const Argument& argument) override {
+		return new Argument(argument.get_index(), argument.get_type());
+	}
+	Expression* visit_call(const Call& call) override {
+		Call* new_call = new Call();
+		for (const Expression* argument: call.get_arguments()) {
+			new_call->add_argument(cache[argument]);
+		}
+		if (function_table[call.get_function()] == nullptr) {
+			Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
+			program->add_function(new_function);
+			function_table[call.get_function()] = new_function;
+			Lowering lowering(program, function_table);
+			lowering.evaluate(new_function->get_block(), call.get_function()->get_block());
+		}
+		new_call->set_type(function_table[call.get_function()]->get_return_type());
+		new_call->set_function(function_table[call.get_function()]);
+		return new_call;
+	}
+	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
+		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
+		for (const Expression* argument: intrinsic.get_arguments()) {
+			new_intrinsic->add_argument(cache[argument]);
+		}
+		return new_intrinsic;
+	}
+	Expression* visit_bind(const Bind& bind) override {
+		const Expression* left = cache[bind.get_left()];
+		const Expression* right = cache[bind.get_right()];
+		return new Bind(left, right);
+	}
+	static const Program* run(const Program& program) {
+		const Function* main_function = program.get_main_function();
+		Program* new_program = new Program();
+		std::map<const Function*, const Function*> function_table;
+		Lowering lowering(new_program, function_table);
+		Function* new_function = new Function(main_function->get_return_type());
+		new_program->add_function(new_function);
+		lowering.evaluate(new_function->get_block(), main_function->get_block());
+		return new_program;
+	}
+};
+
 // inlining
 class Pass2 {
 	struct FunctionTableEntry {
@@ -307,6 +439,8 @@ class Pass2 {
 			evaluate(if_.get_then_block());
 			evaluate(if_.get_else_block());
 		}
+		void visit_tuple(const Tuple& tuple) override {}
+		void visit_tuple_access(const TupleAccess& tuple_access) override {}
 		void visit_struct(const Struct& struct_) override {}
 		void visit_struct_access(const StructAccess& struct_access) override {}
 		void visit_closure(const Closure& closure) override {}
@@ -362,6 +496,17 @@ class Pass2 {
 			evaluate(new_if->get_else_block(), if_.get_else_block());
 			return new_if;
 		}
+		Expression* visit_tuple(const Tuple& tuple) override {
+			Tuple* new_tuple = create<Tuple>(tuple.get_type());
+			for (const Expression* expression: tuple.get_expressions()) {
+				new_tuple->add_expression(cache[expression]);
+			}
+			return new_tuple;
+		}
+		Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
+			const Expression* tuple = cache[tuple_access.get_tuple()];
+			return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+		}
 		Expression* visit_struct(const Struct& struct_) override {
 			return nullptr;
 		}
@@ -369,15 +514,10 @@ class Pass2 {
 			return nullptr;
 		}
 		Expression* visit_closure(const Closure& closure) override {
-			Closure* new_closure = create<Closure>(nullptr, closure.get_type());
-			for (const Expression* expression: closure.get_environment_expressions()) {
-				new_closure->add_environment_expression(cache[expression]);
-			}
-			return new_closure;
+			return nullptr;
 		}
 		Expression* visit_closure_access(const ClosureAccess& closure_access) override {
-			const Expression* closure = cache[closure_access.get_closure()];
-			return create<ClosureAccess>(closure, closure_access.get_index(), closure_access.get_type());
+			return nullptr;
 		}
 		Expression* visit_argument(const Argument& argument) override {
 			if (function_table[function].should_inline()) {
@@ -402,9 +542,8 @@ class Pass2 {
 					new_call->add_argument(cache[argument]);
 				}
 				if (function_table[call.get_function()].new_function == nullptr) {
-					Function* new_function = new Function(call.get_function()->get_return_type());
+					Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
 					program->add_function(new_function);
-					new_function->add_argument_types(call.get_function()->get_argument_types());
 					function_table[call.get_function()].new_function = new_function;
 					Replace replace(program, function_table, call.get_function());
 					replace.evaluate(new_function->get_block(), call.get_function()->get_block());

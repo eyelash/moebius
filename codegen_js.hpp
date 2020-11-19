@@ -76,6 +76,24 @@ public:
 		printer.println_indented("}");
 		return result;
 	}
+	Variable visit_tuple(const Tuple& tuple) override {
+		const Variable result = next_variable();
+		printer.println_indented(print_functor([&](auto& printer) {
+			printer.print(format("const % = [", result));
+			for (std::size_t i = 0; i < tuple.get_expressions().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(cache[tuple.get_expressions()[i]]);
+			}
+			printer.print("];");
+		}));
+		return result;
+	}
+	Variable visit_tuple_access(const TupleAccess& tuple_access) override {
+		const Variable tuple = cache[tuple_access.get_tuple()];
+		const Variable result = next_variable();
+		printer.println_indented(format("const % = %[%];", result, tuple, print_number(tuple_access.get_index())));
+		return result;
+	}
 	Variable visit_struct(const Struct& struct_) override {
 		return next_variable();
 	}
@@ -83,22 +101,10 @@ public:
 		return next_variable();
 	}
 	Variable visit_closure(const Closure& closure) override {
-		const Variable result = next_variable();
-		printer.println_indented(print_functor([&](auto& printer) {
-			printer.print(format("const % = [", result));
-			for (std::size_t i = 0; i < closure.get_environment_expressions().size(); ++i) {
-				if (i > 0) printer.print(", ");
-				printer.print(cache[closure.get_environment_expressions()[i]]);
-			}
-			printer.print("];");
-		}));
-		return result;
+		return next_variable();
 	}
 	Variable visit_closure_access(const ClosureAccess& closure_access) override {
-		const Variable closure = cache[closure_access.get_closure()];
-		const Variable result = next_variable();
-		printer.println_indented(format("const % = %[%];", result, closure, print_number(closure_access.get_index())));
-		return result;
+		return next_variable();
 	}
 	Variable visit_argument(const Argument& argument) override {
 		return Variable(argument.get_index());
