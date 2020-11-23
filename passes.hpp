@@ -4,57 +4,6 @@
 
 // type checking and monomorphization
 class Pass1: public Visitor<Expression*> {
-	static std::ptrdiff_t compare(const Type* type1, const Type* type2) {
-		const int id1 = type1->get_id();
-		const int id2 = type2->get_id();
-		if (id1 != id2) {
-			return id1 - id2;
-		}
-		if (id1 == TupleType::id) {
-			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
-			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
-			return compare(tuple_type1->get_types(), tuple_type2->get_types());
-		}
-		if (id1 == ClosureType::id) {
-			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
-			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
-			if (closure_type1->get_function() != closure_type2->get_function()) {
-				return closure_type1->get_function() - closure_type2->get_function();
-			}
-			return compare(closure_type1->get_environment_types(), closure_type2->get_environment_types());
-		}
-		if (id1 == StructType::id) {
-			const StructType* struct_type1 = static_cast<const StructType*>(type1);
-			const StructType* struct_type2 = static_cast<const StructType*>(type2);
-			if (std::ptrdiff_t diff = compare(struct_type1->get_field_names(), struct_type2->get_field_names())) {
-				return diff;
-			}
-			return compare(struct_type1->get_field_types(), struct_type2->get_field_types());
-		}
-		return 0;
-	}
-	static std::ptrdiff_t compare(const std::vector<const Type*>& types1, const std::vector<const Type*>& types2) {
-		if (types1.size() != types2.size()) {
-			return types1.size() - types2.size();
-		}
-		for (std::size_t i = 0; i < types1.size(); ++i) {
-			if (std::ptrdiff_t diff = compare(types1[i], types2[i])) {
-				return diff;
-			}
-		}
-		return 0;
-	}
-	static std::ptrdiff_t compare(const std::vector<std::string>& strings1, const std::vector<std::string>& strings2) {
-		if (strings1.size() != strings2.size()) {
-			return strings1.size() - strings2.size();
-		}
-		for (std::size_t i = 0; i < strings1.size(); ++i) {
-			if (int diff = strings1[i].compare(strings2[i])) {
-				return diff;
-			}
-		}
-		return 0;
-	}
 	static StringView print_type(const Type* type) {
 		switch (type->get_id()) {
 			case NumberType::id: return "Number";
@@ -78,7 +27,7 @@ class Pass1: public Visitor<Expression*> {
 			if (old_function != rhs.old_function) {
 				return old_function < rhs.old_function;
 			}
-			return compare(argument_types, rhs.argument_types) < 0;
+			return TypeCompare::compare(argument_types, rhs.argument_types) < 0;
 		}
 	};
 	struct FunctionTableValue {
@@ -130,7 +79,7 @@ public:
 			const Expression* else_expression = cache[if_.get_else_expression()];
 			new_if->set_then_expression(then_expression);
 			new_if->set_else_expression(else_expression);
-			if (compare(then_expression->get_type(), else_expression->get_type()) == 0) {
+			if (then_expression->get_type() == else_expression->get_type()) {
 				new_if->set_type(then_expression->get_type());
 			}
 			else if (then_expression->get_type_id() == NeverType::id) {
@@ -150,12 +99,13 @@ public:
 	}
 	Expression* visit_tuple(const Tuple& tuple) override {
 		TupleType* type = new TupleType();
-		Tuple* new_tuple = new Tuple(type);
+		Tuple* new_tuple = new Tuple();
 		for (const Expression* expression: tuple.get_expressions()) {
 			const Expression* new_expression = cache[expression];
 			type->add_type(new_expression->get_type());
 			new_tuple->add_expression(new_expression);
 		}
+		new_tuple->set_type(TypeInterner::intern(type));
 		return new_tuple;
 	}
 	Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
@@ -167,13 +117,14 @@ public:
 	}
 	Expression* visit_struct(const Struct& struct_) override {
 		StructType* type = new StructType();
-		Struct* new_struct = new Struct(type);
+		Struct* new_struct = new Struct();
 		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
 			const std::string& name = struct_.get_names()[i];
 			const Expression* new_expression = cache[struct_.get_expressions()[i]];
 			type->add_field(name, new_expression->get_type());
 			new_struct->add_field(name, new_expression);
 		}
+		new_struct->set_type(TypeInterner::intern(type));
 		return new_struct;
 	}
 	Expression* visit_struct_access(const StructAccess& struct_access) override {
@@ -191,12 +142,13 @@ public:
 	}
 	Expression* visit_closure(const Closure& closure) override {
 		ClosureType* type = new ClosureType(closure.get_function());
-		Closure* new_closure = new Closure(nullptr, type);
+		Closure* new_closure = new Closure(nullptr);
 		for (const Expression* expression: closure.get_environment_expressions()) {
 			const Expression* new_expression = cache[expression];
 			type->add_environment_type(new_expression->get_type());
 			new_closure->add_environment_expression(new_expression);
 		}
+		new_closure->set_type(TypeInterner::intern(type));
 		return new_closure;
 	}
 	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
@@ -241,7 +193,7 @@ public:
 				new_function->set_return_type(function_table[new_key].new_function->get_return_type());
 			}
 			else {
-				new_function->set_return_type(NeverType::get());
+				new_function->set_return_type(TypeInterner::get_never_type());
 			}
 			function_table[new_key].new_function = new_function;
 			pass1.evaluate(new_function->get_block(), old_function->get_block());
@@ -273,13 +225,13 @@ public:
 			if (new_intrinsic->get_arguments()[0]->get_type_id() != NumberType::id) {
 				error(intrinsic, "argument of putChar must be a number");
 			}
-			new_intrinsic->set_type(VoidType::get());
+			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			if (new_intrinsic->get_arguments().size() != 0) {
 				error(intrinsic, "getChar takes no argument");
 			}
-			new_intrinsic->set_type(NumberType::get());
+			new_intrinsic->set_type(TypeInterner::get_number_type());
 		}
 		return new_intrinsic;
 	}
@@ -296,7 +248,7 @@ public:
 		while (function_table.recursion) {
 			new_program = new Program();
 			Pass1 pass1(new_program, function_table, FunctionTableKey(main_function));
-			Function* new_function = new Function(VoidType::get());
+			Function* new_function = new Function(TypeInterner::get_void_type());
 			new_program->add_function(new_function);
 			function_table.recursion = false;
 			function_table.pass += 1;

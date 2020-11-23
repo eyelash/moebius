@@ -3,6 +3,7 @@
 #include "printer.hpp"
 #include <cstdint>
 #include <vector>
+#include <set>
 
 class Number;
 class BinaryExpression;
@@ -30,10 +31,6 @@ public:
 	static constexpr int id = 2;
 	int get_id() const override {
 		return id;
-	}
-	static const NumberType* get() {
-		static NumberType* type = new NumberType();
-		return type;
 	}
 };
 
@@ -63,10 +60,6 @@ public:
 	int get_id() const override {
 		return id;
 	}
-	static const NeverType* get() {
-		static NeverType* type = new NeverType();
-		return type;
-	}
 };
 
 class VoidType: public Type {
@@ -74,10 +67,6 @@ public:
 	static constexpr int id = 5;
 	int get_id() const override {
 		return id;
-	}
-	static const VoidType* get() {
-		static VoidType* type = new VoidType();
-		return type;
 	}
 };
 
@@ -129,6 +118,129 @@ public:
 			}
 		}
 		return 0;
+	}
+};
+
+class TypeCompare {
+	template <class T> static constexpr int compare_(const T& t1, const T& t2) {
+		return std::less<T>()(t2, t1) - std::less<T>()(t1, t2);
+	}
+public:
+	static int compare(const Type* type1, const Type* type2) {
+		const int id1 = type1->get_id();
+		const int id2 = type2->get_id();
+		if (id1 != id2) {
+			return compare_(id1, id2);
+		}
+		if (id1 == TupleType::id) {
+			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
+			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
+			return compare(tuple_type1->get_types(), tuple_type2->get_types());
+		}
+		if (id1 == ClosureType::id) {
+			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
+			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
+			if (closure_type1->get_function() != closure_type2->get_function()) {
+				return compare_(closure_type1->get_function(), closure_type2->get_function());
+			}
+			return compare(closure_type1->get_environment_types(), closure_type2->get_environment_types());
+		}
+		if (id1 == StructType::id) {
+			const StructType* struct_type1 = static_cast<const StructType*>(type1);
+			const StructType* struct_type2 = static_cast<const StructType*>(type2);
+			if (int diff = compare(struct_type1->get_field_names(), struct_type2->get_field_names())) {
+				return diff;
+			}
+			return compare(struct_type1->get_field_types(), struct_type2->get_field_types());
+		}
+		return 0;
+	}
+	static int compare(const std::vector<const Type*>& types1, const std::vector<const Type*>& types2) {
+		if (types1.size() != types2.size()) {
+			return compare_(types1.size(), types2.size());
+		}
+		for (std::size_t i = 0; i < types1.size(); ++i) {
+			if (int diff = compare(types1[i], types2[i])) {
+				return diff;
+			}
+		}
+		return 0;
+	}
+	static int compare(const std::vector<std::string>& strings1, const std::vector<std::string>& strings2) {
+		if (strings1.size() != strings2.size()) {
+			return compare_(strings1.size(), strings2.size());
+		}
+		for (std::size_t i = 0; i < strings1.size(); ++i) {
+			if (int diff = strings1[i].compare(strings2[i])) {
+				return diff;
+			}
+		}
+		return 0;
+	}
+	bool operator ()(const Type* type1, const Type* type2) const {
+		return compare(type1, type2) < 0;
+	}
+	using is_transparent = std::true_type;
+};
+
+class TypeInterner {
+	static inline std::set<Type*, TypeCompare> types;
+public:
+	static Type* copy(const Type* type) {
+		switch (type->get_id()) {
+			case NumberType::id: return new NumberType();
+			case TupleType::id: {
+				const TupleType* tuple_type = static_cast<const TupleType*>(type);
+				TupleType* new_tuple_type = new TupleType();
+				for (const Type* type: tuple_type->get_types()) {
+					// TODO: maybe intern the type
+					new_tuple_type->add_type(type);
+				}
+				return new_tuple_type;
+			}
+			case ClosureType::id: {
+				const ClosureType* closure_type = static_cast<const ClosureType*>(type);
+				ClosureType* new_closure_type = new ClosureType(closure_type->get_function());
+				for (const Type* environment_type: closure_type->get_environment_types()) {
+					new_closure_type->add_environment_type(environment_type);
+				}
+				return new_closure_type;
+			}
+			case StructType::id: {
+				const StructType* struct_type = static_cast<const StructType*>(type);
+				StructType* new_struct_type = new StructType();
+				for (std::size_t i = 0; i < struct_type->get_field_types().size(); ++i) {
+					const std::string& name = struct_type->get_field_names()[i];
+					const Type* type = struct_type->get_field_types()[i];
+					new_struct_type->add_field(name, type);
+				}
+				return new_struct_type;
+			}
+			case VoidType::id: return new VoidType();
+			case NeverType::id: return new NeverType();
+			default: return nullptr;
+		}
+	}
+	static const Type* intern(const Type* type) {
+		auto iterator = types.find(type);
+		if (iterator != types.end()) {
+			return *iterator;
+		}
+		Type* interned_type = copy(type);
+		types.emplace(interned_type);
+		return interned_type;
+	}
+	static const Type* get_number_type() {
+		NumberType type;
+		return intern(&type);
+	}
+	static const Type* get_void_type() {
+		VoidType type;
+		return intern(&type);
+	}
+	static const Type* get_never_type() {
+		NeverType type;
+		return intern(&type);
 	}
 };
 
@@ -281,7 +393,7 @@ public:
 class Number: public Expression {
 	std::int32_t value;
 public:
-	Number(std::int32_t value): Expression(NumberType::get()), value(value) {}
+	Number(std::int32_t value): Expression(TypeInterner::get_number_type()), value(value) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_number(*this);
 	}
@@ -309,7 +421,7 @@ class BinaryExpression: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(NumberType::get()), operation(operation), left(left), right(right) {}
+	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(TypeInterner::get_number_type()), operation(operation), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_binary_expression(*this);
 	}
@@ -575,7 +687,7 @@ class Bind: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	Bind(const Expression* left, const Expression* right): Expression(VoidType::get()), left(left), right(right) {}
+	Bind(const Expression* left, const Expression* right): Expression(TypeInterner::get_void_type()), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_bind(*this);
 	}

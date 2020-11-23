@@ -91,7 +91,7 @@ class CodegenC: public Visitor<Variable> {
 public:
 	Variable visit_number(const Number& number) override {
 		const Variable result = next_variable();
-		const std::size_t type = function_table.get_type(NumberType::get());
+		const std::size_t type = function_table.get_type(number.get_type());
 		printer.println_indented(format("t% % = %;", print_number(type), result, print_number(number.get_value())));
 		return result;
 	}
@@ -99,7 +99,7 @@ public:
 		const Variable left = cache[binary_expression.get_left()];
 		const Variable right = cache[binary_expression.get_right()];
 		const Variable result = next_variable();
-		const std::size_t type = function_table.get_type(NumberType::get());
+		const std::size_t type = function_table.get_type(binary_expression.get_type());
 		printer.println_indented(format("t% % = % % %;", print_number(type), result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
@@ -193,7 +193,7 @@ public:
 			printer.println_indented(format("putchar(%);", argument));
 		}
 		else if (intrinsic.name_equals("getChar")) {
-			const std::size_t type = function_table.get_type(NumberType::get());
+			const std::size_t type = function_table.get_type(intrinsic.get_type());
 			printer.println_indented(format("t% % = getchar();", print_number(type), result));
 		}
 		return result;
