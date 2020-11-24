@@ -6,7 +6,7 @@
 #include <string>
 
 int main(int argc, char** argv) {
-	const Program* program = parse(argv[1]);
+	std::unique_ptr<Program> program = parse(argv[1]);
 	program = Pass1::run(*program);
 	program = Pass2::run(*program);
 	program = Pass1::run(*program);

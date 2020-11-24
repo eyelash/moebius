@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <set>
+#include <memory>
 
 class Number;
 class BinaryExpression;
@@ -22,6 +23,7 @@ class Bind;
 
 class Type {
 public:
+	virtual ~Type() = default;
 	virtual int get_id() const = 0;
 };
 
@@ -180,11 +182,20 @@ public:
 	bool operator ()(const Type* type1, const Type* type2) const {
 		return compare(type1, type2) < 0;
 	}
+	bool operator ()(const Type* type1, const std::unique_ptr<Type>& type2) const {
+		return compare(type1, type2.get()) < 0;
+	}
+	bool operator ()(const std::unique_ptr<Type>& type1, const Type* type2) const {
+		return compare(type1.get(), type2) < 0;
+	}
+	bool operator ()(const std::unique_ptr<Type>& type1, const std::unique_ptr<Type>& type2) const {
+		return compare(type1.get(), type2.get()) < 0;
+	}
 	using is_transparent = std::true_type;
 };
 
 class TypeInterner {
-	static inline std::set<Type*, TypeCompare> types;
+	static inline std::set<std::unique_ptr<Type>, TypeCompare> types;
 public:
 	static Type* copy(const Type* type) {
 		switch (type->get_id()) {
@@ -224,7 +235,7 @@ public:
 	static const Type* intern(const Type* type) {
 		auto iterator = types.find(type);
 		if (iterator != types.end()) {
-			return *iterator;
+			return iterator->get();
 		}
 		Type* interned_type = copy(type);
 		types.emplace(interned_type);
@@ -267,6 +278,7 @@ class Expression {
 public:
 	const Expression* next_expression = nullptr;
 	Expression(const Type* type = nullptr): type(type) {}
+	virtual ~Expression() = default;
 	virtual void accept(Visitor<void>& visitor) const = 0;
 	const Type* get_type() const {
 		return type;
@@ -348,6 +360,14 @@ class Block {
 	Expression* last = nullptr;
 	const Expression* result = nullptr;
 public:
+	~Block() {
+		const Expression* expression = first;
+		while (expression) {
+			const Expression* next = expression->next_expression;
+			delete expression;
+			expression = next;
+		}
+	}
 	void add_expression(Expression* expression) {
 		if (first == nullptr) {
 			first = expression;
@@ -706,6 +726,14 @@ class Program {
 	const Function* first = nullptr;
 	Function* last = nullptr;
 public:
+	~Program() {
+		const Function* function = first;
+		while (function) {
+			const Function* next = function->next_function;
+			delete function;
+			function = next;
+		}
+	}
 	void add_function(Function* function) {
 		if (first == nullptr) {
 			first = function;

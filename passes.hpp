@@ -98,14 +98,14 @@ public:
 		}
 	}
 	Expression* visit_tuple(const Tuple& tuple) override {
-		TupleType* type = new TupleType();
+		TupleType type;
 		Tuple* new_tuple = new Tuple();
 		for (const Expression* expression: tuple.get_expressions()) {
 			const Expression* new_expression = cache[expression];
-			type->add_type(new_expression->get_type());
+			type.add_type(new_expression->get_type());
 			new_tuple->add_expression(new_expression);
 		}
-		new_tuple->set_type(TypeInterner::intern(type));
+		new_tuple->set_type(TypeInterner::intern(&type));
 		return new_tuple;
 	}
 	Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
@@ -116,15 +116,15 @@ public:
 		return new TupleAccess(tuple, argument_index, type);
 	}
 	Expression* visit_struct(const Struct& struct_) override {
-		StructType* type = new StructType();
+		StructType type;
 		Struct* new_struct = new Struct();
 		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
 			const std::string& name = struct_.get_names()[i];
 			const Expression* new_expression = cache[struct_.get_expressions()[i]];
-			type->add_field(name, new_expression->get_type());
+			type.add_field(name, new_expression->get_type());
 			new_struct->add_field(name, new_expression);
 		}
-		new_struct->set_type(TypeInterner::intern(type));
+		new_struct->set_type(TypeInterner::intern(&type));
 		return new_struct;
 	}
 	Expression* visit_struct_access(const StructAccess& struct_access) override {
@@ -141,14 +141,14 @@ public:
 		return new StructAccess(struct_, struct_access.get_name(), type);
 	}
 	Expression* visit_closure(const Closure& closure) override {
-		ClosureType* type = new ClosureType(closure.get_function());
+		ClosureType type(closure.get_function());
 		Closure* new_closure = new Closure(nullptr);
 		for (const Expression* expression: closure.get_environment_expressions()) {
 			const Expression* new_expression = cache[expression];
-			type->add_environment_type(new_expression->get_type());
+			type.add_environment_type(new_expression->get_type());
 			new_closure->add_environment_expression(new_expression);
 		}
-		new_closure->set_type(TypeInterner::intern(type));
+		new_closure->set_type(TypeInterner::intern(&type));
 		return new_closure;
 	}
 	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
@@ -240,20 +240,24 @@ public:
 		const Expression* right = cache[bind.get_right()];
 		return new Bind(left, right);
 	}
-	static const Program* run(const Program& program) {
+	static std::unique_ptr<Program> run_pass(const Function* main_function, FunctionTable& function_table) {
+		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+		Pass1 pass1(new_program.get(), function_table, FunctionTableKey(main_function));
+		Function* new_function = new Function(TypeInterner::get_void_type());
+		new_program->add_function(new_function);
+		function_table.recursion = false;
+		function_table.pass += 1;
+		pass1.evaluate(new_function->get_block(), main_function->get_block());
+		new_function->set_expression(pass1.cache[main_function->get_expression()]);
+		return new_program;
+	}
+	static std::unique_ptr<Program> run(const Program& program) {
 		const Function* main_function = program.get_main_function();
-		Program* new_program;
+		std::unique_ptr<Program> new_program;
 		FunctionTable function_table;
 		// TODO: prevent infinite loop
 		while (function_table.recursion) {
-			new_program = new Program();
-			Pass1 pass1(new_program, function_table, FunctionTableKey(main_function));
-			Function* new_function = new Function(TypeInterner::get_void_type());
-			new_program->add_function(new_function);
-			function_table.recursion = false;
-			function_table.pass += 1;
-			pass1.evaluate(new_function->get_block(), main_function->get_block());
-			new_function->set_expression(pass1.cache[main_function->get_expression()]);
+			new_program = run_pass(main_function, function_table);
 		}
 		return new_program;
 	}
@@ -425,13 +429,13 @@ class Pass2 {
 	};
 public:
 	Pass2() = delete;
-	static const Program* run(const Program& program) {
+	static std::unique_ptr<Program> run(const Program& program) {
 		const Function* main_function = program.get_main_function();
-		Program* new_program = new Program();
+		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
 		Analyze analyze(function_table);
 		analyze.evaluate(main_function->get_block());
-		Replace replace(new_program, function_table, main_function);
+		Replace replace(new_program.get(), function_table, main_function);
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
 		replace.evaluate(new_function->get_block(), main_function->get_block());

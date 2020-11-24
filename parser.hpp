@@ -199,7 +199,7 @@ public:
 };
 
 class MoebiusParser: private Parser {
-	Program* program;
+	std::unique_ptr<Program> program;
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const T& t) {
 		FilePrinter printer(stderr);
@@ -482,18 +482,18 @@ class MoebiusParser: private Parser {
 	}
 public:
 	MoebiusParser(const SourceFile* file): Parser(file) {}
-	const Program* parse_program() {
-		program = new Program();
+	std::unique_ptr<Program> parse_program() {
+		program = std::make_unique<Program>();
 		parse_white_space();
 		Function* main_function = new Function();
 		program->add_function(main_function);
 		Scope scope(current_scope, main_function->get_block());
 		main_function->set_expression(parse_scope());
-		return program;
+		return std::move(program);
 	}
 };
 
-const Program* parse(const char* file_name) {
+std::unique_ptr<Program> parse(const char* file_name) {
 	SourceFile file(file_name);
 	MoebiusParser parser(&file);
 	return parser.parse_program();

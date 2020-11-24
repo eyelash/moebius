@@ -33,7 +33,6 @@
   - [x] arithmetic (`+`, `-`, `*`, `/`, and `%`)
   - [x] relational (`==`, `!=`, `<`, `<=`, `>`, and `>=`)
   - [ ] logical (`&&`, `||`, and `!`)
-- [ ] fix memory leaks
 - [ ] testing
 - [ ] monadic IO
 - [ ] metaprogramming/reflection
