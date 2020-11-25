@@ -202,7 +202,7 @@ class MoebiusParser: private Parser {
 	std::unique_ptr<Program> program;
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const T& t) {
-		FilePrinter printer(stderr);
+		OstreamPrinter printer(std::cerr);
 		cursor.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}

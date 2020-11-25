@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ast.hpp"
+#include <sstream>
 
 class CodegenC: public Visitor<Variable> {
 	static StringView print_operator(BinaryOperation operation) {
@@ -22,9 +23,9 @@ class CodegenC: public Visitor<Variable> {
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
 		std::map<const Type*, std::size_t> types;
-		IndentPrinter<MemoryPrinter>& declarations;
+		IndentPrinter& declarations;
 	public:
-		FunctionTable(IndentPrinter<MemoryPrinter>& declarations): declarations(declarations) {}
+		FunctionTable(IndentPrinter& declarations): declarations(declarations) {}
 		std::size_t look_up(const Function* function) {
 			auto iterator = functions.find(function);
 			if (iterator != functions.end()) {
@@ -75,13 +76,13 @@ class CodegenC: public Visitor<Variable> {
 		}
 	};
 	FunctionTable& function_table;
-	IndentPrinter<MemoryPrinter>& printer;
+	IndentPrinter& printer;
 	std::size_t variable = 1;
 	std::map<const Expression*, Variable> cache;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	CodegenC(FunctionTable& function_table, IndentPrinter<MemoryPrinter>& printer): function_table(function_table), printer(printer) {}
+	CodegenC(FunctionTable& function_table, IndentPrinter& printer): function_table(function_table), printer(printer) {}
 	Variable evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
@@ -202,12 +203,15 @@ public:
 		return next_variable();
 	}
 	static void codegen(const Program& program, const char* path) {
-		IndentPrinter<MemoryPrinter> type_declarations;
-		IndentPrinter<MemoryPrinter> function_declarations;
-		IndentPrinter<MemoryPrinter> printer;
-		FunctionTable function_table(type_declarations);
-		type_declarations.println_indented("#include <stdio.h>");
-		type_declarations.println_indented("#include <stdint.h>");
+		std::ostringstream type_declarations;
+		std::ostringstream function_declarations;
+		std::ostringstream functions;
+		IndentPrinter type_declaration_printer(type_declarations);
+		IndentPrinter function_declaration_printer(function_declarations);
+		IndentPrinter printer(functions);
+		FunctionTable function_table(type_declaration_printer);
+		type_declaration_printer.println_indented("#include <stdio.h>");
+		type_declaration_printer.println_indented("#include <stdint.h>");
 		{
 			printer.println_indented("int main(int argc, char** argv) {");
 			printer.increase_indentation();
@@ -221,7 +225,7 @@ public:
 			const std::size_t return_type = function_table.get_type(function->get_return_type());
 			const std::size_t index = function_table.look_up(function);
 			const std::size_t arguments = function->get_argument_types().size();
-			function_declarations.println_indented(print_functor([&](auto& printer) {
+			function_declaration_printer.println_indented(print_functor([&](auto& printer) {
 				printer.print(format("t% f%(", print_number(return_type), print_number(index)));
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
@@ -249,8 +253,8 @@ public:
 			printer.decrease_indentation();
 			printer.println_indented("}");
 		}
-		type_declarations.print_to_file(stdout);
-		function_declarations.print_to_file(stdout);
-		printer.print_to_file(stdout);
+		std::cout << type_declarations.str();
+		std::cout << function_declarations.str();
+		std::cout << functions.str();
 	}
 };

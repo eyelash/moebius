@@ -13,7 +13,7 @@ class Pass1: public Visitor<Expression*> {
 		}
 	}
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
-		FilePrinter printer(stderr);
+		OstreamPrinter printer(std::cerr);
 		expression.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}

@@ -33,13 +33,13 @@ class CodegenJS: public Visitor<Variable> {
 		}
 	};
 	FunctionTable& function_table;
-	IndentPrinter<FilePrinter>& printer;
+	IndentPrinter& printer;
 	std::size_t variable = 1;
 	std::map<const Expression*, Variable> cache;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	CodegenJS(FunctionTable& function_table, IndentPrinter<FilePrinter>& printer): function_table(function_table), printer(printer) {}
+	CodegenJS(FunctionTable& function_table, IndentPrinter& printer): function_table(function_table), printer(printer) {}
 	Variable evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			cache[expression] = visit(*this, expression);
@@ -142,7 +142,7 @@ public:
 	}
 	static void codegen(const Program& program, const char* path) {
 		FunctionTable function_table;
-		IndentPrinter<FilePrinter> printer(stdout);
+		IndentPrinter printer(std::cout);
 		printer.println_indented("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
 		printer.println_indented("window.addEventListener('load', main);");
 		{

@@ -1,8 +1,7 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdio>
-
+#include <iostream>
 #include <vector>
 #include <fstream>
 #include <iterator>
@@ -52,49 +51,25 @@ public:
 	}
 };
 
-class FilePrinter {
-	FILE* file;
+class OstreamPrinter {
+	std::ostream& ostream;
 public:
-	FilePrinter(FILE* file = stdout): file(file) {}
-	void print(char c) {
-		fputc(c, file);
+	OstreamPrinter(std::ostream& ostream = std::cout): ostream(ostream) {}
+	void print(char c) const {
+		ostream.put(c);
 	}
-	void print(const StringView& s) {
-		fwrite(s.begin(), 1, s.size(), file);
+	void print(const StringView& s) const {
+		ostream.write(s.begin(), s.size());
 	}
-	void print(const char* s) {
+	void print(const char* s) const {
 		print(StringView(s));
 	}
-	template <class T> void print(const T& t) {
+	template <class T> void print(const T& t) const {
 		t.print(*this);
 	}
-	template <class T> void println(const T& t) {
+	template <class T> void println(const T& t) const {
 		print(t);
 		print('\n');
-	}
-};
-
-class MemoryPrinter {
-	std::vector<char> data;
-public:
-	void print(char c) {
-		data.push_back(c);
-	}
-	void print(const StringView& s) {
-		data.insert(data.end(), s.begin(), s.end());
-	}
-	void print(const char* s) {
-		print(StringView(s));
-	}
-	template <class T> void print(const T& t) {
-		t.print(*this);
-	}
-	template <class T> void println(const T& t) {
-		print(t);
-		print('\n');
-	}
-	void print_to_file(FILE* file) {
-		fwrite(data.data(), 1, data.size(), file);
 	}
 };
 
@@ -188,15 +163,16 @@ constexpr PrintNumber print_number(unsigned int n) {
 	return PrintNumber(n);
 }
 
-template <class P> class IndentPrinter: public P {
+class IndentPrinter {
+	OstreamPrinter printer;
 	unsigned int indentation = 0;
 public:
-	template <class... A> IndentPrinter(A&&... arguments): P(std::forward<A>(arguments)...) {}
+	IndentPrinter(std::ostream& ostream): printer(ostream) {}
 	template <class T> void println_indented(const T& t) {
 		for (unsigned int i = 0; i < indentation; ++i) {
-			P::print('\t');
+			printer.print('\t');
 		}
-		P::println(t);
+		printer.println(t);
 	}
 	void increase_indentation() {
 		indentation += 1;
@@ -231,7 +207,7 @@ class SourcePosition {
 public:
 	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
 	SourcePosition(): file_name(nullptr) {}
-	template <class T> void print_error(FilePrinter& printer, const T& t) const {
+	template <class T> void print_error(OstreamPrinter& printer, const T& t) const {
 		SourceFile file(file_name);
 		unsigned int line_number = 1;
 		const char* c = file.begin();
