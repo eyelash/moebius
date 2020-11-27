@@ -5,44 +5,36 @@ let true = 1
 let newline = 10
 
 let printNum = fn(num) {
-	let inner = fn(inner, num) {
-		return if (9 < num) {
-			return inner(inner, num / 10) >> putChar(48 + (num % 10))
-		} else {
-			return putChar(48 + num)
-		}
-	}
+	let inner = fn(inner, num)
+		if (9 < num)
+			inner(inner, num / 10) >> putChar(48 + (num % 10))
+		else
+			putChar(48 + num)
 	return inner(inner, num) >> putChar(newline)
 }
 
 let isPrime = fn(n) {
-	let inner = fn(inner, n, i) {
-		return if (n < i * i) {
-			return true
-		} else {
-			return if (n % i == 0) {
-				return false
-			} else {
-				return inner(inner, n, i + 1)
-			}
-		}
-	}
+	let inner = fn(inner, n, i)
+		if (n < i * i)
+			true
+		else
+			if (n % i == 0)
+				false
+			else
+				inner(inner, n, i + 1)
 	return inner(inner, n, 2)
 }
 
 // print the first 100 primes
 let printPrimes = fn() {
-	let inner = fn(inner, n, count) {
-		return if (count < 100) {
-			return if (isPrime(n)) {
-				return printNum(n) >> inner(inner, n + 1, count + 1)
-			} else {
-				return inner(inner, n + 1, count)
-			}
-		} else {
-			return putChar(newline)
-		}
-	}
+	let inner = fn(inner, n, count)
+		if (count < 100)
+			if (isPrime(n))
+				printNum(n) >> inner(inner, n + 1, count + 1)
+			else
+				inner(inner, n + 1, count)
+		else
+			putChar(newline)
 	return inner(inner, 2, 0)
 }
 

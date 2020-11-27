@@ -11,7 +11,7 @@ class CodegenX86: public Visitor<std::uint32_t> {
 			case NumberType::id:
 				return 4;
 			case TupleType::id: {
-				int size = 0;
+				std::uint32_t size = 0;
 				for (const Type* type: static_cast<const TupleType*>(type)->get_types()) {
 					size += get_type_size(type);
 				}
@@ -51,13 +51,13 @@ class CodegenX86: public Visitor<std::uint32_t> {
 	const Function* function;
 	A& assembler;
 	std::uint32_t variable = 0;
-	std::map<const Expression*,std::uint32_t> cache;
+	std::map<const Expression*,std::uint32_t> expression_table;
 	CodegenX86(std::vector<DeferredCall>& deferred_calls, const Function* function, A& assembler): deferred_calls(deferred_calls), function(function), assembler(assembler) {}
 	std::uint32_t evaluate(const Block& block) {
 		for (const Expression* expression: block) {
-			cache[expression] = visit(*this, expression);
+			expression_table[expression] = visit(*this, expression);
 		}
-		return cache[block.get_result()];
+		return expression_table[block.get_result()];
 	}
 	std::uint32_t allocate(std::uint32_t size) {
 		variable -= size;
@@ -76,8 +76,8 @@ public:
 		return result;
 	}
 	std::uint32_t visit_binary_expression(const BinaryExpression& binary_expression) override {
-		const std::uint32_t left = cache[binary_expression.get_left()];
-		const std::uint32_t right = cache[binary_expression.get_right()];
+		const std::uint32_t left = expression_table[binary_expression.get_left()];
+		const std::uint32_t right = expression_table[binary_expression.get_right()];
 		assembler.MOV(EAX, PTR(EBP, left));
 		assembler.MOV(EBX, PTR(EBP, right));
 		const std::uint32_t result = allocate(4);
@@ -144,7 +144,7 @@ public:
 		return result;
 	}
 	std::uint32_t visit_if(const If& if_) override {
-		const std::uint32_t condition = cache[if_.get_condition()];
+		const std::uint32_t condition = expression_table[if_.get_condition()];
 		assembler.MOV(EAX, PTR(EBP, condition));
 		assembler.CMP(EAX, 0);
 		const std::uint32_t size = get_type_size(if_.get_type());
@@ -166,21 +166,21 @@ public:
 		const std::uint32_t size = get_type_size(tuple.get_type());
 		const std::vector<const Expression*>& expressions = tuple.get_expressions();
 		if (expressions.size() == 1) {
-			return cache[expressions[0]];
+			return expression_table[expressions[0]];
 		}
 		else if (expressions.size() > 1) {
 			std::uint32_t destination = allocate(size);
 			const std::uint32_t result = destination;
 			for (const Expression* expression: expressions) {
 				const std::uint32_t element_size = get_type_size(expression->get_type());
-				memcopy(destination, cache[expression], element_size);
+				memcopy(destination, expression_table[expression], element_size);
 				destination += element_size;
 			}
 			return result;
 		}
 	}
 	std::uint32_t visit_tuple_access(const TupleAccess& tuple_access) override {
-		const std::uint32_t tuple = cache[tuple_access.get_tuple()];
+		const std::uint32_t tuple = expression_table[tuple_access.get_tuple()];
 		const std::vector<const Type*>& types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_types();
 		std::uint32_t before = 0;
 		for (std::size_t i = 0; i < tuple_access.get_index(); ++i) {
@@ -211,7 +211,7 @@ public:
 		for (const Expression* argument: call.get_arguments()) {
 			const std::uint32_t argument_size = get_type_size(argument->get_type());
 			destination -= argument_size;
-			memcopy(destination, cache[argument], argument_size);
+			memcopy(destination, expression_table[argument], argument_size);
 		}
 		assembler.LEA(ESP, PTR(EBP, destination));
 		if (output_size > input_size) {
@@ -228,7 +228,7 @@ public:
 	}
 	std::uint32_t visit_intrinsic(const Intrinsic& intrinsic) override {
 		if (intrinsic.name_equals("putChar")) {
-			const std::uint32_t argument = cache[intrinsic.get_arguments()[0]];
+			const std::uint32_t argument = expression_table[intrinsic.get_arguments()[0]];
 			assembler.comment("putChar");
 			assembler.MOV(EAX, 0x04);
 			assembler.MOV(EBX, 1); // stdout

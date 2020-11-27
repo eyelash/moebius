@@ -571,7 +571,7 @@ public:
 
 class Function {
 	Block block;
-	std::size_t arguments = 1;
+	std::size_t arguments;
 	std::vector<const Type*> argument_types;
 	const Type* return_type;
 public:

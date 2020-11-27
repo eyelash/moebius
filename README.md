@@ -24,11 +24,12 @@
 - types
   - [x] integers
   - [x] closures
+  - [x] structs
   - [ ] strings
   - [ ] arrays
-  - [x] structs
   - [ ] sum types
   - [ ] interfaces
+  - [ ] floating point
 - operators
   - [x] arithmetic (`+`, `-`, `*`, `/`, and `%`)
   - [x] relational (`==`, `!=`, `<`, `<=`, `>`, and `>=`)

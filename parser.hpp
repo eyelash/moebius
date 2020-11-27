@@ -168,7 +168,7 @@ public:
 			}
 			++copy;
 		}
-		if (f(*copy)) {
+		if (copy && f(*copy)) {
 			return false;
 		}
 		cursor = copy;
@@ -202,7 +202,7 @@ class MoebiusParser: private Parser {
 	std::unique_ptr<Program> program;
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const T& t) {
-		OstreamPrinter printer(std::cerr);
+		Printer printer(std::cerr);
 		cursor.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}
@@ -423,7 +423,6 @@ class MoebiusParser: private Parser {
 					expect(")");
 					current_scope->add_expression(call);
 					expression = call;
-					parse_white_space();
 				}
 				else if (parse(".")) {
 					parse_white_space();
@@ -457,28 +456,19 @@ class MoebiusParser: private Parser {
 	}
 	const Expression* parse_scope() {
 		Scope scope(current_scope);
-		const Expression* result = nullptr;
-		while (true) {
-			if (parse("let", alphanumeric)) {
-				parse_white_space();
-				StringView name = parse_identifier();
-				parse_white_space();
-				expect("=");
-				parse_white_space();
-				const Expression* expression = parse_expression();
-				scope.add_variable(name, expression);
-			}
-			else if (parse("return", alphanumeric)) {
-				parse_white_space();
-				result = parse_expression();
-				break;
-			}
-			else {
-				error("expected \"let\" or \"return\"");
-				break;
-			}
+		while (parse("let", alphanumeric)) {
+			parse_white_space();
+			StringView name = parse_identifier();
+			parse_white_space();
+			expect("=");
+			parse_white_space();
+			const Expression* expression = parse_expression();
+			scope.add_variable(name, expression);
+			parse_white_space();
 		}
-		return result;
+		expect("return");
+		parse_white_space();
+		return parse_expression();
 	}
 public:
 	MoebiusParser(const SourceFile* file): Parser(file) {}

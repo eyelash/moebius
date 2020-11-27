@@ -13,7 +13,7 @@ class Pass1: public Visitor<Expression*> {
 		}
 	}
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
-		OstreamPrinter printer(std::cerr);
+		Printer printer(std::cerr);
 		expression.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}
@@ -46,22 +46,23 @@ class Pass1: public Visitor<Expression*> {
 	Program* program;
 	FunctionTable& function_table;
 	const FunctionTableKey& key;
-	std::map<const Expression*, const Expression*> cache;
+	std::map<const Expression*, const Expression*> expression_table;
 	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key): program(program), function_table(function_table), key(key) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
 		for (const Expression* expression: source_block) {
 			Expression* result = visit(*this, expression);
-			cache[expression] = result;
+			expression_table[expression] = result;
 			destination_block->add_expression(result);
 		}
+		destination_block->set_result(expression_table[source_block.get_result()]);
 	}
 public:
 	Expression* visit_number(const Number& number) override {
 		return new Number(number.get_value());
 	}
 	Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
-		const Expression* left = cache[binary_expression.get_left()];
-		const Expression* right = cache[binary_expression.get_right()];
+		const Expression* left = expression_table[binary_expression.get_left()];
+		const Expression* right = expression_table[binary_expression.get_right()];
 		if ((left->get_type_id() == NumberType::id || left->get_type_id() == NeverType::id) && (right->get_type_id() == NumberType::id || right->get_type_id() == NeverType::id)) {
 			return new BinaryExpression(binary_expression.get_operation(), left, right);
 		}
@@ -70,15 +71,13 @@ public:
 		}
 	}
 	Expression* visit_if(const If& if_) override {
-		const Expression* condition = cache[if_.get_condition()];
+		const Expression* condition = expression_table[if_.get_condition()];
 		if (condition->get_type_id() == NumberType::id || condition->get_type_id() == NeverType::id) {
 			If* new_if = new If(condition);
 			evaluate(new_if->get_then_block(), if_.get_then_block());
 			evaluate(new_if->get_else_block(), if_.get_else_block());
-			const Expression* then_expression = cache[if_.get_then_expression()];
-			const Expression* else_expression = cache[if_.get_else_expression()];
-			new_if->set_then_expression(then_expression);
-			new_if->set_else_expression(else_expression);
+			const Expression* then_expression = expression_table[if_.get_then_expression()];
+			const Expression* else_expression = expression_table[if_.get_else_expression()];
 			if (then_expression->get_type() == else_expression->get_type()) {
 				new_if->set_type(then_expression->get_type());
 			}
@@ -101,7 +100,7 @@ public:
 		TupleType type;
 		Tuple* new_tuple = new Tuple();
 		for (const Expression* expression: tuple.get_expressions()) {
-			const Expression* new_expression = cache[expression];
+			const Expression* new_expression = expression_table[expression];
 			type.add_type(new_expression->get_type());
 			new_tuple->add_expression(new_expression);
 		}
@@ -110,7 +109,7 @@ public:
 	}
 	Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const std::size_t argument_index = tuple_access.get_index();
-		const Expression* tuple = cache[tuple_access.get_tuple()];
+		const Expression* tuple = expression_table[tuple_access.get_tuple()];
 		const TupleType* tuple_type = static_cast<const TupleType*>(tuple->get_type());
 		const Type* type = tuple_type->get_types()[argument_index];
 		return new TupleAccess(tuple, argument_index, type);
@@ -120,7 +119,7 @@ public:
 		Struct* new_struct = new Struct();
 		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
 			const std::string& name = struct_.get_names()[i];
-			const Expression* new_expression = cache[struct_.get_expressions()[i]];
+			const Expression* new_expression = expression_table[struct_.get_expressions()[i]];
 			type.add_field(name, new_expression->get_type());
 			new_struct->add_field(name, new_expression);
 		}
@@ -128,7 +127,7 @@ public:
 		return new_struct;
 	}
 	Expression* visit_struct_access(const StructAccess& struct_access) override {
-		const Expression* struct_ = cache[struct_access.get_struct()];
+		const Expression* struct_ = expression_table[struct_access.get_struct()];
 		if (struct_->get_type_id() != StructType::id) {
 			error(struct_access, "struct access to non-struct");
 		}
@@ -144,7 +143,7 @@ public:
 		ClosureType type(closure.get_function());
 		Closure* new_closure = new Closure(nullptr);
 		for (const Expression* expression: closure.get_environment_expressions()) {
-			const Expression* new_expression = cache[expression];
+			const Expression* new_expression = expression_table[expression];
 			type.add_environment_type(new_expression->get_type());
 			new_closure->add_environment_expression(new_expression);
 		}
@@ -153,7 +152,7 @@ public:
 	}
 	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
 		const std::size_t argument_index = closure_access.get_index();
-		const Expression* closure = cache[closure_access.get_closure()];
+		const Expression* closure = expression_table[closure_access.get_closure()];
 		const ClosureType* closure_type = static_cast<const ClosureType*>(closure->get_type());
 		const Type* type = closure_type->get_environment_types()[argument_index];
 		return new ClosureAccess(closure, argument_index, type);
@@ -167,7 +166,7 @@ public:
 		Call* new_call = new Call();
 		FunctionTableKey new_key;
 		for (const Expression* argument: call.get_arguments()) {
-			const Expression* new_argument = cache[argument];
+			const Expression* new_argument = expression_table[argument];
 			new_key.argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
 		}
@@ -197,26 +196,23 @@ public:
 			}
 			function_table[new_key].new_function = new_function;
 			pass1.evaluate(new_function->get_block(), old_function->get_block());
-			const Expression* new_expression = pass1.cache[old_function->get_expression()];
-			new_function->set_expression(new_expression);
+			const Expression* new_expression = pass1.expression_table[old_function->get_expression()];
 			new_function->set_return_type(new_expression->get_type());
-			new_call->set_type(new_expression->get_type());
-			new_call->set_function(new_function);
 		}
 		else {
 			// detect recursion
 			if (function_table[new_key].new_function->get_return_type()->get_id() == NeverType::id) {
 				function_table.recursion = true;
 			}
-			new_call->set_type(function_table[new_key].new_function->get_return_type());
-			new_call->set_function(function_table[new_key].new_function);
 		}
+		new_call->set_type(function_table[new_key].new_function->get_return_type());
+		new_call->set_function(function_table[new_key].new_function);
 		return new_call;
 	}
 	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name());
 		for (const Expression* argument: intrinsic.get_arguments()) {
-			new_intrinsic->add_argument(cache[argument]);
+			new_intrinsic->add_argument(expression_table[argument]);
 		}
 		if (intrinsic.name_equals("putChar")) {
 			if (new_intrinsic->get_arguments().size() != 1) {
@@ -236,8 +232,8 @@ public:
 		return new_intrinsic;
 	}
 	Expression* visit_bind(const Bind& bind) override {
-		const Expression* left = cache[bind.get_left()];
-		const Expression* right = cache[bind.get_right()];
+		const Expression* left = expression_table[bind.get_left()];
+		const Expression* right = expression_table[bind.get_right()];
 		return new Bind(left, right);
 	}
 	static std::unique_ptr<Program> run_pass(const Function* main_function, FunctionTable& function_table) {
@@ -248,7 +244,6 @@ public:
 		function_table.recursion = false;
 		function_table.pass += 1;
 		pass1.evaluate(new_function->get_block(), main_function->get_block());
-		new_function->set_expression(pass1.cache[main_function->get_expression()]);
 		return new_program;
 	}
 	static std::unique_ptr<Program> run(const Program& program) {
@@ -313,7 +308,7 @@ class Pass2 {
 		FunctionTable& function_table;
 		const Function* function;
 		std::vector<Expression*> arguments;
-		std::map<const Expression*, Expression*> cache;
+		std::map<const Expression*, Expression*> expression_table;
 		template <class T, class... A> T* create(A&&... arguments) {
 			T* expression = new T(std::forward<A>(arguments)...);
 			current_block->add_expression(expression);
@@ -325,21 +320,21 @@ class Pass2 {
 			Block* previous_block = current_block;
 			current_block = destination_block;
 			for (const Expression* expression: source_block) {
-				cache[expression] = visit(*this, expression);
+				expression_table[expression] = visit(*this, expression);
 			}
-			destination_block->set_result(cache[source_block.get_result()]);
+			destination_block->set_result(expression_table[source_block.get_result()]);
 			current_block = previous_block;
 		}
 		Expression* visit_number(const Number& number) override {
 			return create<Number>(number.get_value());
 		}
 		Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
-			const Expression* left = cache[binary_expression.get_left()];
-			const Expression* right = cache[binary_expression.get_right()];
+			const Expression* left = expression_table[binary_expression.get_left()];
+			const Expression* right = expression_table[binary_expression.get_right()];
 			return create<BinaryExpression>(binary_expression.get_operation(), left, right);
 		}
 		Expression* visit_if(const If& if_) override {
-			const Expression* condition = cache[if_.get_condition()];
+			const Expression* condition = expression_table[if_.get_condition()];
 			If* new_if = create<If>(condition, if_.get_type());
 			evaluate(new_if->get_then_block(), if_.get_then_block());
 			evaluate(new_if->get_else_block(), if_.get_else_block());
@@ -348,23 +343,23 @@ class Pass2 {
 		Expression* visit_tuple(const Tuple& tuple) override {
 			Tuple* new_tuple = create<Tuple>(tuple.get_type());
 			for (const Expression* expression: tuple.get_expressions()) {
-				new_tuple->add_expression(cache[expression]);
+				new_tuple->add_expression(expression_table[expression]);
 			}
 			return new_tuple;
 		}
 		Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
-			const Expression* tuple = cache[tuple_access.get_tuple()];
+			const Expression* tuple = expression_table[tuple_access.get_tuple()];
 			return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
 		}
 		Expression* visit_struct(const Struct& struct_) override {
 			Tuple* tuple = create<Tuple>();
 			for (const Expression* expression: struct_.get_expressions()) {
-				tuple->add_expression(cache[expression]);
+				tuple->add_expression(expression_table[expression]);
 			}
 			return tuple;
 		}
 		Expression* visit_struct_access(const StructAccess& struct_access) override {
-			const Expression* tuple = cache[struct_access.get_struct()];
+			const Expression* tuple = expression_table[struct_access.get_struct()];
 			const StructType* struct_type = static_cast<const StructType*>(struct_access.get_struct()->get_type());
 			const std::size_t index = struct_type->get_index(struct_access.get_name());
 			return create<TupleAccess>(tuple, index);
@@ -372,12 +367,12 @@ class Pass2 {
 		Expression* visit_closure(const Closure& closure) override {
 			Tuple* tuple = create<Tuple>();
 			for (const Expression* expression: closure.get_environment_expressions()) {
-				tuple->add_expression(cache[expression]);
+				tuple->add_expression(expression_table[expression]);
 			}
 			return tuple;
 		}
 		Expression* visit_closure_access(const ClosureAccess& closure_access) override {
-			const Expression* tuple = cache[closure_access.get_closure()];
+			const Expression* tuple = expression_table[closure_access.get_closure()];
 			return create<TupleAccess>(tuple, closure_access.get_index());
 		}
 		Expression* visit_argument(const Argument& argument) override {
@@ -392,15 +387,15 @@ class Pass2 {
 			if (function_table[call.get_function()].should_inline()) {
 				Replace replace(program, function_table, call.get_function());
 				for (const Expression* argument: call.get_arguments()) {
-					replace.arguments.push_back(cache[argument]);
+					replace.arguments.push_back(expression_table[argument]);
 				}
 				replace.evaluate(current_block, call.get_function()->get_block());
-				return replace.cache[call.get_function()->get_expression()];
+				return replace.expression_table[call.get_function()->get_expression()];
 			}
 			else {
 				Call* new_call = create<Call>();
 				for (const Expression* argument: call.get_arguments()) {
-					new_call->add_argument(cache[argument]);
+					new_call->add_argument(expression_table[argument]);
 				}
 				if (function_table[call.get_function()].new_function == nullptr) {
 					Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
@@ -417,13 +412,13 @@ class Pass2 {
 		Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 			Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), intrinsic.get_type());
 			for (const Expression* argument: intrinsic.get_arguments()) {
-				new_intrinsic->add_argument(cache[argument]);
+				new_intrinsic->add_argument(expression_table[argument]);
 			}
 			return new_intrinsic;
 		}
 		Expression* visit_bind(const Bind& bind) override {
-			const Expression* left = cache[bind.get_left()];
-			const Expression* right = cache[bind.get_right()];
+			const Expression* left = expression_table[bind.get_left()];
+			const Expression* right = expression_table[bind.get_right()];
 			return create<Bind>(left, right);
 		}
 	};

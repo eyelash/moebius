@@ -51,10 +51,10 @@ public:
 	}
 };
 
-class OstreamPrinter {
+class Printer {
 	std::ostream& ostream;
 public:
-	OstreamPrinter(std::ostream& ostream = std::cout): ostream(ostream) {}
+	Printer(std::ostream& ostream = std::cout): ostream(ostream) {}
 	void print(char c) const {
 		ostream.put(c);
 	}
@@ -77,7 +77,7 @@ template <class F> class PrintFunctor {
 	F f;
 public:
 	constexpr PrintFunctor(F f): f(f) {}
-	template <class P> void print(P& p) const {
+	void print(const Printer& p) const {
 		f(p);
 	}
 };
@@ -89,8 +89,8 @@ template <class... T> class PrintTuple;
 template <> class PrintTuple<> {
 public:
 	constexpr PrintTuple() {}
-	template <class P> void print(P& p) const {}
-	template <class P> void print_formatted(P& p, const char* s) const {
+	void print(const Printer& p) const {}
+	void print_formatted(const Printer& p, const char* s) const {
 		p.print(s);
 	}
 };
@@ -99,11 +99,11 @@ template <class T0, class... T> class PrintTuple<T0, T...> {
 	PrintTuple<T...> t;
 public:
 	constexpr PrintTuple(const T0& t0, const T&... t): t0(t0), t(t...) {}
-	template <class P> void print(P& p) const {
+	void print(const Printer& p) const {
 		p.print(t0);
 		p.print(t);
 	}
-	template <class P> void print_formatted(P& p, const char* s) const {
+	void print_formatted(const Printer& p, const char* s) const {
 		while (*s) {
 			if (*s == '%') {
 				++s;
@@ -127,7 +127,7 @@ template <class... T> class Format {
 	const char* s;
 public:
 	constexpr Format(const char* s, const T&... t): t(t...), s(s) {}
-	template <class P> void print(P& p) const {
+	void print(const Printer& p) const {
 		t.print_formatted(p, s);
 	}
 };
@@ -152,7 +152,7 @@ class PrintNumber {
 	unsigned int n;
 public:
 	constexpr PrintNumber(unsigned int n): n(n) {}
-	template <class P> void print(P& p) const {
+	void print(const Printer& p) const {
 		if (n >= 10) {
 			p.print(PrintNumber(n / 10));
 		}
@@ -164,11 +164,11 @@ constexpr PrintNumber print_number(unsigned int n) {
 }
 
 class IndentPrinter {
-	OstreamPrinter printer;
+	Printer printer;
 	unsigned int indentation = 0;
 public:
 	IndentPrinter(std::ostream& ostream): printer(ostream) {}
-	template <class T> void println_indented(const T& t) {
+	template <class T> void println(const T& t) const {
 		for (unsigned int i = 0; i < indentation; ++i) {
 			printer.print('\t');
 		}
@@ -207,7 +207,7 @@ class SourcePosition {
 public:
 	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
 	SourcePosition(): file_name(nullptr) {}
-	template <class T> void print_error(OstreamPrinter& printer, const T& t) const {
+	template <class T> void print_error(const Printer& printer, const T& t) const {
 		SourceFile file(file_name);
 		unsigned int line_number = 1;
 		const char* c = file.begin();
@@ -253,7 +253,7 @@ class Variable {
 public:
 	constexpr Variable(std::size_t index): index(index) {}
 	Variable() {}
-	template <class P> void print(P& printer) const {
+	void print(const Printer& printer) const {
 		printer.print(format("v%", print_number(index)));
 	}
 };
