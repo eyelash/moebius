@@ -479,6 +479,10 @@ public:
 		program->add_function(main_function);
 		Scope scope(current_scope, main_function->get_block());
 		main_function->set_expression(parse_scope());
+		parse_white_space();
+		if (cursor) {
+			error("unexpected character at end of program");
+		}
 		return std::move(program);
 	}
 };
