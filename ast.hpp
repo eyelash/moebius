@@ -123,6 +123,14 @@ public:
 	}
 };
 
+class ArrayType: public Type {
+public:
+	static constexpr int id = 7;
+	int get_id() const override {
+		return id;
+	}
+};
+
 class TypeCompare {
 	template <class T> static constexpr int compare_(const T& t1, const T& t2) {
 		return std::less<T>()(t2, t1) - std::less<T>()(t1, t2);
@@ -229,6 +237,7 @@ public:
 			}
 			case VoidType::id: return new VoidType();
 			case NeverType::id: return new NeverType();
+			case ArrayType::id: return new ArrayType();
 			default: return nullptr;
 		}
 	}
@@ -251,6 +260,10 @@ public:
 	}
 	static const Type* get_never_type() {
 		NeverType type;
+		return intern(&type);
+	}
+	static const Type* get_array_type() {
+		ArrayType type;
 		return intern(&type);
 	}
 };

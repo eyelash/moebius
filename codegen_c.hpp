@@ -69,6 +69,18 @@ class CodegenC: public Visitor<Variable> {
 					types[type] = index;
 					return index;
 				}
+				case ArrayType::id: {
+					const std::size_t int_type = get_type(TypeInterner::get_number_type());
+					const std::size_t index = types.size();
+					type_declaration_printer.println("typedef struct {");
+					type_declaration_printer.increase_indentation();
+					type_declaration_printer.println(format("t%* elements;", print_number(int_type)));
+					type_declaration_printer.println(format("int32_t length;"));
+					type_declaration_printer.decrease_indentation();
+					type_declaration_printer.println(format("} t%;", print_number(index)));
+					types[type] = index;
+					return index;
+				}
 				default: {
 					return 0;
 				}
@@ -197,6 +209,55 @@ public:
 			const std::size_t type = function_table.get_type(intrinsic.get_type());
 			printer.println(format("t% % = getchar();", print_number(type), result));
 		}
+		else if (intrinsic.name_equals("arrayNew")) {
+			const std::size_t type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("t% %;", print_number(type), result));
+			const std::size_t size = intrinsic.get_arguments().size();
+			printer.println(format("%.length = %;", result, print_number(size)));
+			printer.println(format("%.elements = malloc(%.length * 4);", result, result));
+			for (std::size_t i = 0; i < size; ++i) {
+				const Variable argument = expression_table[intrinsic.get_arguments()[i]];
+				printer.println(format("%.elements[%] = %;", result, print_number(i), argument));
+			}
+		}
+		else if (intrinsic.name_equals("arrayGet")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			const Variable index = expression_table[intrinsic.get_arguments()[1]];
+			const std::size_t type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("t% % = %.elements[%];", print_number(type), result, array, index));
+		}
+		else if (intrinsic.name_equals("arrayLength")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			const std::size_t type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("t% % = %.length;", print_number(type), result, array));
+		}
+		else if (intrinsic.name_equals("arraySplice")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			const Variable index = expression_table[intrinsic.get_arguments()[1]];
+			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
+			const Variable insert = expression_table[intrinsic.get_arguments()[3]];
+			const std::size_t type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("t% %;", print_number(type), result));
+			printer.println(format("%.length = %.length - % + %.length;", result, array, remove, insert));
+			printer.println(format("%.elements = malloc(%.length * 4);", result, result));
+			printer.println("{");
+			printer.increase_indentation();
+			printer.println("int32_t i;");
+			printer.println(format("for (i = 0; i < %; i++)", index));
+			printer.increase_indentation();
+			printer.println(format("%.elements[i] = %.elements[i];", result, array));
+			printer.decrease_indentation();
+			printer.println(format("for (i = 0; i < %.length; i++)", insert));
+			printer.increase_indentation();
+			printer.println(format("%.elements[i + %] = %.elements[i];", result, index, insert));
+			printer.decrease_indentation();
+			printer.println(format("for (i = % + %; i < %.length; i++)", index, remove, array));
+			printer.increase_indentation();
+			printer.println(format("%.elements[i - % + %.length] = %.elements[i];", result, remove, insert, array));
+			printer.decrease_indentation();
+			printer.decrease_indentation();
+			printer.println("}");
+		}
 		return result;
 	}
 	Variable visit_bind(const Bind& bind) override {
@@ -210,8 +271,9 @@ public:
 		IndentPrinter function_declaration_printer(function_declarations);
 		IndentPrinter printer(functions);
 		FunctionTable function_table(type_declaration_printer);
-		type_declaration_printer.println("#include <stdio.h>");
+		type_declaration_printer.println("#include <stdlib.h>");
 		type_declaration_printer.println("#include <stdint.h>");
+		type_declaration_printer.println("#include <stdio.h>");
 		{
 			printer.println("int main(int argc, char** argv) {");
 			printer.increase_indentation();

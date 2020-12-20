@@ -133,6 +133,33 @@ public:
 		else if (intrinsic.name_equals("getChar")) {
 			// TODO
 		}
+		else if (intrinsic.name_equals("arrayNew")) {
+			printer.println(print_functor([&](auto& printer) {
+				printer.print(format("const % = [", result));
+				for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
+					if (i > 0) printer.print(", ");
+					printer.print(expression_table[intrinsic.get_arguments()[i]]);
+				}
+				printer.print("];");
+			}));
+		}
+		else if (intrinsic.name_equals("arrayGet")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			const Variable index = expression_table[intrinsic.get_arguments()[1]];
+			printer.println(format("const % = %[%];", result, array, index));
+		}
+		else if (intrinsic.name_equals("arrayLength")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("const % = %.length;", result, array));
+		}
+		else if (intrinsic.name_equals("arraySplice")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			const Variable index = expression_table[intrinsic.get_arguments()[1]];
+			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
+			const Variable insert = expression_table[intrinsic.get_arguments()[2]];
+			printer.println(format("const % = %.slice();", result, array));
+			printer.println(format("%.splice(%, %, ...%);", result, index, remove, insert));
+		}
 		return result;
 	}
 	Variable visit_bind(const Bind& bind) override {

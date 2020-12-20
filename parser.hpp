@@ -43,7 +43,11 @@ constexpr BinaryOperator operators[][5] = {
 
 constexpr const char* intrinsics[] = {
 	"putChar",
-	"getChar"
+	"getChar",
+	"arrayNew",
+	"arrayGet",
+	"arrayLength",
+	"arraySplice"
 };
 
 class Scope {
@@ -373,6 +377,21 @@ class MoebiusParser: private Parser {
 			expect("}");
 			current_scope->add_expression(struct_);
 			return struct_;
+		}
+		else if (parse("[")) {
+			parse_white_space();
+			Intrinsic* intrinsic = new Intrinsic("arrayNew");
+			intrinsic->set_position(position);
+			while (cursor && *cursor != ']') {
+				intrinsic->add_argument(parse_expression());
+				parse_white_space();
+				if (parse(",")) {
+					parse_white_space();
+				}
+			}
+			expect("]");
+			current_scope->add_expression(intrinsic);
+			return intrinsic;
 		}
 		else if (copy().parse(numeric)) {
 			return parse_number();

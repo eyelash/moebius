@@ -229,6 +229,53 @@ public:
 			}
 			new_intrinsic->set_type(TypeInterner::get_number_type());
 		}
+		else if (intrinsic.name_equals("arrayNew")) {
+			for (const Expression* argument: new_intrinsic->get_arguments()) {
+				if (argument->get_type_id() != NumberType::id) {
+					error(intrinsic, "array elements must be numbers");
+				}
+			}
+			new_intrinsic->set_type(TypeInterner::get_array_type());
+		}
+		else if (intrinsic.name_equals("arrayGet")) {
+			if (new_intrinsic->get_arguments().size() != 2) {
+				error(intrinsic, "arrayGet takes exactly 2 arguments");
+			}
+			if (new_intrinsic->get_arguments()[0]->get_type_id() != ArrayType::id) {
+				error(intrinsic, "first argument of arrayGet must be an array");
+			}
+			if (new_intrinsic->get_arguments()[1]->get_type_id() != NumberType::id) {
+				error(intrinsic, "second argument of arrayGet must be a number");
+			}
+			new_intrinsic->set_type(TypeInterner::get_number_type());
+		}
+		else if (intrinsic.name_equals("arrayLength")) {
+			if (new_intrinsic->get_arguments().size() != 1) {
+				error(intrinsic, "arrayLength takes exactly 1 argument");
+			}
+			if (new_intrinsic->get_arguments()[0]->get_type_id() != ArrayType::id) {
+				error(intrinsic, "argument of arrayLength must be an array");
+			}
+			new_intrinsic->set_type(TypeInterner::get_number_type());
+		}
+		else if (intrinsic.name_equals("arraySplice")) {
+			if (new_intrinsic->get_arguments().size() != 4) {
+				error(intrinsic, "arraySplice takes 4 arguments");
+			}
+			if (new_intrinsic->get_arguments()[0]->get_type_id() != ArrayType::id) {
+				error(intrinsic, "first argument of arraySplice must be an array");
+			}
+			if (new_intrinsic->get_arguments()[1]->get_type_id() != NumberType::id) {
+				error(intrinsic, "second argument of arraySplice must be a number");
+			}
+			if (new_intrinsic->get_arguments()[2]->get_type_id() != NumberType::id) {
+				error(intrinsic, "third argument of arraySplice must be a number");
+			}
+			if (new_intrinsic->get_arguments()[3]->get_type_id() != ArrayType::id) {
+				error(intrinsic, "fourth argument of arraySplice must be an array");
+			}
+			new_intrinsic->set_type(TypeInterner::get_array_type());
+		}
 		return new_intrinsic;
 	}
 	Expression* visit_bind(const Bind& bind) override {

@@ -25,8 +25,8 @@
   - [x] integers
   - [x] closures
   - [x] structs
+  - [x] arrays
   - [ ] strings
-  - [ ] arrays
   - [ ] sum types
   - [ ] interfaces
   - [ ] floating point
