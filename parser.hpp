@@ -210,6 +210,11 @@ class MoebiusParser: private Parser {
 		cursor.get_position().print_error(printer, t);
 		std::exit(EXIT_FAILURE);
 	}
+	template <class F> void expect(const StringView& s, F f) {
+		if (!parse(s, f)) {
+			error(format("expected \"%\"", s));
+		}
+	}
 	void expect(const StringView& s) {
 		if (!parse(s)) {
 			error(format("expected \"%\"", s));
@@ -310,7 +315,7 @@ class MoebiusParser: private Parser {
 				if_->set_then_expression(then_expression);
 			}
 			parse_white_space();
-			expect("else");
+			expect("else", alphanumeric);
 			parse_white_space();
 			{
 				Scope scope(current_scope, if_->get_else_block());
@@ -442,6 +447,7 @@ class MoebiusParser: private Parser {
 					expect(")");
 					current_scope->add_expression(call);
 					expression = call;
+					parse_white_space();
 				}
 				else if (parse(".")) {
 					parse_white_space();
@@ -467,6 +473,7 @@ class MoebiusParser: private Parser {
 						expect(")");
 						current_scope->add_expression(call);
 						expression = call;
+						parse_white_space();
 					}
 					else {
 						StructAccess* struct_access = new StructAccess(expression, name);
@@ -508,7 +515,7 @@ class MoebiusParser: private Parser {
 			scope.add_variable(name, expression);
 			parse_white_space();
 		}
-		expect("return");
+		expect("return", alphanumeric);
 		parse_white_space();
 		return parse_expression();
 	}
