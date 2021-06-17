@@ -276,6 +276,12 @@ public:
 			}
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
+		else if (intrinsic.name_equals("arrayCopy")) {
+			new_intrinsic->set_type(TypeInterner::get_array_type());
+		}
+		else if (intrinsic.name_equals("arrayFree")) {
+			new_intrinsic->set_type(TypeInterner::get_void_type());
+		}
 		return new_intrinsic;
 	}
 	Expression* visit_bind(const Bind& bind) override {
@@ -481,6 +487,144 @@ public:
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
 		replace.evaluate(new_function->get_block(), main_function->get_block());
+		return new_program;
+	}
+};
+
+class Pass3: public Visitor<Expression*> {
+	Program* program;
+	Block* current_block;
+	using FunctionTable = std::map<const Function*, const Function*>;
+	FunctionTable& function_table;
+	const Function* function;
+	std::vector<Expression*> arguments;
+	std::map<const Expression*, Expression*> expression_table;
+	template <class T, class... A> T* create(A&&... arguments) {
+		T* expression = new T(std::forward<A>(arguments)...);
+		current_block->add_expression(expression);
+		return expression;
+	}
+public:
+	Pass3(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function) {}
+	void evaluate(Block* destination_block, const Block& source_block) {
+		Block* previous_block = current_block;
+		current_block = destination_block;
+		std::vector<const Expression*> arrays;
+		for (const Expression* expression: source_block) {
+			Expression* new_expression = visit(*this, expression);
+			expression_table[expression] = new_expression;
+			if (new_expression->get_type_id() == ArrayType::id) {
+				arrays.push_back(new_expression);
+			}
+		}
+		const Expression* result = expression_table[source_block.get_result()];
+		if (result->get_type_id() == ArrayType::id) {
+			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
+			intrinsic->add_argument(result);
+			result = intrinsic;
+		}
+		for (const Expression* expression: arrays) {
+			Intrinsic* intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
+			intrinsic->add_argument(expression);
+		}
+		destination_block->set_result(result);
+		current_block = previous_block;
+	}
+	Expression* visit_number(const Number& number) override {
+		return create<Number>(number.get_value());
+	}
+	Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
+		const Expression* left = expression_table[binary_expression.get_left()];
+		const Expression* right = expression_table[binary_expression.get_right()];
+		return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+	}
+	Expression* visit_if(const If& if_) override {
+		const Expression* condition = expression_table[if_.get_condition()];
+		If* new_if = create<If>(condition, if_.get_type());
+		evaluate(new_if->get_then_block(), if_.get_then_block());
+		evaluate(new_if->get_else_block(), if_.get_else_block());
+		return new_if;
+	}
+	Expression* visit_tuple(const Tuple& tuple) override {
+		Tuple* new_tuple = create<Tuple>(tuple.get_type());
+		for (const Expression* expression: tuple.get_expressions()) {
+			new_tuple->add_expression(expression_table[expression]);
+		}
+		return new_tuple;
+	}
+	Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
+		const Expression* tuple = expression_table[tuple_access.get_tuple()];
+		return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+	}
+	Expression* visit_struct(const Struct& struct_) override {
+		Tuple* tuple = create<Tuple>();
+		for (const Expression* expression: struct_.get_expressions()) {
+			tuple->add_expression(expression_table[expression]);
+		}
+		return tuple;
+	}
+	Expression* visit_struct_access(const StructAccess& struct_access) override {
+		const Expression* tuple = expression_table[struct_access.get_struct()];
+		const StructType* struct_type = static_cast<const StructType*>(struct_access.get_struct()->get_type());
+		const std::size_t index = struct_type->get_index(struct_access.get_name());
+		return create<TupleAccess>(tuple, index);
+	}
+	Expression* visit_closure(const Closure& closure) override {
+		Tuple* tuple = create<Tuple>();
+		for (const Expression* expression: closure.get_environment_expressions()) {
+			tuple->add_expression(expression_table[expression]);
+		}
+		return tuple;
+	}
+	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
+		const Expression* tuple = expression_table[closure_access.get_closure()];
+		return create<TupleAccess>(tuple, closure_access.get_index());
+	}
+	Expression* visit_argument(const Argument& argument) override {
+		Argument* new_argument = create<Argument>(argument.get_index(), argument.get_type());
+		if (new_argument->get_type_id() == ArrayType::id) {
+			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
+			intrinsic->add_argument(new_argument);
+			return intrinsic;
+		}
+		return new_argument;
+	}
+	Expression* visit_call(const Call& call) override {
+		Call* new_call = create<Call>();
+		for (const Expression* argument: call.get_arguments()) {
+			new_call->add_argument(expression_table[argument]);
+		}
+		if (function_table[call.get_function()] == nullptr) {
+			Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
+			program->add_function(new_function);
+			function_table[call.get_function()] = new_function;
+			Pass3 pass3(program, function_table, call.get_function());
+			pass3.evaluate(new_function->get_block(), call.get_function()->get_block());
+		}
+		new_call->set_type(function_table[call.get_function()]->get_return_type());
+		new_call->set_function(function_table[call.get_function()]);
+		return new_call;
+	}
+	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
+		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), intrinsic.get_type());
+		for (const Expression* argument: intrinsic.get_arguments()) {
+			new_intrinsic->add_argument(expression_table[argument]);
+		}
+		return new_intrinsic;
+	}
+	Expression* visit_bind(const Bind& bind) override {
+		const Expression* left = expression_table[bind.get_left()];
+		const Expression* right = expression_table[bind.get_right()];
+		return create<Bind>(left, right);
+	}
+	static std::unique_ptr<Program> run(const Program& program) {
+		const Function* main_function = program.get_main_function();
+		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+		FunctionTable function_table;
+		Pass3 pass3(new_program.get(), function_table, main_function);
+		Function* new_function = new Function(main_function->get_return_type());
+		new_program->add_function(new_function);
+		pass3.evaluate(new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };

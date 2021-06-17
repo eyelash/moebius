@@ -10,5 +10,7 @@ int main(int argc, char** argv) {
 	program = Pass1::run(*program);
 	program = Pass2::run(*program);
 	program = Pass1::run(*program);
-	CodegenX86::codegen(*program, (std::string(argv[1]) + ".exe").c_str());
+	program = Pass3::run(*program);
+	program = Pass1::run(*program);
+	CodegenC::codegen(*program, (std::string(argv[1]) + ".exe").c_str());
 }

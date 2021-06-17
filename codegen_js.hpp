@@ -156,9 +156,13 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			const Variable insert = expression_table[intrinsic.get_arguments()[2]];
+			const Variable insert = expression_table[intrinsic.get_arguments()[3]];
 			printer.println(format("const % = %.slice();", result, array));
 			printer.println(format("%.splice(%, %, ...%);", result, index, remove, insert));
+		}
+		else if (intrinsic.name_equals("arrayCopy")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("const % = %;", result, array));
 		}
 		return result;
 	}

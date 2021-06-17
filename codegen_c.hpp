@@ -258,6 +258,26 @@ public:
 			printer.decrease_indentation();
 			printer.println("}");
 		}
+		else if (intrinsic.name_equals("arrayCopy")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			const std::size_t type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("t% %;", print_number(type), result));
+			printer.println(format("%.length = %.length;", result, array));
+			printer.println(format("%.elements = malloc(%.length * 4);", result, result));
+			printer.println("{");
+			printer.increase_indentation();
+			printer.println("int32_t i;");
+			printer.println(format("for (i = 0; i < %.length; i++)", result));
+			printer.increase_indentation();
+			printer.println(format("%.elements[i] = %.elements[i];", result, array));
+			printer.decrease_indentation();
+			printer.decrease_indentation();
+			printer.println("}");
+		}
+		else if (intrinsic.name_equals("arrayFree")) {
+			const Variable array = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("free(%.elements);", array));
+		}
 		return result;
 	}
 	Variable visit_bind(const Bind& bind) override {
