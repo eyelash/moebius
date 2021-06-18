@@ -101,6 +101,10 @@ class CodegenC: public Visitor<Variable> {
 		}
 		return expression_table[block.get_result()];
 	}
+	static const char* getenv(const char* variable, const char* default_value) {
+		const char* result = std::getenv(variable);
+		return result ? result : default_value;
+	}
 public:
 	Variable visit_number(const Number& number) override {
 		const Variable result = next_variable();
@@ -283,7 +287,7 @@ public:
 	Variable visit_bind(const Bind& bind) override {
 		return next_variable();
 	}
-	static void codegen(const Program& program, const char* path) {
+	static void codegen(const Program& program, const char* source_path) {
 		std::ostringstream type_declarations;
 		std::ostringstream function_declarations;
 		std::ostringstream functions;
@@ -335,8 +339,23 @@ public:
 			printer.decrease_indentation();
 			printer.println("}");
 		}
-		std::cout << type_declarations.str();
-		std::cout << function_declarations.str();
-		std::cout << functions.str();
+		std::string c_path = std::string(source_path) + ".c";
+		std::ofstream file(c_path);
+		file << type_declarations.str();
+		file << function_declarations.str();
+		file << functions.str();
+		Printer status_printer(std::cerr);
+		status_printer.print(bold(c_path.c_str()));
+		status_printer.print(bold(green(" successfully generated")));
+		status_printer.print('\n');
+		std::string executable_path = std::string(source_path) + ".exe";
+		const char* c_compiler = getenv("CC", "cc");
+		const char* compiler_arguments = getenv("CFLAGS", "");
+		std::string command = std::string(c_compiler) + " " + compiler_arguments + " -o " + executable_path + " " + c_path;
+		if (std::system(command.c_str()) == 0) {
+			status_printer.print(bold(executable_path.c_str()));
+			status_printer.print(bold(green(" successfully generated")));
+			status_printer.print('\n');
+		}
 	}
 };

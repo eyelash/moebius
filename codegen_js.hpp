@@ -171,9 +171,11 @@ public:
 		printer.println(format("const % = null;", result));
 		return result;
 	}
-	static void codegen(const Program& program, const char* path) {
+	static void codegen(const Program& program, const char* source_path) {
 		FunctionTable function_table;
-		IndentPrinter printer(std::cout);
+		std::string path = std::string(source_path) + ".html";
+		std::ofstream file(path);
+		IndentPrinter printer(file);
 		printer.println("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
 		printer.println("window.addEventListener('load', main);");
 		{
@@ -204,5 +206,9 @@ public:
 			printer.println("}");
 		}
 		printer.println("</script></head><body></body></html>");
+		Printer status_printer(std::cerr);
+		status_printer.print(bold(path.c_str()));
+		status_printer.print(bold(green(" successfully generated")));
+		status_printer.print('\n');
 	}
 };

@@ -252,7 +252,7 @@ public:
 	std::uint32_t visit_bind(const Bind& bind) override {
 		return allocate(0);
 	}
-	static void codegen(const Program& program, const char* path) {
+	static void codegen(const Program& program, const char* source_path) {
 		std::vector<DeferredCall> deferred_calls;
 		std::map<const Function*, std::size_t> function_locations;
 		A assembler;
@@ -292,6 +292,11 @@ public:
 			const std::size_t target = function_locations[deferred_call.function];
 			deferred_call.jump.set_target(assembler, target);
 		}
-		assembler.write_file(path);
+		std::string path = std::string(source_path) + ".exe";
+		assembler.write_file(path.c_str());
+		Printer status_printer(std::cerr);
+		status_printer.print(bold(path.c_str()));
+		status_printer.print(bold(green(" successfully generated")));
+		status_printer.print('\n');
 	}
 };
