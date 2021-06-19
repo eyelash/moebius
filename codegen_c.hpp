@@ -4,6 +4,15 @@
 #include <sstream>
 
 class CodegenC: public Visitor<Variable> {
+	class Type {
+		std::size_t index;
+	public:
+		constexpr Type(std::size_t index): index(index) {}
+		Type() {}
+		void print(const Printer& printer) const {
+			printer.print(format("t%", print_number(index)));
+		}
+	};
 	static StringView print_operator(BinaryOperation operation) {
 		switch (operation) {
 			case BinaryOperation::ADD: return "+";
@@ -22,7 +31,7 @@ class CodegenC: public Visitor<Variable> {
 	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
-		std::map<const Type*, std::size_t> types;
+		std::map<const ::Type*, std::size_t> types;
 		IndentPrinter& type_declaration_printer;
 	public:
 		FunctionTable(IndentPrinter& type_declaration_printer): type_declaration_printer(type_declaration_printer) {}
@@ -35,7 +44,7 @@ class CodegenC: public Visitor<Variable> {
 			functions[function] = index;
 			return index;
 		}
-		std::size_t get_type(const Type* type) {
+		Type get_type(const ::Type* type) {
 			auto iterator = types.find(type);
 			if (iterator != types.end()) {
 				return iterator->second;
@@ -43,41 +52,41 @@ class CodegenC: public Visitor<Variable> {
 			switch (type->get_id()) {
 				case VoidType::id: {
 					const std::size_t index = types.size();
-					type_declaration_printer.println(format("typedef void t%;", print_number(index)));
+					type_declaration_printer.println(format("typedef void %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
 				case NumberType::id: {
 					const std::size_t index = types.size();
-					type_declaration_printer.println(format("typedef int32_t t%;", print_number(index)));
+					type_declaration_printer.println(format("typedef int32_t %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
 				case TupleType::id: {
-					std::vector<std::size_t> element_types;
-					for (const Type* element_type: static_cast<const TupleType*>(type)->get_types()) {
+					std::vector<Type> element_types;
+					for (const ::Type* element_type: static_cast<const TupleType*>(type)->get_types()) {
 						element_types.push_back(get_type(element_type));
 					}
 					const std::size_t index = types.size();
 					type_declaration_printer.println("typedef struct {");
 					type_declaration_printer.increase_indentation();
 					for (std::size_t i = 0; i < element_types.size(); ++i) {
-						type_declaration_printer.println(format("t% v%;", print_number(element_types[i]), print_number(i)));
+						type_declaration_printer.println(format("% v%;", element_types[i], print_number(i)));
 					}
 					type_declaration_printer.decrease_indentation();
-					type_declaration_printer.println(format("} t%;", print_number(index)));
+					type_declaration_printer.println(format("} %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
 				case ArrayType::id: {
-					const std::size_t int_type = get_type(TypeInterner::get_number_type());
+					const Type int_type = get_type(TypeInterner::get_number_type());
 					const std::size_t index = types.size();
 					type_declaration_printer.println("typedef struct {");
 					type_declaration_printer.increase_indentation();
-					type_declaration_printer.println(format("t%* elements;", print_number(int_type)));
+					type_declaration_printer.println(format("%* elements;", int_type));
 					type_declaration_printer.println(format("int32_t length;"));
 					type_declaration_printer.decrease_indentation();
-					type_declaration_printer.println(format("} t%;", print_number(index)));
+					type_declaration_printer.println(format("} %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
@@ -108,16 +117,16 @@ class CodegenC: public Visitor<Variable> {
 public:
 	Variable visit_number(const Number& number) override {
 		const Variable result = next_variable();
-		const std::size_t type = function_table.get_type(number.get_type());
-		printer.println(format("t% % = %;", print_number(type), result, print_number(number.get_value())));
+		const Type type = function_table.get_type(number.get_type());
+		printer.println(format("% % = %;", type, result, print_number(number.get_value())));
 		return result;
 	}
 	Variable visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Variable left = expression_table[binary_expression.get_left()];
 		const Variable right = expression_table[binary_expression.get_right()];
 		const Variable result = next_variable();
-		const std::size_t type = function_table.get_type(binary_expression.get_type());
-		printer.println(format("t% % = % % %;", print_number(type), result, left, print_operator(binary_expression.get_operation()), right));
+		const Type type = function_table.get_type(binary_expression.get_type());
+		printer.println(format("% % = % % %;", type, result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
 	Variable visit_if(const If& if_) override {
@@ -135,8 +144,8 @@ public:
 			printer.println("}");
 		}
 		else {
-			const std::size_t result_type = function_table.get_type(if_.get_type());
-			printer.println(format("t% %;", print_number(result_type), result));
+			const Type result_type = function_table.get_type(if_.get_type());
+			printer.println(format("% %;", result_type, result));
 			printer.println(format("if (%) {", condition));
 			printer.increase_indentation();
 			const Variable then_result = evaluate(if_.get_then_block());
@@ -154,8 +163,8 @@ public:
 	Variable visit_tuple(const Tuple& tuple) override {
 		const Variable result = next_variable();
 		printer.println(print_functor([&](auto& printer) {
-			const std::size_t type = function_table.get_type(tuple.get_type());
-			printer.print(format("t% % = {", print_number(type), result));
+			const Type type = function_table.get_type(tuple.get_type());
+			printer.print(format("% % = {", type, result));
 			for (std::size_t i = 0; i < tuple.get_expressions().size(); ++i) {
 				if (i > 0) printer.print(", ");
 				printer.print(expression_table[tuple.get_expressions()[i]]);
@@ -167,8 +176,8 @@ public:
 	Variable visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Variable tuple = expression_table[tuple_access.get_tuple()];
 		const Variable result = next_variable();
-		const std::size_t result_type = function_table.get_type(tuple_access.get_type());
-		printer.println(format("t% % = %.v%;", print_number(result_type), result, tuple, print_number(tuple_access.get_index())));
+		const Type result_type = function_table.get_type(tuple_access.get_type());
+		printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
 		return result;
 	}
 	Variable visit_struct(const Struct& struct_) override {
@@ -191,8 +200,8 @@ public:
 		const Variable result = next_variable();
 		printer.println(print_functor([&](auto& printer) {
 			if (call.get_function()->get_return_type()->get_id() != VoidType::id) {
-				const std::size_t result_type = function_table.get_type(call.get_function()->get_return_type());
-				printer.print(format("t% % = ", print_number(result_type), result));
+				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
+				printer.print(format("% % = ", result_type, result));
 			}
 			printer.print(format("f%(", print_number(new_index)));
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
@@ -210,12 +219,12 @@ public:
 			printer.println(format("putchar(%);", argument));
 		}
 		else if (intrinsic.name_equals("getChar")) {
-			const std::size_t type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("t% % = getchar();", print_number(type), result));
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% % = getchar();", type, result));
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
-			const std::size_t type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("t% %;", print_number(type), result));
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% %;", type, result));
 			const std::size_t size = intrinsic.get_arguments().size();
 			printer.println(format("%.length = %;", result, print_number(size)));
 			printer.println(format("%.elements = malloc(%.length * 4);", result, result));
@@ -227,21 +236,21 @@ public:
 		else if (intrinsic.name_equals("arrayGet")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
-			const std::size_t type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("t% % = %.elements[%];", print_number(type), result, array, index));
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% % = %.elements[%];", type, result, array, index));
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
-			const std::size_t type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("t% % = %.length;", print_number(type), result, array));
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% % = %.length;", type, result, array));
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
 			const Variable insert = expression_table[intrinsic.get_arguments()[3]];
-			const std::size_t type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("t% %;", print_number(type), result));
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% %;", type, result));
 			printer.println(format("%.length = %.length - % + %.length;", result, array, remove, insert));
 			printer.println(format("%.elements = malloc(%.length * 4);", result, result));
 			printer.println("{");
@@ -264,8 +273,8 @@ public:
 		}
 		else if (intrinsic.name_equals("arrayCopy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
-			const std::size_t type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("t% %;", print_number(type), result));
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% %;", type, result));
 			printer.println(format("%.length = %.length;", result, array));
 			printer.println(format("%.elements = malloc(%.length * 4);", result, result));
 			printer.println("{");
@@ -308,24 +317,24 @@ public:
 			printer.println("}");
 		}
 		for (const Function* function: program) {
-			const std::size_t return_type = function_table.get_type(function->get_return_type());
+			const Type return_type = function_table.get_type(function->get_return_type());
 			const std::size_t index = function_table.look_up(function);
 			const std::size_t arguments = function->get_argument_types().size();
 			function_declaration_printer.println(print_functor([&](auto& printer) {
-				printer.print(format("t% f%(", print_number(return_type), print_number(index)));
+				printer.print(format("% f%(", return_type, print_number(index)));
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
-					const std::size_t argument_type = function_table.get_type(function->get_argument_types()[i]);
-					printer.print(format("t% v%", print_number(argument_type), print_number(i)));
+					const Type argument_type = function_table.get_type(function->get_argument_types()[i]);
+					printer.print(format("% v%", argument_type, print_number(i)));
 				}
 				printer.print(");");
 			}));
 			printer.println(print_functor([&](auto& printer) {
-				printer.print(format("t% f%(", print_number(return_type), print_number(index)));
+				printer.print(format("% f%(", return_type, print_number(index)));
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
-					const std::size_t argument_type = function_table.get_type(function->get_argument_types()[i]);
-					printer.print(format("t% v%", print_number(argument_type), print_number(i)));
+					const Type argument_type = function_table.get_type(function->get_argument_types()[i]);
+					printer.print(format("% v%", argument_type, print_number(i)));
 				}
 				printer.print(") {");
 			}));
