@@ -1,0 +1,10 @@
+function putStrLn(s) {
+	function inner(s, idx)
+		if (idx < @arrayLength(s))
+			@putChar(@arrayGet(s, idx)) >> inner(s, idx + 1)
+		else
+			@putChar(10)
+	return inner(s, 0)
+}
+
+return putStrLn("Hello, World!")

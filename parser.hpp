@@ -250,6 +250,11 @@ class MoebiusParser: private Parser {
 		}
 		return current_scope->create<Number>(number);
 	}
+	Number* parse_character() {
+		char c = *cursor;
+		++cursor;
+		return current_scope->create<Number>(c);
+	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
 			error("expected alphabetic character");
@@ -352,14 +357,24 @@ class MoebiusParser: private Parser {
 			current_scope->add_expression(closure);
 			return closure;
 		}
+		else if (parse("\"")) {
+			Intrinsic* intrinsic = new Intrinsic("arrayNew");
+			intrinsic->set_position(position);
+			while (cursor && *cursor != '"') {
+				intrinsic->add_argument(parse_character());
+			}
+			expect("\"");
+			current_scope->add_expression(intrinsic);
+			return intrinsic;
+		}
 		else if (parse("'")) {
 			if (!cursor) {
 				error("unexpected end");
 			}
-			const char c = *cursor;
-			++cursor;
+			Number* number = parse_character();
+			number->set_position(position);
 			expect("'");
-			return current_scope->create<Number>(c);
+			return number;
 		}
 		else if (parse("struct", alphanumeric)) {
 			parse_white_space();
