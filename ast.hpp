@@ -302,6 +302,10 @@ public:
 	int get_type_id() const {
 		return get_type()->get_id();
 	}
+	template <class T> bool has_type() const {
+		const int id = type->get_id();
+		return id == T::id || id == NeverType::id;
+	}
 	void set_position(const SourcePosition& position) {
 		this->position = position;
 	}

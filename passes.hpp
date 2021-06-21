@@ -63,7 +63,7 @@ public:
 	Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
-		if ((left->get_type_id() == NumberType::id || left->get_type_id() == NeverType::id) && (right->get_type_id() == NumberType::id || right->get_type_id() == NeverType::id)) {
+		if (left->has_type<NumberType>() && right->has_type<NumberType>()) {
 			return new BinaryExpression(binary_expression.get_operation(), left, right);
 		}
 		else {
@@ -72,7 +72,7 @@ public:
 	}
 	Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];
-		if (condition->get_type_id() == NumberType::id || condition->get_type_id() == NeverType::id) {
+		if (condition->has_type<NumberType>()) {
 			If* new_if = new If(condition);
 			evaluate(new_if->get_then_block(), if_.get_then_block());
 			evaluate(new_if->get_else_block(), if_.get_else_block());
@@ -218,7 +218,7 @@ public:
 			if (new_intrinsic->get_arguments().size() != 1) {
 				error(intrinsic, "putChar takes exactly 1 argument");
 			}
-			if (new_intrinsic->get_arguments()[0]->get_type_id() != NumberType::id) {
+			if (!new_intrinsic->get_arguments()[0]->has_type<NumberType>()) {
 				error(intrinsic, "argument of putChar must be a number");
 			}
 			new_intrinsic->set_type(TypeInterner::get_void_type());
@@ -231,7 +231,7 @@ public:
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
 			for (const Expression* argument: new_intrinsic->get_arguments()) {
-				if (argument->get_type_id() != NumberType::id) {
+				if (!argument->has_type<NumberType>()) {
 					error(intrinsic, "array elements must be numbers");
 				}
 			}
@@ -241,10 +241,10 @@ public:
 			if (new_intrinsic->get_arguments().size() != 2) {
 				error(intrinsic, "arrayGet takes exactly 2 arguments");
 			}
-			if (new_intrinsic->get_arguments()[0]->get_type_id() != ArrayType::id) {
+			if (!new_intrinsic->get_arguments()[0]->has_type<ArrayType>()) {
 				error(intrinsic, "first argument of arrayGet must be an array");
 			}
-			if (new_intrinsic->get_arguments()[1]->get_type_id() != NumberType::id) {
+			if (!new_intrinsic->get_arguments()[1]->has_type<NumberType>()) {
 				error(intrinsic, "second argument of arrayGet must be a number");
 			}
 			new_intrinsic->set_type(TypeInterner::get_number_type());
@@ -253,7 +253,7 @@ public:
 			if (new_intrinsic->get_arguments().size() != 1) {
 				error(intrinsic, "arrayLength takes exactly 1 argument");
 			}
-			if (new_intrinsic->get_arguments()[0]->get_type_id() != ArrayType::id) {
+			if (!new_intrinsic->get_arguments()[0]->has_type<ArrayType>()) {
 				error(intrinsic, "argument of arrayLength must be an array");
 			}
 			new_intrinsic->set_type(TypeInterner::get_number_type());
@@ -262,23 +262,23 @@ public:
 			if (new_intrinsic->get_arguments().size() < 3) {
 				error(intrinsic, "arraySplice takes at least 3 arguments");
 			}
-			if (new_intrinsic->get_arguments()[0]->get_type_id() != ArrayType::id) {
+			if (!new_intrinsic->get_arguments()[0]->has_type<ArrayType>()) {
 				error(intrinsic, "first argument of arraySplice must be an array");
 			}
-			if (new_intrinsic->get_arguments()[1]->get_type_id() != NumberType::id) {
+			if (!new_intrinsic->get_arguments()[1]->has_type<NumberType>()) {
 				error(intrinsic, "second argument of arraySplice must be a number");
 			}
-			if (new_intrinsic->get_arguments()[2]->get_type_id() != NumberType::id) {
+			if (!new_intrinsic->get_arguments()[2]->has_type<NumberType>()) {
 				error(intrinsic, "third argument of arraySplice must be a number");
 			}
 			if (new_intrinsic->get_arguments().size() == 4) {
-				if (new_intrinsic->get_arguments()[3]->get_type_id() != NumberType::id && new_intrinsic->get_arguments()[3]->get_type_id() != ArrayType::id) {
+				if (!(new_intrinsic->get_arguments()[3]->has_type<NumberType>() || new_intrinsic->get_arguments()[3]->has_type<ArrayType>())) {
 					error(intrinsic, "argument 4 of arraySplice must be a number or an array");
 				}
 			}
 			else {
 				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
-					if (new_intrinsic->get_arguments()[i]->get_type_id() != NumberType::id) {
+					if (!new_intrinsic->get_arguments()[i]->has_type<NumberType>()) {
 						error(intrinsic, format("argument % of arraySplice must be a number", print_number(i + 1)));
 					}
 				}
