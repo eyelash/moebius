@@ -259,8 +259,8 @@ public:
 			new_intrinsic->set_type(TypeInterner::get_number_type());
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
-			if (new_intrinsic->get_arguments().size() != 4) {
-				error(intrinsic, "arraySplice takes 4 arguments");
+			if (new_intrinsic->get_arguments().size() < 3) {
+				error(intrinsic, "arraySplice takes at least 3 arguments");
 			}
 			if (new_intrinsic->get_arguments()[0]->get_type_id() != ArrayType::id) {
 				error(intrinsic, "first argument of arraySplice must be an array");
@@ -271,8 +271,17 @@ public:
 			if (new_intrinsic->get_arguments()[2]->get_type_id() != NumberType::id) {
 				error(intrinsic, "third argument of arraySplice must be a number");
 			}
-			if (new_intrinsic->get_arguments()[3]->get_type_id() != ArrayType::id) {
-				error(intrinsic, "fourth argument of arraySplice must be an array");
+			if (new_intrinsic->get_arguments().size() == 4) {
+				if (new_intrinsic->get_arguments()[3]->get_type_id() != NumberType::id && new_intrinsic->get_arguments()[3]->get_type_id() != ArrayType::id) {
+					error(intrinsic, "argument 4 of arraySplice must be a number or an array");
+				}
+			}
+			else {
+				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
+					if (new_intrinsic->get_arguments()[i]->get_type_id() != NumberType::id) {
+						error(intrinsic, format("argument % of arraySplice must be a number", print_number(i + 1)));
+					}
+				}
 			}
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
