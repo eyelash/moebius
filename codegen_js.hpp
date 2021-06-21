@@ -152,19 +152,18 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			printer.println(format("const % = %.length;", result, array));
 		}
-		else if (intrinsic.name_equals("arraySplice")) {
+		else if (intrinsic.name_equals("arraySpliceInplace")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			printer.println(format("const % = %.slice();", result, array));
 			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == ArrayType::id) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
-				printer.println(format("%.splice(%, %, ...%);", result, index, remove, insert));
+				printer.println(format("%.splice(%, %, ...%);", array, index, remove, insert));
 			}
 			else {
 				const std::size_t insert = intrinsic.get_arguments().size() - 3;
 				printer.println(print_functor([&](auto& printer) {
-					printer.print(format("%.splice(%, %", result, index, remove));
+					printer.print(format("%.splice(%, %", array, index, remove));
 					for (std::size_t i = 0; i < insert; ++i) {
 						printer.print(", ");
 						printer.print(expression_table[intrinsic.get_arguments()[i + 3]]);

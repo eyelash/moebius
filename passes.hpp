@@ -285,6 +285,9 @@ public:
 			}
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
+		else if (intrinsic.name_equals("arraySpliceInplace")) {
+			new_intrinsic->set_type(TypeInterner::get_void_type());
+		}
 		else if (intrinsic.name_equals("arrayCopy")) {
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
@@ -615,11 +618,24 @@ public:
 		return new_call;
 	}
 	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
-		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), intrinsic.get_type());
-		for (const Expression* argument: intrinsic.get_arguments()) {
-			new_intrinsic->add_argument(expression_table[argument]);
+		if (intrinsic.name_equals("arraySplice")) {
+			// replace arraySplice with arrayCopy and arraySpliceInplace
+			Intrinsic* array = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
+			array->add_argument(expression_table[intrinsic.get_arguments()[0]]);
+			Intrinsic* new_intrinsic = create<Intrinsic>("arraySpliceInplace", TypeInterner::get_void_type());
+			new_intrinsic->add_argument(array);
+			for (std::size_t i = 1; i < intrinsic.get_arguments().size(); ++i) {
+				new_intrinsic->add_argument(expression_table[intrinsic.get_arguments()[i]]);
+			}
+			return array;
 		}
-		return new_intrinsic;
+		else {
+			Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), intrinsic.get_type());
+			for (const Expression* argument: intrinsic.get_arguments()) {
+				new_intrinsic->add_argument(expression_table[argument]);
+			}
+			return new_intrinsic;
+		}
 	}
 	Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];

@@ -247,21 +247,20 @@ public:
 			const Type type = function_table.get_type(intrinsic.get_type());
 			printer.println(format("% % = %.length;", type, result, array));
 		}
-		else if (intrinsic.name_equals("arraySplice")) {
+		else if (intrinsic.name_equals("arraySpliceInplace")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
 			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			printer.println(format("% % = array_new(%.elements, %.length);", type, result, array, array));
 			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == ArrayType::id) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
-				printer.println(format("array_splice(&%, %, %, %.elements, %.length);", result, index, remove, insert, insert));
+				printer.println(format("array_splice(&%, %, %, %.elements, %.length);", array, index, remove, insert, insert));
 			}
 			else {
 				const std::size_t insert = intrinsic.get_arguments().size() - 3;
 				printer.println(print_functor([&](auto& printer) {
-					printer.print(format("array_splice(&%, %, %, (%[]){", result, index, remove, element_type));
+					printer.print(format("array_splice(&%, %, %, (%[]){", array, index, remove, element_type));
 					for (std::size_t i = 0; i < insert; ++i) {
 						if (i > 0) printer.print(", ");
 						printer.print(expression_table[intrinsic.get_arguments()[i + 3]]);
