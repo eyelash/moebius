@@ -505,15 +505,51 @@ class MoebiusParser: private Parser {
 	}
 	const Expression* parse_scope() {
 		Scope scope(current_scope);
-		while (parse("let", alphanumeric)) {
-			parse_white_space();
-			StringView name = parse_identifier();
-			parse_white_space();
-			expect("=");
-			parse_white_space();
-			const Expression* expression = parse_expression();
-			scope.add_variable(name, expression);
-			parse_white_space();
+		while (true) {
+			if (parse("let", alphanumeric)) {
+				parse_white_space();
+				StringView name = parse_identifier();
+				parse_white_space();
+				expect("=");
+				parse_white_space();
+				const Expression* expression = parse_expression();
+				scope.add_variable(name, expression);
+				parse_white_space();
+			}
+			else if (parse("function", alphanumeric)) {
+				parse_white_space();
+				StringView name = parse_identifier();
+				parse_white_space();
+				expect("(");
+				parse_white_space();
+				Function* function = new Function();
+				program->add_function(function);
+				Closure* closure = new Closure(function);
+				//closure->set_position(position);
+				{
+					Scope scope(current_scope, closure, function->get_block());
+					scope.add_variable(name, current_scope->create<Argument>(0));
+					while (cursor && *cursor != ')') {
+						const StringView name = parse_identifier();
+						const std::size_t index = function->add_argument();
+						scope.add_variable(name, current_scope->create<Argument>(index));
+						parse_white_space();
+						if (parse(",")) {
+							parse_white_space();
+						}
+					}
+					expect(")");
+					parse_white_space();
+					const Expression* expression = parse_expression();
+					function->set_expression(expression);
+				}
+				current_scope->add_expression(closure);
+				scope.add_variable(name, closure);
+				parse_white_space();
+			}
+			else {
+				break;
+			}
 		}
 		expect("return", alphanumeric);
 		parse_white_space();
