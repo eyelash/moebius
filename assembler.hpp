@@ -40,7 +40,7 @@ static constexpr Addr ELF_HEADER_SIZE = 52;
 static constexpr Addr PROGRAM_HEADER_SIZE = 32;
 
 class Assembler {
-	std::vector<std::uint8_t> data;
+	std::vector<char> data;
 	template <class T> void write(T t) {
 		for (std::size_t i = 0; i < sizeof(T); ++i) {
 			data.push_back(t & 0xFF);
@@ -147,7 +147,7 @@ public:
 		write<std::uint32_t>(68, ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE + data.size()); // filesz
 		write<std::uint32_t>(72, ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE + data.size()); // memsz
 		std::ofstream file(path);
-		std::copy(data.begin(), data.end(), std::ostreambuf_iterator<char>(file));
+		file.write(data.data(), data.size());
 	}
 	void MOV(Register dst, Register src) {
 		opcode(0x8B);

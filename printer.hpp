@@ -64,6 +64,9 @@ public:
 	void print(const char* s) const {
 		print(StringView(s));
 	}
+	void print(const std::string& s) const {
+		ostream.write(s.data(), s.size());
+	}
 	template <class T> void print(const T& t) const {
 		t.print(*this);
 	}

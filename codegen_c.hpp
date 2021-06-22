@@ -390,7 +390,7 @@ public:
 		file << function_declarations.str();
 		file << functions.str();
 		Printer status_printer(std::cerr);
-		status_printer.print(bold(c_path.c_str()));
+		status_printer.print(bold(c_path));
 		status_printer.print(bold(green(" successfully generated")));
 		status_printer.print('\n');
 		std::string executable_path = std::string(source_path) + ".exe";
@@ -398,7 +398,7 @@ public:
 		const char* compiler_arguments = getenv("CFLAGS", "");
 		std::string command = std::string(c_compiler) + " " + compiler_arguments + " -o " + executable_path + " " + c_path;
 		if (std::system(command.c_str()) == 0) {
-			status_printer.print(bold(executable_path.c_str()));
+			status_printer.print(bold(executable_path));
 			status_printer.print(bold(green(" successfully generated")));
 			status_printer.print('\n');
 		}

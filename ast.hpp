@@ -678,6 +678,7 @@ class Call: public Expression {
 	const Function* function = nullptr;
 public:
 	Call() {}
+	Call(std::vector<const Expression*>&& arguments): arguments(std::move(arguments)) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_call(*this);
 	}

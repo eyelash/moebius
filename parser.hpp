@@ -241,15 +241,6 @@ class MoebiusParser: private Parser {
 			parse_all(white_space);
 		}
 	}
-	const Expression* parse_number() {
-		std::int32_t number = 0;
-		while (copy().parse(numeric)) {
-			number *= 10;
-			number += *cursor - '0';
-			++cursor;
-		}
-		return current_scope->create<Number>(number);
-	}
 	Number* parse_character() {
 		char c = *cursor;
 		++cursor;
@@ -262,14 +253,6 @@ class MoebiusParser: private Parser {
 		const Cursor start = cursor;
 		parse_all(alphanumeric);
 		return cursor - start;
-	}
-	const Expression* parse_variable() {
-		StringView identifier = parse_identifier();
-		const Expression* expression = current_scope->look_up(identifier);
-		if (expression == nullptr) {
-			error(format("undefined variable \"%\"", identifier));
-		}
-		return expression;
 	}
 	BinaryOperator parse_operator(int level) {
 		for (int i = 0; operators[level][i]; ++i) {
@@ -330,7 +313,7 @@ class MoebiusParser: private Parser {
 			current_scope->add_expression(if_);
 			return if_;
 		}
-		else if (parse("fn", alphanumeric)) {
+		else if (parse("func", alphanumeric)) {
 			parse_white_space();
 			expect("(");
 			parse_white_space();
@@ -343,7 +326,7 @@ class MoebiusParser: private Parser {
 				while (cursor && *cursor != ')') {
 					const StringView name = parse_identifier();
 					const std::size_t index = function->add_argument();
-					scope.add_variable(name, current_scope->create<Argument>(index));
+					current_scope->add_variable(name, current_scope->create<Argument>(index));
 					parse_white_space();
 					if (parse(",")) {
 						parse_white_space();
@@ -414,10 +397,23 @@ class MoebiusParser: private Parser {
 			return intrinsic;
 		}
 		else if (copy().parse(numeric)) {
-			return parse_number();
+			std::int32_t number = 0;
+			while (copy().parse(numeric)) {
+				number *= 10;
+				number += *cursor - '0';
+				++cursor;
+			}
+			Expression* expression = current_scope->create<Number>(number);
+			expression->set_position(position);
+			return expression;
 		}
 		else if (copy().parse(alphabetic)) {
-			return parse_variable();
+			StringView identifier = parse_identifier();
+			const Expression* expression = current_scope->look_up(identifier);
+			if (expression == nullptr) {
+				error(format("undefined variable \"%\"", identifier));
+			}
+			return expression;
 		}
 		else if (parse("@")) {
 			const char* name = parse_intrinsic_name();
@@ -468,6 +464,7 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					StringView name = parse_identifier();
 					parse_white_space();
+					// method call syntax
 					if (parse("(")) {
 						const Expression* function = current_scope->look_up(name);
 						if (function == nullptr) {
@@ -528,10 +525,10 @@ class MoebiusParser: private Parser {
 				expect("=");
 				parse_white_space();
 				const Expression* expression = parse_expression();
-				scope.add_variable(name, expression);
+				current_scope->add_variable(name, expression);
 				parse_white_space();
 			}
-			else if (parse("function", alphanumeric)) {
+			else if (parse("func", alphanumeric)) {
 				parse_white_space();
 				StringView name = parse_identifier();
 				parse_white_space();
@@ -543,11 +540,11 @@ class MoebiusParser: private Parser {
 				//closure->set_position(position);
 				{
 					Scope scope(current_scope, closure, function->get_block());
-					scope.add_variable(name, current_scope->create<Argument>(0));
+					current_scope->add_variable(name, current_scope->create<Argument>(0));
 					while (cursor && *cursor != ')') {
 						const StringView name = parse_identifier();
 						const std::size_t index = function->add_argument();
-						scope.add_variable(name, current_scope->create<Argument>(index));
+						current_scope->add_variable(name, current_scope->create<Argument>(index));
 						parse_white_space();
 						if (parse(",")) {
 							parse_white_space();
@@ -559,7 +556,7 @@ class MoebiusParser: private Parser {
 					function->set_expression(expression);
 				}
 				current_scope->add_expression(closure);
-				scope.add_variable(name, closure);
+				current_scope->add_variable(name, closure);
 				parse_white_space();
 			}
 			else {

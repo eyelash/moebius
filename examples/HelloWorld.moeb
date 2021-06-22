@@ -1,0 +1,10 @@
+func putStrLn(s) {
+	func putStrLn(s, i)
+		if (i < @arrayLength(s))
+			@putChar(@arrayGet(s, i)) >> putStrLn(s, i + 1)
+		else
+			@putChar(10)
+	return putStrLn(s, 0)
+}
+
+return putStrLn("Hello, World!")

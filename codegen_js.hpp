@@ -219,7 +219,7 @@ public:
 		}
 		printer.println("</script></head><body></body></html>");
 		Printer status_printer(std::cerr);
-		status_printer.print(bold(path.c_str()));
+		status_printer.print(bold(path));
 		status_printer.print(bold(green(" successfully generated")));
 		status_printer.print('\n');
 	}

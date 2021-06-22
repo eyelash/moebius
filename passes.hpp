@@ -120,6 +120,9 @@ public:
 		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
 			const std::string& name = struct_.get_names()[i];
 			const Expression* new_expression = expression_table[struct_.get_expressions()[i]];
+			if (new_expression->get_type_id() == ArrayType::id) {
+				error(struct_, "arrays inside structs are not yet supported");
+			}
 			type.add_field(name, new_expression->get_type());
 			new_struct->add_field(name, new_expression);
 		}
@@ -503,13 +506,12 @@ public:
 	}
 };
 
+// memory management
 class Pass3: public Visitor<Expression*> {
 	Program* program;
 	Block* current_block;
 	using FunctionTable = std::map<const Function*, const Function*>;
 	FunctionTable& function_table;
-	const Function* function;
-	std::vector<Expression*> arguments;
 	std::map<const Expression*, Expression*> expression_table;
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -517,7 +519,7 @@ class Pass3: public Visitor<Expression*> {
 		return expression;
 	}
 public:
-	Pass3(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function) {}
+	Pass3(Program* program, FunctionTable& function_table): program(program), function_table(function_table) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
 		Block* previous_block = current_block;
 		current_block = destination_block;
@@ -525,12 +527,12 @@ public:
 		for (const Expression* expression: source_block) {
 			Expression* new_expression = visit(*this, expression);
 			expression_table[expression] = new_expression;
-			if (new_expression->get_type_id() == ArrayType::id) {
+			if (expression->get_type_id() == ArrayType::id) {
 				arrays.push_back(new_expression);
 			}
 		}
 		const Expression* result = expression_table[source_block.get_result()];
-		if (result->get_type_id() == ArrayType::id) {
+		if (source_block.get_result()->get_type_id() == ArrayType::id) {
 			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
 			intrinsic->add_argument(result);
 			result = intrinsic;
@@ -569,48 +571,37 @@ public:
 		return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
 	}
 	Expression* visit_struct(const Struct& struct_) override {
-		Tuple* tuple = create<Tuple>();
-		for (const Expression* expression: struct_.get_expressions()) {
-			tuple->add_expression(expression_table[expression]);
-		}
-		return tuple;
+		return nullptr;
 	}
 	Expression* visit_struct_access(const StructAccess& struct_access) override {
-		const Expression* tuple = expression_table[struct_access.get_struct()];
-		const StructType* struct_type = static_cast<const StructType*>(struct_access.get_struct()->get_type());
-		const std::size_t index = struct_type->get_index(struct_access.get_name());
-		return create<TupleAccess>(tuple, index);
+		return nullptr;
 	}
 	Expression* visit_closure(const Closure& closure) override {
-		Tuple* tuple = create<Tuple>();
-		for (const Expression* expression: closure.get_environment_expressions()) {
-			tuple->add_expression(expression_table[expression]);
-		}
-		return tuple;
+		return nullptr;
 	}
 	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
-		const Expression* tuple = expression_table[closure_access.get_closure()];
-		return create<TupleAccess>(tuple, closure_access.get_index());
+		return nullptr;
 	}
 	Expression* visit_argument(const Argument& argument) override {
-		Argument* new_argument = create<Argument>(argument.get_index(), argument.get_type());
-		if (new_argument->get_type_id() == ArrayType::id) {
-			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
-			intrinsic->add_argument(new_argument);
-			return intrinsic;
-		}
-		return new_argument;
+		return create<Argument>(argument.get_index(), argument.get_type());
 	}
 	Expression* visit_call(const Call& call) override {
-		Call* new_call = create<Call>();
+		std::vector<const Expression*> arguments;
 		for (const Expression* argument: call.get_arguments()) {
-			new_call->add_argument(expression_table[argument]);
+			argument = expression_table[argument];
+			if (argument->get_type_id() == ArrayType::id) {
+				Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
+				intrinsic->add_argument(argument);
+				argument = intrinsic;
+			}
+			arguments.push_back(argument);
 		}
+		Call* new_call = create<Call>(std::move(arguments));
 		if (function_table[call.get_function()] == nullptr) {
 			Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
 			program->add_function(new_function);
 			function_table[call.get_function()] = new_function;
-			Pass3 pass3(program, function_table, call.get_function());
+			Pass3 pass3(program, function_table);
 			pass3.evaluate(new_function->get_block(), call.get_function()->get_block());
 		}
 		new_call->set_type(function_table[call.get_function()]->get_return_type());
@@ -646,7 +637,7 @@ public:
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Pass3 pass3(new_program.get(), function_table, main_function);
+		Pass3 pass3(new_program.get(), function_table);
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
 		pass3.evaluate(new_function->get_block(), main_function->get_block());

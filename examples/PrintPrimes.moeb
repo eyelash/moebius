@@ -1,0 +1,41 @@
+func putChar(c) @putChar(c)
+
+let false = 0
+let true = 1
+let newline = 10
+
+func printNum(num) {
+	func printNum(num)
+		if (num < 10)
+			putChar('0' + num)
+		else
+			printNum(num / 10) >> putChar('0' + (num % 10))
+	return printNum(num) >> putChar(newline)
+}
+
+func isPrime(n) {
+	func isPrime(n, i)
+		if (i * i > n)
+			true
+		else
+			if (n % i == 0)
+				false
+			else
+				isPrime(n, i + 1)
+	return isPrime(n, 2)
+}
+
+// print the first 100 primes
+func printPrimes() {
+	func printPrimes(n, count)
+		if (count < 100)
+			if (isPrime(n))
+				printNum(n) >> printPrimes(n + 1, count + 1)
+			else
+				printPrimes(n + 1, count)
+		else
+			putChar(newline)
+	return printPrimes(2, 0)
+}
+
+return printPrimes()

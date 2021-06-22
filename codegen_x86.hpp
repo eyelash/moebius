@@ -295,7 +295,7 @@ public:
 		std::string path = std::string(source_path) + ".exe";
 		assembler.write_file(path.c_str());
 		Printer status_printer(std::cerr);
-		status_printer.print(bold(path.c_str()));
+		status_printer.print(bold(path));
 		status_printer.print(bold(green(" successfully generated")));
 		status_printer.print('\n');
 	}
