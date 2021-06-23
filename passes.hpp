@@ -506,8 +506,162 @@ public:
 	}
 };
 
-// memory management
+// remove empty tuples
 class Pass3: public Visitor<Expression*> {
+	Program* program;
+	Block* current_block;
+	using FunctionTable = std::map<const Function*, const Function*>;
+	FunctionTable& function_table;
+	const Function* function;
+	std::map<const Expression*, Expression*> expression_table;
+	template <class T, class... A> T* create(A&&... arguments) {
+		T* expression = new T(std::forward<A>(arguments)...);
+		current_block->add_expression(expression);
+		return expression;
+	}
+	static bool is_empty_tuple(const Type* type) {
+		if (type->get_id() == TupleType::id) {
+			for (const Type* tuple_type: static_cast<const TupleType*>(type)->get_types()) {
+				if (!is_empty_tuple(tuple_type)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+	static bool is_empty_tuple(const Expression* expression) {
+		return is_empty_tuple(expression->get_type());
+	}
+	static std::size_t adjust_index(const std::vector<const Type*>& types, std::size_t old_index) {
+		std::size_t new_index = 0;
+		for (std::size_t i = 0; i < old_index; ++i) {
+			if (!is_empty_tuple(types[i])) {
+				++new_index;
+			}
+		}
+		return new_index;
+	}
+public:
+	Pass3(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function) {}
+	void evaluate(Block* destination_block, const Block& source_block) {
+		Block* previous_block = current_block;
+		current_block = destination_block;
+		for (const Expression* expression: source_block) {
+			Expression* new_expression = visit(*this, expression);
+			if (new_expression) {
+				expression_table[expression] = new_expression;
+			}
+		}
+		const Expression* result = expression_table[source_block.get_result()];
+		destination_block->set_result(result);
+		current_block = previous_block;
+	}
+	Expression* visit_number(const Number& number) override {
+		return create<Number>(number.get_value());
+	}
+	Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
+		const Expression* left = expression_table[binary_expression.get_left()];
+		const Expression* right = expression_table[binary_expression.get_right()];
+		return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+	}
+	Expression* visit_if(const If& if_) override {
+		const Expression* condition = expression_table[if_.get_condition()];
+		If* new_if = create<If>(condition, if_.get_type());
+		evaluate(new_if->get_then_block(), if_.get_then_block());
+		evaluate(new_if->get_else_block(), if_.get_else_block());
+		return new_if;
+	}
+	Expression* visit_tuple(const Tuple& tuple) override {
+		if (is_empty_tuple(&tuple)) {
+			return nullptr;
+		}
+		Tuple* new_tuple = create<Tuple>(tuple.get_type());
+		for (const Expression* expression: tuple.get_expressions()) {
+			if (!is_empty_tuple(expression)) {
+				new_tuple->add_expression(expression_table[expression]);
+			}
+		}
+		return new_tuple;
+	}
+	Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
+		if (is_empty_tuple(&tuple_access)) {
+			return nullptr;
+		}
+		const Expression* tuple = expression_table[tuple_access.get_tuple()];
+		const std::vector<const Type*>& tuple_types = static_cast<const TupleType*>(tuple->get_type())->get_types();
+		const std::size_t index = adjust_index(tuple_types, tuple_access.get_index());
+		return create<TupleAccess>(tuple, index, tuple_access.get_type());
+	}
+	Expression* visit_struct(const Struct& struct_) override {
+		return nullptr;
+	}
+	Expression* visit_struct_access(const StructAccess& struct_access) override {
+		return nullptr;
+	}
+	Expression* visit_closure(const Closure& closure) override {
+		return nullptr;
+	}
+	Expression* visit_closure_access(const ClosureAccess& closure_access) override {
+		return nullptr;
+	}
+	Expression* visit_argument(const Argument& argument) override {
+		if (is_empty_tuple(&argument)) {
+			return nullptr;
+		}
+		const std::size_t index = adjust_index(function->get_argument_types(), argument.get_index());
+		return create<Argument>(index, argument.get_type());
+	}
+	Expression* visit_call(const Call& call) override {
+		Call* new_call = create<Call>();
+		for (const Expression* argument: call.get_arguments()) {
+			if (!is_empty_tuple(argument)) {
+				new_call->add_argument(expression_table[argument]);
+			}
+		}
+		if (function_table[call.get_function()] == nullptr) {
+			std::vector<const Type*> argument_types;
+			for (const Type* type: call.get_function()->get_argument_types()) {
+				if (!is_empty_tuple(type)) {
+					argument_types.push_back(type);
+				}
+			}
+			Function* new_function = new Function(argument_types, call.get_function()->get_return_type());
+			program->add_function(new_function);
+			function_table[call.get_function()] = new_function;
+			Pass3 pass3(program, function_table, call.get_function());
+			pass3.evaluate(new_function->get_block(), call.get_function()->get_block());
+		}
+		new_call->set_type(function_table[call.get_function()]->get_return_type());
+		new_call->set_function(function_table[call.get_function()]);
+		return new_call;
+	}
+	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
+		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), intrinsic.get_type());
+		for (const Expression* argument: intrinsic.get_arguments()) {
+			new_intrinsic->add_argument(expression_table[argument]);
+		}
+		return new_intrinsic;
+	}
+	Expression* visit_bind(const Bind& bind) override {
+		const Expression* left = expression_table[bind.get_left()];
+		const Expression* right = expression_table[bind.get_right()];
+		return create<Bind>(left, right);
+	}
+	static std::unique_ptr<Program> run(const Program& program) {
+		const Function* main_function = program.get_main_function();
+		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+		FunctionTable function_table;
+		Pass3 pass3(new_program.get(), function_table, main_function);
+		Function* new_function = new Function(main_function->get_return_type());
+		new_program->add_function(new_function);
+		pass3.evaluate(new_function->get_block(), main_function->get_block());
+		return new_program;
+	}
+};
+
+// memory management
+class Pass4: public Visitor<Expression*> {
 	Program* program;
 	Block* current_block;
 	using FunctionTable = std::map<const Function*, const Function*>;
@@ -519,7 +673,7 @@ class Pass3: public Visitor<Expression*> {
 		return expression;
 	}
 public:
-	Pass3(Program* program, FunctionTable& function_table): program(program), function_table(function_table) {}
+	Pass4(Program* program, FunctionTable& function_table): program(program), function_table(function_table) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
 		Block* previous_block = current_block;
 		current_block = destination_block;
@@ -601,8 +755,8 @@ public:
 			Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
 			program->add_function(new_function);
 			function_table[call.get_function()] = new_function;
-			Pass3 pass3(program, function_table);
-			pass3.evaluate(new_function->get_block(), call.get_function()->get_block());
+			Pass4 pass4(program, function_table);
+			pass4.evaluate(new_function->get_block(), call.get_function()->get_block());
 		}
 		new_call->set_type(function_table[call.get_function()]->get_return_type());
 		new_call->set_function(function_table[call.get_function()]);
@@ -637,10 +791,10 @@ public:
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Pass3 pass3(new_program.get(), function_table);
+		Pass4 pass4(new_program.get(), function_table);
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
-		pass3.evaluate(new_function->get_block(), main_function->get_block());
+		pass4.evaluate(new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };

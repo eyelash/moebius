@@ -34,5 +34,7 @@ int main(int argc, char** argv) {
 	program = Pass1::run(*program);
 	program = Pass3::run(*program);
 	program = Pass1::run(*program);
+	program = Pass4::run(*program);
+	program = Pass1::run(*program);
 	arguments.codegen(*program, arguments.source_path);
 }
