@@ -331,6 +331,8 @@ class Pass2 {
 	struct FunctionTableEntry {
 		const Function* new_function = nullptr;
 		std::size_t callers = 0;
+		bool evaluating = false;
+		bool recursive = false;
 		bool should_inline() const {
 			return callers == 1;
 		}
@@ -361,10 +363,15 @@ class Pass2 {
 		void visit_call(const Call& call) override {
 			if (function_table[call.get_function()].callers == 0) {
 				function_table[call.get_function()].callers += 1;
+				function_table[call.get_function()].evaluating = true;
 				evaluate(call.get_function()->get_block());
+				function_table[call.get_function()].evaluating = false;
 			}
 			else {
 				function_table[call.get_function()].callers += 1;
+				if (function_table[call.get_function()].evaluating) {
+					function_table[call.get_function()].recursive = true;
+				}
 			}
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {}
