@@ -331,21 +331,26 @@ public:
 class Pass2 {
 	struct FunctionTableEntry {
 		const Function* new_function = nullptr;
+		std::size_t expressions = 0;
 		std::size_t callers = 0;
 		bool evaluating = false;
 		bool recursive = false;
 		bool should_inline() const {
-			return callers == 1;
+			if (recursive) return false;
+			if (callers == 0) return false; // the main function
+			return callers == 1 || expressions <= 5;
 		}
 	};
 	using FunctionTable = std::map<const Function*, FunctionTableEntry>;
 	class Analyze: public Visitor<void> {
 		FunctionTable& function_table;
+		const Function* function;
 	public:
-		Analyze(FunctionTable& function_table): function_table(function_table) {}
+		Analyze(FunctionTable& function_table, const Function* function): function_table(function_table) {}
 		void evaluate(const Block& block) {
 			for (const Expression* expression: block) {
 				visit(*this, expression);
+				function_table[function].expressions += 1;
 			}
 		}
 		void visit_number(const Number& number) override {}
@@ -365,7 +370,8 @@ class Pass2 {
 			if (function_table[call.get_function()].callers == 0) {
 				function_table[call.get_function()].callers += 1;
 				function_table[call.get_function()].evaluating = true;
-				evaluate(call.get_function()->get_block());
+				Analyze analyze(function_table, call.get_function());
+				analyze.evaluate(call.get_function()->get_block());
 				function_table[call.get_function()].evaluating = false;
 			}
 			else {
@@ -516,7 +522,7 @@ public:
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Analyze analyze(function_table);
+		Analyze analyze(function_table, main_function);
 		analyze.evaluate(main_function->get_block());
 		Replace replace(new_program.get(), function_table, main_function);
 		Function* new_function = new Function(main_function->get_return_type());
