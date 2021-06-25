@@ -682,6 +682,140 @@ public:
 	}
 };
 
+class UsageAnalysisTable {
+public:
+	std::map<const Block*, std::map<const Expression*, const Expression*>> usages;
+	std::map<const Block*, std::vector<const Expression*>> frees;
+	std::map<const Expression*, std::size_t> levels;
+};
+
+class UsageAnalysis1: public Visitor<void> {
+	const Block* current_block;
+	std::size_t current_level;
+	UsageAnalysisTable& table;
+public:
+	UsageAnalysis1(UsageAnalysisTable& table): current_block(nullptr), current_level(0), table(table) {}
+	void add_usage(const Expression* resource, const Expression* consumer) {
+		table.usages[current_block][resource] = consumer;
+	}
+	void propagate_usages(const Block* block, const Expression* consumer) {
+		for (auto& entry: table.usages[block]) {
+			const Expression* resource = entry.first;
+			if (table.levels[resource] <= current_level) {
+				add_usage(resource, consumer);
+			}
+		}
+	}
+	void evaluate(const Block& block) {
+		const Block* previous_block = current_block;
+		current_block = &block;
+		++current_level;
+		for (const Expression* expression: block) {
+			if (expression->get_type_id() == ArrayType::id) {
+				table.levels[expression] = current_level;
+			}
+			visit(*this, expression);
+		}
+		--current_level;
+		current_block = previous_block;
+	}
+	void visit_number(const Number& number) override {}
+	void visit_binary_expression(const BinaryExpression& binary_expression) override {}
+	void visit_if(const If& if_) override {
+		evaluate(if_.get_then_block());
+		evaluate(if_.get_else_block());
+		propagate_usages(&if_.get_then_block(), &if_);
+		propagate_usages(&if_.get_else_block(), &if_);
+	}
+	void visit_tuple(const Tuple& tuple) override {}
+	void visit_tuple_access(const TupleAccess& tuple_access) override {}
+	void visit_struct(const Struct& struct_) override {}
+	void visit_struct_access(const StructAccess& struct_access) override {}
+	void visit_closure(const Closure& closure) override {}
+	void visit_closure_access(const ClosureAccess& closure_access) override {}
+	void visit_argument(const Argument& argument) override {}
+	void visit_call(const Call& call) override {
+		for (const Expression* argument: call.get_arguments()) {
+			if (argument->get_type_id() == ArrayType::id) {
+				add_usage(argument, &call);
+			}
+		}
+	}
+	void visit_intrinsic(const Intrinsic& intrinsic) override {
+		for (const Expression* argument: intrinsic.get_arguments()) {
+			if (argument->get_type_id() == ArrayType::id) {
+				add_usage(argument, &intrinsic);
+			}
+		}
+	}
+	void visit_bind(const Bind& bind) override {}
+	void visit_return(const Return& return_) override {
+		if (return_.get_expression()->get_type_id() == ArrayType::id) {
+			add_usage(return_.get_expression(), &return_);
+		}
+	}
+};
+
+class UsageAnalysis2: public Visitor<void> {
+	const Block* current_block;
+	UsageAnalysisTable& table;
+	std::size_t current_level;
+public:
+	UsageAnalysis2(UsageAnalysisTable& table): current_block(nullptr), table(table), current_level(0) {}
+	void remove_invalid_usages(const Block* block, const Expression* consumer) {
+		auto iterator = table.usages[block].begin();
+		while (iterator != table.usages[block].end()) {
+			const Expression* resource = iterator->first;
+			if (table.levels[resource] <= current_level && table.usages[current_block][resource] != consumer) {
+				iterator = table.usages[block].erase(iterator);
+			}
+			else {
+				++iterator;
+			}
+		}
+	}
+	void ensure_frees(const Block* source_block, const Block* target_block) {
+		for (auto& entry: table.usages[source_block]) {
+			const Expression* resource = entry.first;
+			if (table.usages[target_block].find(resource) == table.usages[target_block].end() && table.levels[resource] < current_level + 1) {
+				// if a resource from the source block has no usage in the target block, add it to the free list
+				table.frees[target_block].push_back(resource);
+			}
+		}
+	}
+	void evaluate(const Block& block) {
+		const Block* previous_block = current_block;
+		current_block = &block;
+		++current_level;
+		for (const Expression* expression: block) {
+			visit(*this, expression);
+		}
+		--current_level;
+		current_block = previous_block;
+	}
+	void visit_number(const Number& number) override {}
+	void visit_binary_expression(const BinaryExpression& binary_expression) override {}
+	void visit_if(const If& if_) override {
+		remove_invalid_usages(&if_.get_then_block(), &if_);
+		remove_invalid_usages(&if_.get_else_block(), &if_);
+		ensure_frees(&if_.get_then_block(), &if_.get_else_block());
+		ensure_frees(&if_.get_else_block(), &if_.get_then_block());
+		evaluate(if_.get_then_block());
+		evaluate(if_.get_else_block());
+	}
+	void visit_tuple(const Tuple& tuple) override {}
+	void visit_tuple_access(const TupleAccess& tuple_access) override {}
+	void visit_struct(const Struct& struct_) override {}
+	void visit_struct_access(const StructAccess& struct_access) override {}
+	void visit_closure(const Closure& closure) override {}
+	void visit_closure_access(const ClosureAccess& closure_access) override {}
+	void visit_argument(const Argument& argument) override {}
+	void visit_call(const Call& call) override {}
+	void visit_intrinsic(const Intrinsic& intrinsic) override {}
+	void visit_bind(const Bind& bind) override {}
+	void visit_return(const Return& return_) override {}
+};
+
 // memory management
 class Pass4: public Visitor<Expression*> {
 	class Scope {
@@ -689,8 +823,8 @@ class Pass4: public Visitor<Expression*> {
 		Scope* previous_scope;
 	public:
 		Block* block;
-		std::vector<const Expression*> arrays;
-		Scope(Scope*& current_scope, Block* block): current_scope(current_scope), block(block) {
+		const Block* old_block;
+		Scope(Scope*& current_scope, Block* block, const Block* old_block): current_scope(current_scope), block(block), old_block(old_block) {
 			previous_scope = current_scope;
 			current_scope = this;
 		}
@@ -703,6 +837,7 @@ class Pass4: public Visitor<Expression*> {
 	Block* current_block;
 	using FunctionTable = std::map<const Function*, const Function*>;
 	FunctionTable& function_table;
+	UsageAnalysisTable& usage_analysis;
 	std::map<const Expression*, Expression*> expression_table;
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -710,15 +845,16 @@ class Pass4: public Visitor<Expression*> {
 		return expression;
 	}
 public:
-	Pass4(Program* program, FunctionTable& function_table): program(program), function_table(function_table) {}
+	Pass4(Program* program, FunctionTable& function_table, UsageAnalysisTable& usage_analysis): program(program), function_table(function_table), usage_analysis(usage_analysis) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
-		Scope scope(current_scope, destination_block);
+		Scope scope(current_scope, destination_block, &source_block);
+		for (const Expression* expression: usage_analysis.frees[current_scope->old_block]) {
+			Intrinsic* intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
+			intrinsic->add_argument(expression_table[expression]);
+		}
 		for (const Expression* expression: source_block) {
 			Expression* new_expression = visit(*this, expression);
 			expression_table[expression] = new_expression;
-			if (expression->get_type_id() == ArrayType::id) {
-				current_scope->arrays.push_back(new_expression);
-			}
 		}
 		const Expression* result = expression_table[source_block.get_result()];
 	}
@@ -766,7 +902,7 @@ public:
 	Expression* visit_call(const Call& call) override {
 		std::vector<const Expression*> arguments;
 		for (const Expression* argument: call.get_arguments()) {
-			if (argument->get_type_id() == ArrayType::id) {
+			if (argument->get_type_id() == ArrayType::id && usage_analysis.usages[current_scope->old_block][argument] != &call) {
 				Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
 				intrinsic->add_argument(expression_table[argument]);
 				argument = intrinsic;
@@ -781,7 +917,7 @@ public:
 			Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
 			program->add_function(new_function);
 			function_table[call.get_function()] = new_function;
-			Pass4 pass4(program, function_table);
+			Pass4 pass4(program, function_table, usage_analysis);
 			pass4.evaluate(new_function->get_block(), call.get_function()->get_block());
 		}
 		new_call->set_type(function_table[call.get_function()]->get_return_type());
@@ -791,7 +927,7 @@ public:
 	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 		std::vector<const Expression*> arguments;
 		for (const Expression* argument: intrinsic.get_arguments()) {
-			if (argument->get_type_id() == ArrayType::id && !intrinsic.name_equals("arrayGet")) {
+			if (argument->get_type_id() == ArrayType::id && !intrinsic.name_equals("arrayGet") && usage_analysis.usages[current_scope->old_block][argument] != &intrinsic) {
 				Intrinsic* copy_intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
 				copy_intrinsic->add_argument(expression_table[argument]);
 				argument = copy_intrinsic;
@@ -803,6 +939,10 @@ public:
 		}
 		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), std::move(arguments));
 		new_intrinsic->set_type(intrinsic.get_type());
+		if (intrinsic.name_equals("arrayGet") && usage_analysis.usages[current_scope->old_block][intrinsic.get_arguments()[0]] == &intrinsic) {
+			Intrinsic* free_intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
+			free_intrinsic->add_argument(expression_table[intrinsic.get_arguments()[0]]);
+		}
 		return new_intrinsic;
 	}
 	Expression* visit_bind(const Bind& bind) override {
@@ -812,7 +952,7 @@ public:
 	}
 	Expression* visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();
-		if (expression->get_type_id() == ArrayType::id) {
+		if (expression->get_type_id() == ArrayType::id && usage_analysis.usages[current_scope->old_block][expression] != &return_) {
 			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
 			intrinsic->add_argument(expression_table[expression]);
 			expression = intrinsic;
@@ -820,17 +960,23 @@ public:
 		else {
 			expression = expression_table[expression];
 		}
-		for (const Expression* array: current_scope->arrays) {
-			Intrinsic* intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
-			intrinsic->add_argument(array);
-		}
 		return create<Return>(expression);
 	}
+	static void perform_usage_analysis(const Program& program, UsageAnalysisTable& table) {
+		for (const Function* function: program) {
+			UsageAnalysis1 usage_analysis1(table);
+			usage_analysis1.evaluate(function->get_block());
+			UsageAnalysis2 usage_analysis2(table);
+			usage_analysis2.evaluate(function->get_block());
+		}
+	}
 	static std::unique_ptr<Program> run(const Program& program) {
+		UsageAnalysisTable usage_analysis;
+		perform_usage_analysis(program, usage_analysis);
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Pass4 pass4(new_program.get(), function_table);
+		Pass4 pass4(new_program.get(), function_table, usage_analysis);
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
 		pass4.evaluate(new_function->get_block(), main_function->get_block());
