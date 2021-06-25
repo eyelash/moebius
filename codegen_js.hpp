@@ -152,7 +152,7 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			printer.println(format("const % = %.length;", result, array));
 		}
-		else if (intrinsic.name_equals("arraySpliceInplace")) {
+		else if (intrinsic.name_equals("arraySplice")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
@@ -171,6 +171,7 @@ public:
 					printer.print(");");
 				}));
 			}
+			printer.println(format("const % = %;", result, array));
 		}
 		else if (intrinsic.name_equals("arrayCopy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];

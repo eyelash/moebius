@@ -248,7 +248,7 @@ public:
 			const Type type = function_table.get_type(intrinsic.get_type());
 			printer.println(format("% % = %.length;", type, result, array));
 		}
-		else if (intrinsic.name_equals("arraySpliceInplace")) {
+		else if (intrinsic.name_equals("arraySplice")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
 			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
@@ -256,12 +256,12 @@ public:
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
 			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == ArrayType::id) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
-				printer.println(format("array_splice(&%, %, %, %.elements, %.length);", array, index, remove, insert, insert));
+				printer.println(format("% % = array_splice(%, %, %, %.elements, %.length);", type, result, array, index, remove, insert, insert));
 			}
 			else {
 				const std::size_t insert = intrinsic.get_arguments().size() - 3;
 				printer.println(print_functor([&](auto& printer) {
-					printer.print(format("array_splice(&%, %, %, (%[]){", array, index, remove, element_type));
+					printer.print(format("% % = array_splice(%, %, %, (%[]){", type, result, array, index, remove, element_type));
 					for (std::size_t i = 0; i < insert; ++i) {
 						if (i > 0) printer.print(", ");
 						printer.print(expression_table[intrinsic.get_arguments()[i + 3]]);
@@ -363,18 +363,18 @@ public:
 			const Type array_type = function_table.get_type(TypeInterner::get_array_type());
 			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
 			const Type number_type = function_table.get_type(TypeInterner::get_number_type());
-			function_declaration_printer.println(format("void array_splice(%* array, % index, % remove, %* insert_elements, % insert_length);", array_type, number_type, number_type, element_type, number_type));
-			printer.println(format("void array_splice(%* array, % index, % remove, %* insert_elements, % insert_length) {", array_type, number_type, number_type, element_type, number_type));
+			function_declaration_printer.println(format("% array_splice(% array, % index, % remove, %* insert_elements, % insert_length);", array_type, array_type, number_type, number_type, element_type, number_type));
+			printer.println(format("% array_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, number_type, number_type, element_type, number_type));
 			printer.increase_indentation();
-			printer.println(format("% new_length = array->length - remove + insert_length;", number_type));
-			printer.println("if (new_length > array->capacity) {");
+			printer.println(format("% new_length = array.length - remove + insert_length;", number_type));
+			printer.println("if (new_length > array.capacity) {");
 			printer.increase_indentation();
-			printer.println(format("% new_capacity = array->capacity * 2;", number_type));
+			printer.println(format("% new_capacity = array.capacity * 2;", number_type));
 			printer.println("if (new_capacity < new_length) new_capacity = new_length;");
 			printer.println(format("%* new_elements = malloc(new_capacity * sizeof(%));", element_type, element_type));
 			printer.println(format("for (% i = 0; i < index; i++) {", number_type));
 			printer.increase_indentation();
-			printer.println("new_elements[i] = array->elements[i];");
+			printer.println("new_elements[i] = array.elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.println(format("for (% i = 0; i < insert_length; i++) {", number_type));
@@ -382,34 +382,34 @@ public:
 			printer.println("new_elements[index + i] = insert_elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
-			printer.println(format("for (% i = index + remove; i < array->length; i++) {", number_type));
+			printer.println(format("for (% i = index + remove; i < array.length; i++) {", number_type));
 			printer.increase_indentation();
-			printer.println("new_elements[i - remove + insert_length] = array->elements[i];");
+			printer.println("new_elements[i - remove + insert_length] = array.elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
-			printer.println("free(array->elements);");
-			printer.println("array->elements = new_elements;");
-			printer.println("array->length = new_length;");
-			printer.println("array->capacity = new_capacity;");
+			printer.println("free(array.elements);");
+			printer.println("array.elements = new_elements;");
+			printer.println("array.length = new_length;");
+			printer.println("array.capacity = new_capacity;");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.println("else {");
 			printer.increase_indentation();
-			printer.println(format("%* new_elements = array->elements;", element_type, element_type));
+			printer.println(format("%* new_elements = array.elements;", element_type, element_type));
 			printer.println("if (remove > insert_length) {");
 			printer.increase_indentation();
-			printer.println(format("for (% i = index + remove; i < array->length; i++) {", number_type));
+			printer.println(format("for (% i = index + remove; i < array.length; i++) {", number_type));
 			printer.increase_indentation();
-			printer.println("new_elements[i - remove + insert_length] = array->elements[i];");
+			printer.println("new_elements[i - remove + insert_length] = array.elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.println("else if (insert_length > remove) {");
 			printer.increase_indentation();
-			printer.println(format("for (% i = array->length - 1; i >= index + remove; i--) {", number_type));
+			printer.println(format("for (% i = array.length - 1; i >= index + remove; i--) {", number_type));
 			printer.increase_indentation();
-			printer.println("new_elements[i - remove + insert_length] = array->elements[i];");
+			printer.println("new_elements[i - remove + insert_length] = array.elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.decrease_indentation();
@@ -419,9 +419,10 @@ public:
 			printer.println("new_elements[index + i] = insert_elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
-			printer.println("array->length = new_length;");
+			printer.println("array.length = new_length;");
 			printer.decrease_indentation();
 			printer.println("}");
+			printer.println("return array;");
 			printer.decrease_indentation();
 			printer.println("}");
 		}

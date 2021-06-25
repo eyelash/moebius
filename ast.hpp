@@ -702,6 +702,7 @@ class Intrinsic: public Expression {
 	std::vector<const Expression*> arguments;
 public:
 	Intrinsic(const char* name, const Type* type = nullptr): Expression(type), name(name) {}
+	Intrinsic(const char* name, std::vector<const Expression*>&& arguments): name(name), arguments(std::move(arguments)) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_intrinsic(*this);
 	}

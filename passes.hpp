@@ -766,11 +766,13 @@ public:
 	Expression* visit_call(const Call& call) override {
 		std::vector<const Expression*> arguments;
 		for (const Expression* argument: call.get_arguments()) {
-			argument = expression_table[argument];
 			if (argument->get_type_id() == ArrayType::id) {
 				Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
-				intrinsic->add_argument(argument);
+				intrinsic->add_argument(expression_table[argument]);
 				argument = intrinsic;
+			}
+			else {
+				argument = expression_table[argument];
 			}
 			arguments.push_back(argument);
 		}
@@ -787,24 +789,21 @@ public:
 		return new_call;
 	}
 	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
-		if (intrinsic.name_equals("arraySplice")) {
-			// replace arraySplice with arrayCopy and arraySpliceInplace
-			Intrinsic* array = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
-			array->add_argument(expression_table[intrinsic.get_arguments()[0]]);
-			Intrinsic* new_intrinsic = create<Intrinsic>("arraySpliceInplace", TypeInterner::get_void_type());
-			new_intrinsic->add_argument(array);
-			for (std::size_t i = 1; i < intrinsic.get_arguments().size(); ++i) {
-				new_intrinsic->add_argument(expression_table[intrinsic.get_arguments()[i]]);
+		std::vector<const Expression*> arguments;
+		for (const Expression* argument: intrinsic.get_arguments()) {
+			if (argument->get_type_id() == ArrayType::id && !intrinsic.name_equals("arrayGet")) {
+				Intrinsic* copy_intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
+				copy_intrinsic->add_argument(expression_table[argument]);
+				argument = copy_intrinsic;
 			}
-			return array;
-		}
-		else {
-			Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), intrinsic.get_type());
-			for (const Expression* argument: intrinsic.get_arguments()) {
-				new_intrinsic->add_argument(expression_table[argument]);
+			else {
+				argument = expression_table[argument];
 			}
-			return new_intrinsic;
+			arguments.push_back(argument);
 		}
+		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), std::move(arguments));
+		new_intrinsic->set_type(intrinsic.get_type());
+		return new_intrinsic;
 	}
 	Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
@@ -812,11 +811,14 @@ public:
 		return create<Bind>(left, right);
 	}
 	Expression* visit_return(const Return& return_) override {
-		const Expression* expression = expression_table[return_.get_expression()];
-		if (return_.get_expression()->get_type_id() == ArrayType::id) {
+		const Expression* expression = return_.get_expression();
+		if (expression->get_type_id() == ArrayType::id) {
 			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
-			intrinsic->add_argument(expression);
+			intrinsic->add_argument(expression_table[expression]);
 			expression = intrinsic;
+		}
+		else {
+			expression = expression_table[expression];
 		}
 		for (const Expression* array: current_scope->arrays) {
 			Intrinsic* intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
