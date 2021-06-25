@@ -48,13 +48,13 @@ class Pass1: public Visitor<Expression*> {
 	const FunctionTableKey& key;
 	std::map<const Expression*, const Expression*> expression_table;
 	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key): program(program), function_table(function_table), key(key) {}
-	void evaluate(Block* destination_block, const Block& source_block) {
+	const Expression* evaluate(Block* destination_block, const Block& source_block) {
 		for (const Expression* expression: source_block) {
 			Expression* result = visit(*this, expression);
 			expression_table[expression] = result;
 			destination_block->add_expression(result);
 		}
-		destination_block->set_result(expression_table[source_block.get_result()]);
+		return destination_block->get_result();
 	}
 public:
 	Expression* visit_number(const Number& number) override {
@@ -74,10 +74,8 @@ public:
 		const Expression* condition = expression_table[if_.get_condition()];
 		if (condition->has_type<NumberType>()) {
 			If* new_if = new If(condition);
-			evaluate(new_if->get_then_block(), if_.get_then_block());
-			evaluate(new_if->get_else_block(), if_.get_else_block());
-			const Expression* then_expression = expression_table[if_.get_then_expression()];
-			const Expression* else_expression = expression_table[if_.get_else_expression()];
+			const Expression* then_expression = evaluate(new_if->get_then_block(), if_.get_then_block());
+			const Expression* else_expression = evaluate(new_if->get_else_block(), if_.get_else_block());
 			if (then_expression->get_type() == else_expression->get_type()) {
 				new_if->set_type(then_expression->get_type());
 			}
@@ -198,8 +196,7 @@ public:
 				new_function->set_return_type(TypeInterner::get_never_type());
 			}
 			function_table[new_key].new_function = new_function;
-			pass1.evaluate(new_function->get_block(), old_function->get_block());
-			const Expression* new_expression = pass1.expression_table[old_function->get_expression()];
+			const Expression* new_expression = pass1.evaluate(new_function->get_block(), old_function->get_block());
 			new_function->set_return_type(new_expression->get_type());
 		}
 		else {
@@ -304,6 +301,10 @@ public:
 		const Expression* right = expression_table[bind.get_right()];
 		return new Bind(left, right);
 	}
+	Expression* visit_return(const Return& return_) override {
+		const Expression* expression = expression_table[return_.get_expression()];
+		return new Return(expression);
+	}
 	static std::unique_ptr<Program> run_pass(const Function* main_function, FunctionTable& function_table) {
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		Pass1 pass1(new_program.get(), function_table, FunctionTableKey(main_function));
@@ -376,6 +377,7 @@ class Pass2 {
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {}
 		void visit_bind(const Bind& bind) override {}
+		void visit_return(const Return& return_) override {}
 	};
 	class Replace: public Visitor<Expression*> {
 		Program* program;
@@ -383,6 +385,7 @@ class Pass2 {
 		FunctionTable& function_table;
 		const Function* function;
 		std::vector<Expression*> arguments;
+		std::size_t level;
 		std::map<const Expression*, Expression*> expression_table;
 		template <class T, class... A> T* create(A&&... arguments) {
 			T* expression = new T(std::forward<A>(arguments)...);
@@ -390,14 +393,15 @@ class Pass2 {
 			return expression;
 		}
 	public:
-		Replace(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function) {}
+		Replace(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function), level(0) {}
 		void evaluate(Block* destination_block, const Block& source_block) {
 			Block* previous_block = current_block;
 			current_block = destination_block;
+			++level;
 			for (const Expression* expression: source_block) {
 				expression_table[expression] = visit(*this, expression);
 			}
-			destination_block->set_result(expression_table[source_block.get_result()]);
+			--level;
 			current_block = previous_block;
 		}
 		Expression* visit_number(const Number& number) override {
@@ -496,6 +500,15 @@ class Pass2 {
 			const Expression* right = expression_table[bind.get_right()];
 			return create<Bind>(left, right);
 		}
+		Expression* visit_return(const Return& return_) override {
+			Expression* expression = expression_table[return_.get_expression()];
+			if (function_table[function].should_inline() && level == 1) {
+				return expression;
+			}
+			else {
+				return create<Return>(expression);
+			}
+		}
 	};
 public:
 	Pass2() = delete;
@@ -560,8 +573,6 @@ public:
 				expression_table[expression] = new_expression;
 			}
 		}
-		const Expression* result = expression_table[source_block.get_result()];
-		destination_block->set_result(result);
 		current_block = previous_block;
 	}
 	Expression* visit_number(const Number& number) override {
@@ -655,6 +666,10 @@ public:
 		const Expression* right = expression_table[bind.get_right()];
 		return create<Bind>(left, right);
 	}
+	Expression* visit_return(const Return& return_) override {
+		const Expression* expression = expression_table[return_.get_expression()];
+		return create<Return>(expression);
+	}
 	static std::unique_ptr<Program> run(const Program& program) {
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
@@ -669,41 +684,43 @@ public:
 
 // memory management
 class Pass4: public Visitor<Expression*> {
+	class Scope {
+		Scope*& current_scope;
+		Scope* previous_scope;
+	public:
+		Block* block;
+		std::vector<const Expression*> arrays;
+		Scope(Scope*& current_scope, Block* block): current_scope(current_scope), block(block) {
+			previous_scope = current_scope;
+			current_scope = this;
+		}
+		~Scope() {
+			current_scope = previous_scope;
+		}
+	};
 	Program* program;
+	Scope* current_scope;
 	Block* current_block;
 	using FunctionTable = std::map<const Function*, const Function*>;
 	FunctionTable& function_table;
 	std::map<const Expression*, Expression*> expression_table;
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
-		current_block->add_expression(expression);
+		current_scope->block->add_expression(expression);
 		return expression;
 	}
 public:
 	Pass4(Program* program, FunctionTable& function_table): program(program), function_table(function_table) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
-		Block* previous_block = current_block;
-		current_block = destination_block;
-		std::vector<const Expression*> arrays;
+		Scope scope(current_scope, destination_block);
 		for (const Expression* expression: source_block) {
 			Expression* new_expression = visit(*this, expression);
 			expression_table[expression] = new_expression;
 			if (expression->get_type_id() == ArrayType::id) {
-				arrays.push_back(new_expression);
+				current_scope->arrays.push_back(new_expression);
 			}
 		}
 		const Expression* result = expression_table[source_block.get_result()];
-		if (source_block.get_result()->get_type_id() == ArrayType::id) {
-			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
-			intrinsic->add_argument(result);
-			result = intrinsic;
-		}
-		for (const Expression* expression: arrays) {
-			Intrinsic* intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
-			intrinsic->add_argument(expression);
-		}
-		destination_block->set_result(result);
-		current_block = previous_block;
 	}
 	Expression* visit_number(const Number& number) override {
 		return create<Number>(number.get_value());
@@ -793,6 +810,19 @@ public:
 		const Expression* left = expression_table[bind.get_left()];
 		const Expression* right = expression_table[bind.get_right()];
 		return create<Bind>(left, right);
+	}
+	Expression* visit_return(const Return& return_) override {
+		const Expression* expression = expression_table[return_.get_expression()];
+		if (return_.get_expression()->get_type_id() == ArrayType::id) {
+			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
+			intrinsic->add_argument(expression);
+			expression = intrinsic;
+		}
+		for (const Expression* array: current_scope->arrays) {
+			Intrinsic* intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
+			intrinsic->add_argument(array);
+		}
+		return create<Return>(expression);
 	}
 	static std::unique_ptr<Program> run(const Program& program) {
 		const Function* main_function = program.get_main_function();

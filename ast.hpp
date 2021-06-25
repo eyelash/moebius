@@ -20,6 +20,7 @@ class Argument;
 class Call;
 class Intrinsic;
 class Bind;
+class Return;
 
 class Type {
 public:
@@ -283,6 +284,7 @@ public:
 	virtual T visit_call(const Call& call) = 0;
 	virtual T visit_intrinsic(const Intrinsic& intrinsic) = 0;
 	virtual T visit_bind(const Bind& bind) = 0;
+	virtual T visit_return(const Return& return_) = 0;
 };
 
 class Expression {
@@ -359,6 +361,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_bind(const Bind& bind) override {
 			result = visitor.visit_bind(bind);
 		}
+		void visit_return(const Return& return_) override {
+			result = visitor.visit_return(return_);
+		}
 		T get_result() const {
 			return result;
 		}
@@ -372,10 +377,21 @@ inline void visit(Visitor<void>& visitor, const Expression* expression) {
 	expression->accept(visitor);
 }
 
+class Return: public Expression {
+	const Expression* expression;
+public:
+	Return(const Expression* expression): Expression(TypeInterner::get_void_type()), expression(expression) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_return(*this);
+	}
+	const Expression* get_expression() const {
+		return expression;
+	}
+};
+
 class Block {
 	const Expression* first = nullptr;
 	Expression* last = nullptr;
-	const Expression* result = nullptr;
 public:
 	~Block() {
 		const Expression* expression = first;
@@ -398,11 +414,8 @@ public:
 		first = nullptr;
 		last = nullptr;
 	}
-	void set_result(const Expression* expression) {
-		result = expression;
-	}
 	const Expression* get_result() const {
-		return result;
+		return static_cast<Return*>(last)->get_expression();
 	}
 	class Iterator {
 		const Expression* expression;
@@ -485,20 +498,8 @@ public:
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_if(*this);
 	}
-	void set_then_expression(const Expression* then_expression) {
-		then_block.set_result(then_expression);
-	}
-	void set_else_expression(const Expression* else_expression) {
-		else_block.set_result(else_expression);
-	}
 	const Expression* get_condition() const {
 		return condition;
-	}
-	const Expression* get_then_expression() const {
-		return then_block.get_result();
-	}
-	const Expression* get_else_expression() const {
-		return else_block.get_result();
 	}
 	Block* get_then_block() {
 		return &then_block;
@@ -595,9 +596,6 @@ public:
 	const Function* next_function = nullptr;
 	Function(const Type* return_type = nullptr): arguments(1), return_type(return_type) {}
 	Function(const std::vector<const Type*>& argument_types, const Type* return_type = nullptr): arguments(argument_types.size()), argument_types(argument_types), return_type(return_type) {}
-	void set_expression(const Expression* expression) {
-		block.set_result(expression);
-	}
 	std::size_t add_argument() {
 		return arguments++;
 	}

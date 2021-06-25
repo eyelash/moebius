@@ -29,7 +29,7 @@ class CodegenX86: public Visitor<std::uint32_t> {
 		return input_size;
 	}
 	static std::uint32_t get_output_size(const Function* function) {
-		return get_type_size(function->get_expression()->get_type());
+		return get_type_size(function->get_return_type());
 	}
 	static std::uint32_t get_argument_location(const Function* function, std::size_t index) {
 		const std::vector<const Type*>& argument_types = function->get_argument_types();
@@ -250,6 +250,9 @@ public:
 		}
 	}
 	std::uint32_t visit_bind(const Bind& bind) override {
+		return allocate(0);
+	}
+	std::uint32_t visit_return(const Return& return_) override {
 		return allocate(0);
 	}
 	static void codegen(const Program& program, const char* source_path) {

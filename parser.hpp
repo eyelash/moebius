@@ -300,7 +300,7 @@ class MoebiusParser: private Parser {
 			{
 				Scope scope(current_scope, if_->get_then_block());
 				const Expression* then_expression = parse_expression();
-				if_->set_then_expression(then_expression);
+				current_scope->create<Return>(then_expression);
 			}
 			parse_white_space();
 			expect("else", alphanumeric);
@@ -308,7 +308,7 @@ class MoebiusParser: private Parser {
 			{
 				Scope scope(current_scope, if_->get_else_block());
 				const Expression* else_expression = parse_expression();
-				if_->set_else_expression(else_expression);
+				current_scope->create<Return>(else_expression);
 			}
 			current_scope->add_expression(if_);
 			return if_;
@@ -335,7 +335,7 @@ class MoebiusParser: private Parser {
 				expect(")");
 				parse_white_space();
 				const Expression* expression = parse_expression();
-				function->set_expression(expression);
+				current_scope->create<Return>(expression);
 			}
 			current_scope->add_expression(closure);
 			return closure;
@@ -553,7 +553,7 @@ class MoebiusParser: private Parser {
 					expect(")");
 					parse_white_space();
 					const Expression* expression = parse_expression();
-					function->set_expression(expression);
+					current_scope->create<Return>(expression);
 				}
 				current_scope->add_expression(closure);
 				current_scope->add_variable(name, closure);
@@ -575,7 +575,8 @@ public:
 		Function* main_function = new Function();
 		program->add_function(main_function);
 		Scope scope(current_scope, main_function->get_block());
-		main_function->set_expression(parse_scope());
+		const Expression* expression = parse_scope();
+		current_scope->create<Return>(expression);
 		parse_white_space();
 		if (cursor) {
 			error("unexpected character at end of program");

@@ -183,6 +183,9 @@ public:
 		printer.println(format("const % = null;", result));
 		return result;
 	}
+	Variable visit_return(const Return& return_) override {
+		return next_variable();
+	}
 	static void codegen(const Program& program, const char* source_path) {
 		FunctionTable function_table;
 		std::string path = std::string(source_path) + ".html";

@@ -284,6 +284,9 @@ public:
 	Variable visit_bind(const Bind& bind) override {
 		return next_variable();
 	}
+	Variable visit_return(const Return& return_) override {
+		return next_variable();
+	}
 	static void codegen(const Program& program, const char* source_path) {
 		std::ostringstream type_declarations;
 		std::ostringstream function_declarations;
