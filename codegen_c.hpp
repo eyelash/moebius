@@ -200,7 +200,18 @@ public:
 	Variable visit_call(const Call& call) override {
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
-		printer.println(print_functor([&](auto& printer) {
+		if (call.is_tail_call) {
+			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
+				const Variable argument = expression_table[call.get_arguments()[i]];
+				printer.println(format("% = %;", Variable(i), argument));
+			}
+			printer.println("continue;");
+			if (call.get_function()->get_return_type()->get_id() != VoidType::id) {
+				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
+				printer.println(format("% %;", result_type, result));
+			}
+		}
+		else printer.println(print_functor([&](auto& printer) {
 			if (call.get_function()->get_return_type()->get_id() != VoidType::id) {
 				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
 				printer.print(format("% % = ", result_type, result));
@@ -330,11 +341,22 @@ public:
 				printer.print(") {");
 			}));
 			printer.increase_indentation();
+			if (function->has_tail_call) {
+				printer.println("while (1) {");
+				printer.increase_indentation();
+			}
 			CodegenC codegen(function_table, printer);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
 			if (function->get_return_type()->get_id() != VoidType::id) {
 				printer.println(format("return %;", result));
+			}
+			else {
+				printer.println("return;");
+			}
+			if (function->has_tail_call) {
+				printer.decrease_indentation();
+				printer.println("}");
 			}
 			printer.decrease_indentation();
 			printer.println("}");

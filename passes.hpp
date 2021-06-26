@@ -989,3 +989,41 @@ public:
 		return new_program;
 	}
 };
+
+// tail call optimization
+class Pass5: public Visitor<void> {
+	const Function* function;
+public:
+	Pass5(const Function* function): function(function) {}
+	void evaluate(const Block& block) {
+		visit(*this, block.get_result());
+	}
+	void visit_number(const Number& number) override {}
+	void visit_binary_expression(const BinaryExpression& binary_expression) override {}
+	void visit_if(const If& if_) override {
+		evaluate(if_.get_then_block());
+		evaluate(if_.get_else_block());
+	}
+	void visit_tuple(const Tuple& tuple) override {}
+	void visit_tuple_access(const TupleAccess& tuple_access) override {}
+	void visit_struct(const Struct& struct_) override {}
+	void visit_struct_access(const StructAccess& struct_access) override {}
+	void visit_closure(const Closure& closure) override {}
+	void visit_closure_access(const ClosureAccess& closure_access) override {}
+	void visit_argument(const Argument& argument) override {}
+	void visit_call(const Call& call) override {
+		if (call.get_function() == function) {
+			call.is_tail_call = true;
+			function->has_tail_call = true;
+		}
+	}
+	void visit_intrinsic(const Intrinsic& intrinsic) override {}
+	void visit_bind(const Bind& bind) override {}
+	void visit_return(const Return& return_) override {}
+	static void run(const Program& program) {
+		for (const Function* function: program) {
+			Pass5 pass5(function);
+			pass5.evaluate(function->get_block());
+		}
+	}
+};

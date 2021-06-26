@@ -112,7 +112,15 @@ public:
 	Variable visit_call(const Call& call) override {
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
-		printer.println(print_functor([&](auto& printer) {
+		if (call.is_tail_call) {
+			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
+				const Variable argument = expression_table[call.get_arguments()[i]];
+				printer.println(format("% = %;", Variable(i), argument));
+			}
+			printer.println("continue;");
+			printer.println(format("let %;", result));
+		}
+		else printer.println(print_functor([&](auto& printer) {
 			printer.print(format("const % = f%(", result, print_number(new_index)));
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 				if (i > 0) printer.print(", ");
@@ -214,10 +222,18 @@ public:
 				printer.print(") {");
 			}));
 			printer.increase_indentation();
+			if (function->has_tail_call) {
+				printer.println("while (true) {");
+				printer.increase_indentation();
+			}
 			CodegenJS codegen(function_table, printer);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
 			printer.println(format("return %;", result));
+			if (function->has_tail_call) {
+				printer.decrease_indentation();
+				printer.println("}");
+			}
 			printer.decrease_indentation();
 			printer.println("}");
 		}

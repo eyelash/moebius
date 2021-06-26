@@ -594,6 +594,7 @@ class Function {
 	const Type* return_type;
 public:
 	const Function* next_function = nullptr;
+	mutable bool has_tail_call = false;
 	Function(const Type* return_type = nullptr): arguments(1), return_type(return_type) {}
 	Function(const std::vector<const Type*>& argument_types, const Type* return_type = nullptr): arguments(argument_types.size()), argument_types(argument_types), return_type(return_type) {}
 	std::size_t add_argument() {
@@ -675,6 +676,7 @@ class Call: public Expression {
 	std::vector<const Expression*> arguments;
 	const Function* function = nullptr;
 public:
+	mutable bool is_tail_call = false;
 	Call() {}
 	Call(std::vector<const Expression*>&& arguments): arguments(std::move(arguments)) {}
 	void accept(Visitor<void>& visitor) const override {

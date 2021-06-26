@@ -15,10 +15,10 @@
   - [x] JavaScript
 - optimizations
   - [x] monomorphization
-  - [x] dead code elimination
+  - [ ] dead code elimination
   - [x] inlining
   - [ ] constant propagation
-  - [ ] tail call optimization
+  - [x] tail call optimization
   - [ ] common subexpression elimination
   - [ ] graph coloring register allocation
 - types
