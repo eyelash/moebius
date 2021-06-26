@@ -138,6 +138,9 @@ class TypeCompare {
 	}
 public:
 	static int compare(const Type* type1, const Type* type2) {
+		if (type1 == type2) {
+			return 0;
+		}
 		const int id1 = type1->get_id();
 		const int id2 = type2->get_id();
 		if (id1 != id2) {
@@ -252,20 +255,36 @@ public:
 		return interned_type;
 	}
 	static const Type* get_number_type() {
-		NumberType type;
-		return intern(&type);
+		static const Type* number_type = nullptr;
+		if (number_type == nullptr) {
+			NumberType type;
+			number_type = intern(&type);
+		}
+		return number_type;
 	}
 	static const Type* get_void_type() {
-		VoidType type;
-		return intern(&type);
+		static const Type* void_type = nullptr;
+		if (void_type == nullptr) {
+			VoidType type;
+			void_type = intern(&type);
+		}
+		return void_type;
 	}
 	static const Type* get_never_type() {
-		NeverType type;
-		return intern(&type);
+		static const Type* never_type = nullptr;
+		if (never_type == nullptr) {
+			NeverType type;
+			never_type = intern(&type);
+		}
+		return never_type;
 	}
 	static const Type* get_array_type() {
-		ArrayType type;
-		return intern(&type);
+		static const Type* array_type = nullptr;
+		if (array_type == nullptr) {
+			ArrayType type;
+			array_type = intern(&type);
+		}
+		return array_type;
 	}
 };
 
@@ -603,9 +622,6 @@ public:
 	void set_return_type(const Type* type) {
 		this->return_type = type;
 	}
-	const Expression* get_expression() const {
-		return block.get_result();
-	}
 	std::size_t get_arguments() const {
 		return arguments;
 	}
@@ -677,8 +693,7 @@ class Call: public Expression {
 	const Function* function = nullptr;
 public:
 	mutable bool is_tail_call = false;
-	Call() {}
-	Call(std::vector<const Expression*>&& arguments): arguments(std::move(arguments)) {}
+	Call(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_call(*this);
 	}
@@ -704,7 +719,6 @@ class Intrinsic: public Expression {
 	std::vector<const Expression*> arguments;
 public:
 	Intrinsic(const char* name, const Type* type = nullptr): Expression(type), name(name) {}
-	Intrinsic(const char* name, std::vector<const Expression*>&& arguments): name(name), arguments(std::move(arguments)) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_intrinsic(*this);
 	}

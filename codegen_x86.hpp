@@ -236,6 +236,7 @@ public:
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
 			assembler.POP(EAX);
+			return allocate(0);
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			const std::uint32_t result = allocate(4);
@@ -247,6 +248,9 @@ public:
 			assembler.MOV(EDX, 1);
 			assembler.INT(0x80);
 			return result;
+		}
+		else {
+			return allocate(0);
 		}
 	}
 	std::uint32_t visit_bind(const Bind& bind) override {

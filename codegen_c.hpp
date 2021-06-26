@@ -327,7 +327,7 @@ public:
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
 					const Type argument_type = function_table.get_type(function->get_argument_types()[i]);
-					printer.print(format("% v%", argument_type, print_number(i)));
+					printer.print(format("% %", argument_type, Variable(i)));
 				}
 				printer.print(");");
 			}));
@@ -336,7 +336,7 @@ public:
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
 					const Type argument_type = function_table.get_type(function->get_argument_types()[i]);
-					printer.print(format("% v%", argument_type, print_number(i)));
+					printer.print(format("% %", argument_type, Variable(i)));
 				}
 				printer.print(") {");
 			}));
@@ -417,12 +417,11 @@ public:
 			printer.println("}");
 			printer.println("else {");
 			printer.increase_indentation();
-			printer.println(format("%* new_elements = array.elements;", element_type, element_type));
 			printer.println("if (remove > insert_length) {");
 			printer.increase_indentation();
 			printer.println(format("for (% i = index + remove; i < array.length; i++) {", number_type));
 			printer.increase_indentation();
-			printer.println("new_elements[i - remove + insert_length] = array.elements[i];");
+			printer.println("array.elements[i - remove + insert_length] = array.elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.decrease_indentation();
@@ -431,14 +430,14 @@ public:
 			printer.increase_indentation();
 			printer.println(format("for (% i = array.length - 1; i >= index + remove; i--) {", number_type));
 			printer.increase_indentation();
-			printer.println("new_elements[i - remove + insert_length] = array.elements[i];");
+			printer.println("array.elements[i - remove + insert_length] = array.elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.println(format("for (% i = 0; i < insert_length; i++) {", number_type));
 			printer.increase_indentation();
-			printer.println("new_elements[index + i] = insert_elements[i];");
+			printer.println("array.elements[index + i] = insert_elements[i];");
 			printer.decrease_indentation();
 			printer.println("}");
 			printer.println("array.length = new_length;");

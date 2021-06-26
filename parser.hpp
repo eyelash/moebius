@@ -142,7 +142,7 @@ public:
 		return c >= '0' && c <= '9';
 	}
 	static constexpr bool alphabetic(char c) {
-		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_';
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 	}
 	static constexpr bool alphanumeric(char c) {
 		return alphabetic(c) || numeric(c);
@@ -518,6 +518,7 @@ class MoebiusParser: private Parser {
 	const Expression* parse_scope() {
 		Scope scope(current_scope);
 		while (true) {
+			const SourcePosition position = cursor.get_position();
 			if (parse("let", alphanumeric)) {
 				parse_white_space();
 				StringView name = parse_identifier();
@@ -537,7 +538,7 @@ class MoebiusParser: private Parser {
 				Function* function = new Function();
 				program->add_function(function);
 				Closure* closure = new Closure(function);
-				//closure->set_position(position);
+				closure->set_position(position);
 				{
 					Scope scope(current_scope, closure, function->get_block());
 					current_scope->add_variable(name, current_scope->create<Argument>(0));

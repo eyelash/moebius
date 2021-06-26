@@ -20,7 +20,6 @@ class Pass1: public Visitor<Expression*> {
 	struct FunctionTableKey {
 		const Function* old_function;
 		std::vector<const Type*> argument_types;
-		FunctionTableKey(const Function* old_function, const std::vector<const Type*>& argument_types): old_function(old_function), argument_types(argument_types) {}
 		FunctionTableKey(const Function* old_function): old_function(old_function) {}
 		FunctionTableKey() {}
 		bool operator <(const FunctionTableKey& rhs) const {
@@ -285,9 +284,6 @@ public:
 			}
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
-		else if (intrinsic.name_equals("arraySpliceInplace")) {
-			new_intrinsic->set_type(TypeInterner::get_void_type());
-		}
 		else if (intrinsic.name_equals("arrayCopy")) {
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
@@ -400,7 +396,7 @@ class Pass2 {
 		}
 	public:
 		Replace(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function), level(0) {}
-		void evaluate(Block* destination_block, const Block& source_block) {
+		Expression* evaluate(Block* destination_block, const Block& source_block) {
 			Block* previous_block = current_block;
 			current_block = destination_block;
 			++level;
@@ -409,6 +405,7 @@ class Pass2 {
 			}
 			--level;
 			current_block = previous_block;
+			return expression_table[source_block.get_result()];
 		}
 		Expression* visit_number(const Number& number) override {
 			return create<Number>(number.get_value());
@@ -474,11 +471,10 @@ class Pass2 {
 				for (const Expression* argument: call.get_arguments()) {
 					replace.arguments.push_back(expression_table[argument]);
 				}
-				replace.evaluate(current_block, call.get_function()->get_block());
-				return replace.expression_table[call.get_function()->get_expression()];
+				return replace.evaluate(current_block, call.get_function()->get_block());
 			}
 			else {
-				Call* new_call = create<Call>();
+				Call* new_call = create<Call>(call.get_type());
 				for (const Expression* argument: call.get_arguments()) {
 					new_call->add_argument(expression_table[argument]);
 				}
@@ -489,7 +485,6 @@ class Pass2 {
 					Replace replace(program, function_table, call.get_function());
 					replace.evaluate(new_function->get_block(), call.get_function()->get_block());
 				}
-				new_call->set_type(function_table[call.get_function()].new_function->get_return_type());
 				new_call->set_function(function_table[call.get_function()].new_function);
 				return new_call;
 			}
@@ -637,7 +632,7 @@ public:
 		return create<Argument>(index, argument.get_type());
 	}
 	Expression* visit_call(const Call& call) override {
-		Call* new_call = create<Call>();
+		Call* new_call = create<Call>(call.get_type());
 		for (const Expression* argument: call.get_arguments()) {
 			if (!is_empty_tuple(argument)) {
 				new_call->add_argument(expression_table[argument]);
@@ -656,7 +651,6 @@ public:
 			Pass3 pass3(program, function_table, call.get_function());
 			pass3.evaluate(new_function->get_block(), call.get_function()->get_block());
 		}
-		new_call->set_type(function_table[call.get_function()]->get_return_type());
 		new_call->set_function(function_table[call.get_function()]);
 		return new_call;
 	}
@@ -850,6 +844,12 @@ class Pass4: public Visitor<Expression*> {
 		current_scope->block->add_expression(expression);
 		return expression;
 	}
+	bool is_last_use(const Expression* resource, const Expression* consumer) {
+		return usage_analysis.usages[current_scope->old_block][resource] == consumer;
+	}
+	bool is_unused(const Expression* resource) {
+		return usage_analysis.usages[current_scope->old_block].count(resource) == 0;
+	}
 public:
 	Pass4(Program* program, FunctionTable& function_table, UsageAnalysisTable& usage_analysis): program(program), function_table(function_table), usage_analysis(usage_analysis) {}
 	void evaluate(Block* destination_block, const Block& source_block) {
@@ -859,10 +859,8 @@ public:
 			intrinsic->add_argument(expression_table[expression]);
 		}
 		for (const Expression* expression: source_block) {
-			Expression* new_expression = visit(*this, expression);
-			expression_table[expression] = new_expression;
+			expression_table[expression] = visit(*this, expression);
 		}
-		const Expression* result = expression_table[source_block.get_result()];
 	}
 	Expression* visit_number(const Number& number) override {
 		return create<Number>(number.get_value());
@@ -906,19 +904,18 @@ public:
 		return create<Argument>(argument.get_index(), argument.get_type());
 	}
 	Expression* visit_call(const Call& call) override {
-		std::vector<const Expression*> arguments;
+		Call* new_call = new Call(call.get_type());
 		for (const Expression* argument: call.get_arguments()) {
-			if (argument->get_type_id() == ArrayType::id && usage_analysis.usages[current_scope->old_block][argument] != &call) {
+			if (argument->get_type_id() == ArrayType::id && !is_last_use(argument, &call)) {
 				Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
 				intrinsic->add_argument(expression_table[argument]);
-				argument = intrinsic;
+				new_call->add_argument(intrinsic);
 			}
 			else {
-				argument = expression_table[argument];
+				new_call->add_argument(expression_table[argument]);
 			}
-			arguments.push_back(argument);
 		}
-		Call* new_call = create<Call>(std::move(arguments));
+		current_scope->block->add_expression(new_call);
 		if (function_table[call.get_function()] == nullptr) {
 			Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
 			program->add_function(new_function);
@@ -926,28 +923,39 @@ public:
 			Pass4 pass4(program, function_table, usage_analysis);
 			pass4.evaluate(new_function->get_block(), call.get_function()->get_block());
 		}
-		new_call->set_type(function_table[call.get_function()]->get_return_type());
 		new_call->set_function(function_table[call.get_function()]);
+		if (call.get_type_id() == ArrayType::id && is_unused(&call)) {
+			Intrinsic* free_intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
+			free_intrinsic->add_argument(new_call);
+		}
 		return new_call;
 	}
 	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
-		std::vector<const Expression*> arguments;
-		for (const Expression* argument: intrinsic.get_arguments()) {
-			if (argument->get_type_id() == ArrayType::id && !intrinsic.name_equals("arrayGet") && usage_analysis.usages[current_scope->old_block][argument] != &intrinsic) {
+		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
+		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
+			const Expression* argument = intrinsic.get_arguments()[i];
+			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
+			if (argument->get_type_id() == ArrayType::id && !is_borrowed && !is_last_use(argument, &intrinsic)) {
 				Intrinsic* copy_intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
 				copy_intrinsic->add_argument(expression_table[argument]);
-				argument = copy_intrinsic;
+				new_intrinsic->add_argument(copy_intrinsic);
 			}
 			else {
-				argument = expression_table[argument];
+				new_intrinsic->add_argument(expression_table[argument]);
 			}
-			arguments.push_back(argument);
 		}
-		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), std::move(arguments));
-		new_intrinsic->set_type(intrinsic.get_type());
-		if (intrinsic.name_equals("arrayGet") && usage_analysis.usages[current_scope->old_block][intrinsic.get_arguments()[0]] == &intrinsic) {
+		current_scope->block->add_expression(new_intrinsic);
+		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
+			const Expression* argument = intrinsic.get_arguments()[i];
+			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
+			if (argument->get_type_id() == ArrayType::id && is_borrowed && is_last_use(argument, &intrinsic)) {
+				Intrinsic* free_intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
+				free_intrinsic->add_argument(expression_table[argument]);
+			}
+		}
+		if (intrinsic.get_type_id() == ArrayType::id && is_unused(&intrinsic)) {
 			Intrinsic* free_intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
-			free_intrinsic->add_argument(expression_table[intrinsic.get_arguments()[0]]);
+			free_intrinsic->add_argument(new_intrinsic);
 		}
 		return new_intrinsic;
 	}
@@ -958,15 +966,14 @@ public:
 	}
 	Expression* visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();
-		if (expression->get_type_id() == ArrayType::id && usage_analysis.usages[current_scope->old_block][expression] != &return_) {
+		if (expression->get_type_id() == ArrayType::id && !is_last_use(expression, &return_)) {
 			Intrinsic* intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
 			intrinsic->add_argument(expression_table[expression]);
-			expression = intrinsic;
+			return create<Return>(intrinsic);
 		}
 		else {
-			expression = expression_table[expression];
+			return create<Return>(expression_table[expression]);
 		}
-		return create<Return>(expression);
 	}
 	static void perform_usage_analysis(const Program& program, UsageAnalysisTable& table) {
 		for (const Function* function: program) {

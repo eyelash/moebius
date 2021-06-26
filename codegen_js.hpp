@@ -56,7 +56,7 @@ public:
 		const Variable left = expression_table[binary_expression.get_left()];
 		const Variable right = expression_table[binary_expression.get_right()];
 		const Variable result = next_variable();
-		printer.println(format("const % = % % % | 0;", result, left, print_operator(binary_expression.get_operation()), right));
+		printer.println(format("const % = (% % %) | 0;", result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
 	Variable visit_if(const If& if_) override {
@@ -183,7 +183,7 @@ public:
 		}
 		else if (intrinsic.name_equals("arrayCopy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("const % = %;", result, array));
+			printer.println(format("const % = %.slice();", result, array));
 		}
 		return result;
 	}
