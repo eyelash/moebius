@@ -68,13 +68,11 @@ class CodegenC: public Visitor<Variable> {
 						element_types.push_back(get_type(element_type));
 					}
 					const std::size_t index = types.size();
-					type_declaration_printer.println("typedef struct {");
-					type_declaration_printer.increase_indentation();
+					type_declaration_printer.println_increasing("typedef struct {");
 					for (std::size_t i = 0; i < element_types.size(); ++i) {
 						type_declaration_printer.println(format("% v%;", element_types[i], print_number(i)));
 					}
-					type_declaration_printer.decrease_indentation();
-					type_declaration_printer.println(format("} %;", Type(index)));
+					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
@@ -82,13 +80,11 @@ class CodegenC: public Visitor<Variable> {
 					const Type element_type = get_type(TypeInterner::get_number_type());
 					const Type number_type = get_type(TypeInterner::get_number_type());
 					const std::size_t index = types.size();
-					type_declaration_printer.println("typedef struct {");
-					type_declaration_printer.increase_indentation();
+					type_declaration_printer.println_increasing("typedef struct {");
 					type_declaration_printer.println(format("%* elements;", element_type));
 					type_declaration_printer.println(format("% length;", number_type));
 					type_declaration_printer.println(format("% capacity;", number_type));
-					type_declaration_printer.decrease_indentation();
-					type_declaration_printer.println(format("} %;", Type(index)));
+					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
@@ -135,30 +131,24 @@ public:
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();
 		if (if_.get_type()->get_id() == VoidType::id) {
-			printer.println(format("if (%) {", condition));
-			printer.increase_indentation();
+			printer.println_increasing(format("if (%) {", condition));
 			evaluate(if_.get_then_block());
-			printer.decrease_indentation();
-			printer.println("} else {");
-			printer.increase_indentation();
+			printer.println_decreasing("}");
+			printer.println_increasing("else {");
 			evaluate(if_.get_else_block());
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		else {
 			const Type result_type = function_table.get_type(if_.get_type());
 			printer.println(format("% %;", result_type, result));
-			printer.println(format("if (%) {", condition));
-			printer.increase_indentation();
+			printer.println_increasing(format("if (%) {", condition));
 			const Variable then_result = evaluate(if_.get_then_block());
 			printer.println(format("% = %;", result, then_result));
-			printer.decrease_indentation();
-			printer.println("} else {");
-			printer.increase_indentation();
+			printer.println_decreasing("}");
+			printer.println_increasing("else {");
 			const Variable else_result = evaluate(if_.get_else_block());
 			printer.println(format("% = %;", result, else_result));
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		return result;
 	}
@@ -310,13 +300,11 @@ public:
 		type_declaration_printer.println("#include <stdint.h>");
 		type_declaration_printer.println("#include <stdio.h>");
 		{
-			printer.println("int main(int argc, char** argv) {");
-			printer.increase_indentation();
+			printer.println_increasing("int main(int argc, char** argv) {");
 			const std::size_t index = function_table.look_up(program.get_main_function());
 			printer.println(format("f%();", print_number(index)));
 			printer.println("return 0;");
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		for (const Function* function: program) {
 			const Type return_type = function_table.get_type(function->get_return_type());
@@ -331,7 +319,7 @@ public:
 				}
 				printer.print(");");
 			}));
-			printer.println(print_functor([&](auto& printer) {
+			printer.println_increasing(print_functor([&](auto& printer) {
 				printer.print(format("% f%(", return_type, print_number(index)));
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
@@ -340,10 +328,8 @@ public:
 				}
 				printer.print(") {");
 			}));
-			printer.increase_indentation();
 			if (function->has_tail_call) {
-				printer.println("while (1) {");
-				printer.increase_indentation();
+				printer.println_increasing("while (1) {");
 			}
 			CodegenC codegen(function_table, printer);
 			codegen.variable = arguments;
@@ -355,97 +341,69 @@ public:
 				printer.println("return;");
 			}
 			if (function->has_tail_call) {
-				printer.decrease_indentation();
-				printer.println("}");
+				printer.println_decreasing("}");
 			}
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		{
 			const Type array_type = function_table.get_type(TypeInterner::get_array_type());
 			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
 			const Type number_type = function_table.get_type(TypeInterner::get_number_type());
 			function_declaration_printer.println(format("% array_new(%* elements, % length);", array_type, element_type, number_type));
-			printer.println(format("% array_new(%* elements, % length) {", array_type, element_type, number_type));
-			printer.increase_indentation();
+			printer.println_increasing(format("% array_new(%* elements, % length) {", array_type, element_type, number_type));
 			printer.println(format("% array;", array_type));
 			printer.println(format("array.elements = malloc(length * sizeof(%));", element_type));
-			printer.println(format("for (% i = 0; i < length; i++) {", number_type));
-			printer.increase_indentation();
+			printer.println_increasing(format("for (% i = 0; i < length; i++) {", number_type));
 			printer.println("array.elements[i] = elements[i];");
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 			printer.println("array.length = length;");
 			printer.println("array.capacity = length;");
 			printer.println("return array;");
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		{
 			const Type array_type = function_table.get_type(TypeInterner::get_array_type());
 			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
 			const Type number_type = function_table.get_type(TypeInterner::get_number_type());
 			function_declaration_printer.println(format("% array_splice(% array, % index, % remove, %* insert_elements, % insert_length);", array_type, array_type, number_type, number_type, element_type, number_type));
-			printer.println(format("% array_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, number_type, number_type, element_type, number_type));
-			printer.increase_indentation();
+			printer.println_increasing(format("% array_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, number_type, number_type, element_type, number_type));
 			printer.println(format("% new_length = array.length - remove + insert_length;", number_type));
-			printer.println("if (new_length > array.capacity) {");
-			printer.increase_indentation();
+			printer.println_increasing("if (new_length > array.capacity) {");
 			printer.println(format("% new_capacity = array.capacity * 2;", number_type));
 			printer.println("if (new_capacity < new_length) new_capacity = new_length;");
 			printer.println(format("%* new_elements = malloc(new_capacity * sizeof(%));", element_type, element_type));
-			printer.println(format("for (% i = 0; i < index; i++) {", number_type));
-			printer.increase_indentation();
+			printer.println_increasing(format("for (% i = 0; i < index; i++) {", number_type));
 			printer.println("new_elements[i] = array.elements[i];");
-			printer.decrease_indentation();
-			printer.println("}");
-			printer.println(format("for (% i = 0; i < insert_length; i++) {", number_type));
-			printer.increase_indentation();
+			printer.println_decreasing("}");
+			printer.println_increasing(format("for (% i = 0; i < insert_length; i++) {", number_type));
 			printer.println("new_elements[index + i] = insert_elements[i];");
-			printer.decrease_indentation();
-			printer.println("}");
-			printer.println(format("for (% i = index + remove; i < array.length; i++) {", number_type));
-			printer.increase_indentation();
+			printer.println_decreasing("}");
+			printer.println_increasing(format("for (% i = index + remove; i < array.length; i++) {", number_type));
 			printer.println("new_elements[i - remove + insert_length] = array.elements[i];");
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 			printer.println("free(array.elements);");
 			printer.println("array.elements = new_elements;");
 			printer.println("array.length = new_length;");
 			printer.println("array.capacity = new_capacity;");
-			printer.decrease_indentation();
-			printer.println("}");
-			printer.println("else {");
-			printer.increase_indentation();
-			printer.println("if (remove > insert_length) {");
-			printer.increase_indentation();
-			printer.println(format("for (% i = index + remove; i < array.length; i++) {", number_type));
-			printer.increase_indentation();
+			printer.println_decreasing("}");
+			printer.println_increasing("else {");
+			printer.println_increasing("if (remove > insert_length) {");
+			printer.println_increasing(format("for (% i = index + remove; i < array.length; i++) {", number_type));
 			printer.println("array.elements[i - remove + insert_length] = array.elements[i];");
-			printer.decrease_indentation();
-			printer.println("}");
-			printer.decrease_indentation();
-			printer.println("}");
-			printer.println("else if (insert_length > remove) {");
-			printer.increase_indentation();
-			printer.println(format("for (% i = array.length - 1; i >= index + remove; i--) {", number_type));
-			printer.increase_indentation();
+			printer.println_decreasing("}");
+			printer.println_decreasing("}");
+			printer.println_increasing("else if (insert_length > remove) {");
+			printer.println_increasing(format("for (% i = array.length - 1; i >= index + remove; i--) {", number_type));
 			printer.println("array.elements[i - remove + insert_length] = array.elements[i];");
-			printer.decrease_indentation();
-			printer.println("}");
-			printer.decrease_indentation();
-			printer.println("}");
-			printer.println(format("for (% i = 0; i < insert_length; i++) {", number_type));
-			printer.increase_indentation();
+			printer.println_decreasing("}");
+			printer.println_decreasing("}");
+			printer.println_increasing(format("for (% i = 0; i < insert_length; i++) {", number_type));
 			printer.println("array.elements[index + i] = insert_elements[i];");
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 			printer.println("array.length = new_length;");
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 			printer.println("return array;");
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		std::string c_path = std::string(source_path) + ".c";
 		std::ofstream file(c_path);

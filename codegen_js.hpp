@@ -63,17 +63,14 @@ public:
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();
 		printer.println(format("let %;", result));
-		printer.println(format("if (%) {", condition));
-		printer.increase_indentation();
+		printer.println_increasing(format("if (%) {", condition));
 		const Variable then_result = evaluate(if_.get_then_block());
 		printer.println(format("% = %;", result, then_result));
-		printer.decrease_indentation();
-		printer.println("} else {");
-		printer.increase_indentation();
+		printer.println_decreasing("}");
+		printer.println_increasing("else {");
 		const Variable else_result = evaluate(if_.get_else_block());
 		printer.println(format("% = %;", result, else_result));
-		printer.decrease_indentation();
-		printer.println("}");
+		printer.println_decreasing("}");
 		return result;
 	}
 	Variable visit_tuple(const Tuple& tuple) override {
@@ -203,17 +200,15 @@ public:
 		printer.println("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
 		printer.println("window.addEventListener('load', main);");
 		{
-			printer.println("function main() {");
-			printer.increase_indentation();
+			printer.println_increasing("function main() {");
 			const std::size_t index = function_table.look_up(program.get_main_function());
 			printer.println(format("f%();", print_number(index)));
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		for (const Function* function: program) {
 			const std::size_t index = function_table.look_up(function);
 			const std::size_t arguments = function->get_argument_types().size();
-			printer.println(print_functor([&](auto& printer) {
+			printer.println_increasing(print_functor([&](auto& printer) {
 				printer.print(format("function f%(", print_number(index)));
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
@@ -221,21 +216,17 @@ public:
 				}
 				printer.print(") {");
 			}));
-			printer.increase_indentation();
 			if (function->has_tail_call) {
-				printer.println("while (true) {");
-				printer.increase_indentation();
+				printer.println_increasing("while (true) {");
 			}
 			CodegenJS codegen(function_table, printer);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
 			printer.println(format("return %;", result));
 			if (function->has_tail_call) {
-				printer.decrease_indentation();
-				printer.println("}");
+				printer.println_decreasing("}");
 			}
-			printer.decrease_indentation();
-			printer.println("}");
+			printer.println_decreasing("}");
 		}
 		printer.println("</script></head><body></body></html>");
 		Printer status_printer(std::cerr);

@@ -177,11 +177,13 @@ public:
 		}
 		printer.println(t);
 	}
-	void increase_indentation() {
+	template <class T> void println_increasing(const T& t) {
+		println(t);
 		indentation += 1;
 	}
-	void decrease_indentation() {
+	template <class T> void println_decreasing(const T& t) {
 		indentation -= 1;
+		println(t);
 	}
 };
 
