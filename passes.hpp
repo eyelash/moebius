@@ -328,13 +328,15 @@ class Pass2 {
 	struct FunctionTableEntry {
 		const Function* new_function = nullptr;
 		std::size_t expressions = 0;
+		std::size_t calls = 0;
 		std::size_t callers = 0;
 		bool evaluating = false;
 		bool recursive = false;
 		bool should_inline() const {
 			if (recursive) return false;
 			if (callers == 0) return false; // the main function
-			return callers == 1 || expressions <= 5;
+			if (callers == 1) return true;
+			return expressions <= 5 && calls == 0;
 		}
 	};
 	using FunctionTable = std::map<const Function*, FunctionTableEntry>;
@@ -376,6 +378,7 @@ class Pass2 {
 					function_table[call.get_function()].recursive = true;
 				}
 			}
+			function_table[function].calls += 1;
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {}
 		void visit_bind(const Bind& bind) override {}
