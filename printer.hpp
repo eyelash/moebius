@@ -212,12 +212,30 @@ class SourcePosition {
 public:
 	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
 	SourcePosition(): file_name(nullptr) {}
-	template <class T> void print_error(const Printer& printer, const T& t) const {
+	const char* get_file_name() const {
+		return file_name;
+	}
+	std::size_t get_position() const {
+		return position;
+	}
+};
+
+template <class T> void print_error(const Printer& printer, const T& t) {
+	printer.print(bold(red("error: ")));
+	printer.print(t);
+	printer.print('\n');
+}
+template <class T> void print_error(const Printer& printer, const SourcePosition& source_position, const T& t) {
+	const char* file_name = source_position.get_file_name();
+	if (file_name == nullptr) {
+		print_error(printer, t);
+	}
+	else {
 		SourceFile file(file_name);
 		unsigned int line_number = 1;
 		const char* c = file.begin();
 		const char* end = file.end();
-		const char* position = std::min(c + this->position, end);
+		const char* position = std::min(c + source_position.get_position(), end);
 		const char* line_start = c;
 		while (c < position) {
 			if (*c == '\n') {
@@ -232,9 +250,7 @@ public:
 		const unsigned int column = 1 + (c - line_start);
 
 		printer.print(bold(format("%:%:%: ", file_name, print_number(line_number), print_number(column))));
-		printer.print(bold(red("error: ")));
-		printer.print(t);
-		printer.print('\n');
+		print_error(printer, t);
 
 		c = line_start;
 		while (c < end && *c != '\n') {
@@ -251,7 +267,7 @@ public:
 		printer.print(bold(red('^')));
 		printer.print('\n');
 	}
-};
+}
 
 class Variable {
 	std::size_t index;

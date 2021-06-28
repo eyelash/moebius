@@ -91,18 +91,6 @@ public:
 		printer.println(format("const % = %[%];", result, tuple, print_number(tuple_access.get_index())));
 		return result;
 	}
-	Variable visit_struct(const Struct& struct_) override {
-		return next_variable();
-	}
-	Variable visit_struct_access(const StructAccess& struct_access) override {
-		return next_variable();
-	}
-	Variable visit_closure(const Closure& closure) override {
-		return next_variable();
-	}
-	Variable visit_closure_access(const ClosureAccess& closure_access) override {
-		return next_variable();
-	}
 	Variable visit_argument(const Argument& argument) override {
 		return Variable(argument.get_index());
 	}

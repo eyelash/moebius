@@ -290,20 +290,48 @@ public:
 
 template <class T> class Visitor {
 public:
-	virtual T visit_number(const Number& number) = 0;
-	virtual T visit_binary_expression(const BinaryExpression& binary_expression) = 0;
-	virtual T visit_if(const If& if_) = 0;
-	virtual T visit_tuple(const Tuple& tuple) = 0;
-	virtual T visit_tuple_access(const TupleAccess& tuple_access) = 0;
-	virtual T visit_struct(const Struct& struct_) = 0;
-	virtual T visit_struct_access(const StructAccess& struct_access) = 0;
-	virtual T visit_closure(const Closure& closure) = 0;
-	virtual T visit_closure_access(const ClosureAccess& closure_access) = 0;
-	virtual T visit_argument(const Argument& argument) = 0;
-	virtual T visit_call(const Call& call) = 0;
-	virtual T visit_intrinsic(const Intrinsic& intrinsic) = 0;
-	virtual T visit_bind(const Bind& bind) = 0;
-	virtual T visit_return(const Return& return_) = 0;
+	virtual T visit_number(const Number& number) {
+		return T();
+	}
+	virtual T visit_binary_expression(const BinaryExpression& binary_expression) {
+		return T();
+	}
+	virtual T visit_if(const If& if_) {
+		return T();
+	}
+	virtual T visit_tuple(const Tuple& tuple) {
+		return T();
+	}
+	virtual T visit_tuple_access(const TupleAccess& tuple_access) {
+		return T();
+	}
+	virtual T visit_struct(const Struct& struct_) {
+		return T();
+	}
+	virtual T visit_struct_access(const StructAccess& struct_access) {
+		return T();
+	}
+	virtual T visit_closure(const Closure& closure) {
+		return T();
+	}
+	virtual T visit_closure_access(const ClosureAccess& closure_access) {
+		return T();
+	}
+	virtual T visit_argument(const Argument& argument) {
+		return T();
+	}
+	virtual T visit_call(const Call& call) {
+		return T();
+	}
+	virtual T visit_intrinsic(const Intrinsic& intrinsic) {
+		return T();
+	}
+	virtual T visit_bind(const Bind& bind) {
+		return T();
+	}
+	virtual T visit_return(const Return& return_) {
+		return T();
+	}
 };
 
 class Expression {
@@ -338,8 +366,8 @@ public:
 template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 	class VoidVisitor: public Visitor<void> {
 		Visitor<T>& visitor;
-		T result;
 	public:
+		T result;
 		VoidVisitor(Visitor<T>& visitor): visitor(visitor) {}
 		void visit_number(const Number& number) override {
 			result = visitor.visit_number(number);
@@ -383,13 +411,10 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_return(const Return& return_) override {
 			result = visitor.visit_return(return_);
 		}
-		T get_result() const {
-			return result;
-		}
 	};
 	VoidVisitor void_visitor(visitor);
 	expression->accept(void_visitor);
-	return void_visitor.get_result();
+	return void_visitor.result;
 }
 
 inline void visit(Visitor<void>& visitor, const Expression* expression) {

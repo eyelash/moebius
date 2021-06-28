@@ -188,18 +188,6 @@ public:
 		}
 		return tuple + before;
 	}
-	std::uint32_t visit_struct(const Struct& struct_) override {
-		return allocate(0);
-	}
-	std::uint32_t visit_struct_access(const StructAccess& struct_access) override {
-		return allocate(0);
-	}
-	std::uint32_t visit_closure(const Closure& closure) override {
-		return allocate(0);
-	}
-	std::uint32_t visit_closure_access(const ClosureAccess& closure_access) override {
-		return allocate(0);
-	}
 	std::uint32_t visit_argument(const Argument& argument) override {
 		const std::uint32_t location = get_argument_location(function, argument.get_index());
 		return 8 + location;

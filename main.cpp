@@ -23,9 +23,7 @@ int main(int argc, char** argv) {
 	arguments.parse(argc, argv);
 	if (arguments.source_path == nullptr) {
 		Printer printer(std::cerr);
-		printer.print(bold(red("error: ")));
-		printer.print("no input file");
-		printer.print('\n');
+		print_error(printer, "no input file");
 		return EXIT_FAILURE;
 	}
 	std::unique_ptr<Program> program = parse(arguments.source_path);

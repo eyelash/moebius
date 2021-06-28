@@ -172,18 +172,6 @@ public:
 		printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
 		return result;
 	}
-	Variable visit_struct(const Struct& struct_) override {
-		return next_variable();
-	}
-	Variable visit_struct_access(const StructAccess& struct_access) override {
-		return next_variable();
-	}
-	Variable visit_closure(const Closure& closure) override {
-		return next_variable();
-	}
-	Variable visit_closure_access(const ClosureAccess& closure_access) override {
-		return next_variable();
-	}
 	Variable visit_argument(const Argument& argument) override {
 		return Variable(argument.get_index());
 	}
@@ -311,7 +299,7 @@ public:
 			const std::size_t index = function_table.look_up(function);
 			const std::size_t arguments = function->get_argument_types().size();
 			function_declaration_printer.println(print_functor([&](auto& printer) {
-				printer.print(format("% f%(", return_type, print_number(index)));
+				printer.print(format("static % f%(", return_type, print_number(index)));
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
 					const Type argument_type = function_table.get_type(function->get_argument_types()[i]);
@@ -320,7 +308,7 @@ public:
 				printer.print(");");
 			}));
 			printer.println_increasing(print_functor([&](auto& printer) {
-				printer.print(format("% f%(", return_type, print_number(index)));
+				printer.print(format("static % f%(", return_type, print_number(index)));
 				for (std::size_t i = 0; i < arguments; ++i) {
 					if (i > 0) printer.print(", ");
 					const Type argument_type = function_table.get_type(function->get_argument_types()[i]);
@@ -349,8 +337,8 @@ public:
 			const Type array_type = function_table.get_type(TypeInterner::get_array_type());
 			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
 			const Type number_type = function_table.get_type(TypeInterner::get_number_type());
-			function_declaration_printer.println(format("% array_new(%* elements, % length);", array_type, element_type, number_type));
-			printer.println_increasing(format("% array_new(%* elements, % length) {", array_type, element_type, number_type));
+			function_declaration_printer.println(format("static % array_new(%* elements, % length);", array_type, element_type, number_type));
+			printer.println_increasing(format("static % array_new(%* elements, % length) {", array_type, element_type, number_type));
 			printer.println(format("% array;", array_type));
 			printer.println(format("array.elements = malloc(length * sizeof(%));", element_type));
 			printer.println_increasing(format("for (% i = 0; i < length; i++) {", number_type));
@@ -365,8 +353,8 @@ public:
 			const Type array_type = function_table.get_type(TypeInterner::get_array_type());
 			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
 			const Type number_type = function_table.get_type(TypeInterner::get_number_type());
-			function_declaration_printer.println(format("% array_splice(% array, % index, % remove, %* insert_elements, % insert_length);", array_type, array_type, number_type, number_type, element_type, number_type));
-			printer.println_increasing(format("% array_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, number_type, number_type, element_type, number_type));
+			function_declaration_printer.println(format("static % array_splice(% array, % index, % remove, %* insert_elements, % insert_length);", array_type, array_type, number_type, number_type, element_type, number_type));
+			printer.println_increasing(format("static % array_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, number_type, number_type, element_type, number_type));
 			printer.println(format("% new_length = array.length - remove + insert_length;", number_type));
 			printer.println_increasing("if (new_length > array.capacity) {");
 			printer.println(format("% new_capacity = array.capacity * 2;", number_type));

@@ -207,7 +207,7 @@ class MoebiusParser: private Parser {
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const T& t) {
 		Printer printer(std::cerr);
-		cursor.get_position().print_error(printer, t);
+		print_error(printer, cursor.get_position(), t);
 		std::exit(EXIT_FAILURE);
 	}
 	template <class F> void expect(const StringView& s, F f) {
