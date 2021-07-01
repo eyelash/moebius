@@ -6,9 +6,9 @@
 class Pass1: public Visitor<Expression*> {
 	static StringView print_type(const Type* type) {
 		switch (type->get_id()) {
-			case NumberType::id: return "Number";
-			case ClosureType::id: return "Function";
-			case VoidType::id: return "Void";
+			case TypeId::INT: return "Int";
+			case TypeId::CLOSURE: return "Function";
+			case TypeId::VOID: return "Void";
 			default: return StringView();
 		}
 	}
@@ -56,13 +56,13 @@ class Pass1: public Visitor<Expression*> {
 		return destination_block->get_result();
 	}
 public:
-	Expression* visit_number(const Number& number) override {
-		return new Number(number.get_value());
+	Expression* visit_int_literal(const IntLiteral& int_literal) override {
+		return new IntLiteral(int_literal.get_value());
 	}
 	Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
-		if (left->has_type<NumberType>() && right->has_type<NumberType>()) {
+		if (left->has_type(TypeId::INT) && right->has_type(TypeId::INT)) {
 			return new BinaryExpression(binary_expression.get_operation(), left, right);
 		}
 		else {
@@ -71,17 +71,17 @@ public:
 	}
 	Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];
-		if (condition->has_type<NumberType>()) {
+		if (condition->has_type(TypeId::INT)) {
 			If* new_if = new If(condition);
 			const Expression* then_expression = evaluate(new_if->get_then_block(), if_.get_then_block());
 			const Expression* else_expression = evaluate(new_if->get_else_block(), if_.get_else_block());
 			if (then_expression->get_type() == else_expression->get_type()) {
 				new_if->set_type(then_expression->get_type());
 			}
-			else if (then_expression->get_type_id() == NeverType::id) {
+			else if (then_expression->get_type_id() == TypeId::NEVER) {
 				new_if->set_type(else_expression->get_type());
 			}
-			else if (else_expression->get_type_id() == NeverType::id) {
+			else if (else_expression->get_type_id() == TypeId::NEVER) {
 				new_if->set_type(then_expression->get_type());
 			}
 			else {
@@ -117,7 +117,7 @@ public:
 		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
 			const std::string& name = struct_.get_names()[i];
 			const Expression* new_expression = expression_table[struct_.get_expressions()[i]];
-			if (new_expression->get_type_id() == ArrayType::id) {
+			if (new_expression->get_type_id() == TypeId::ARRAY) {
 				error(struct_, "arrays inside structs are not yet supported");
 			}
 			type.add_field(name, new_expression->get_type());
@@ -128,7 +128,7 @@ public:
 	}
 	Expression* visit_struct_access(const StructAccess& struct_access) override {
 		const Expression* struct_ = expression_table[struct_access.get_struct()];
-		if (struct_->get_type_id() != StructType::id) {
+		if (struct_->get_type_id() != TypeId::STRUCT) {
 			error(struct_access, "struct access to non-struct");
 		}
 		const StructType* struct_type = static_cast<const StructType*>(struct_->get_type());
@@ -173,7 +173,7 @@ public:
 		const Expression* object = new_call->get_object();
 		const Function* old_function = call.get_function();
 		if (old_function == nullptr) {
-			if (object->get_type_id() != ClosureType::id) {
+			if (object->get_type_id() != TypeId::CLOSURE) {
 				error(call, "call to a value that is not a function");
 			}
 			old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
@@ -200,7 +200,7 @@ public:
 		}
 		else {
 			// detect recursion
-			if (function_table[new_key].new_function->get_return_type()->get_id() == NeverType::id) {
+			if (function_table[new_key].new_function->get_return_type()->get_id() == TypeId::NEVER) {
 				function_table.recursion = true;
 			}
 		}
@@ -217,7 +217,7 @@ public:
 			if (new_intrinsic->get_arguments().size() != 1) {
 				error(intrinsic, "putChar takes exactly 1 argument");
 			}
-			if (!new_intrinsic->get_arguments()[0]->has_type<NumberType>()) {
+			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::INT)) {
 				error(intrinsic, "argument of putChar must be a number");
 			}
 			new_intrinsic->set_type(TypeInterner::get_void_type());
@@ -226,11 +226,11 @@ public:
 			if (new_intrinsic->get_arguments().size() != 0) {
 				error(intrinsic, "getChar takes no argument");
 			}
-			new_intrinsic->set_type(TypeInterner::get_number_type());
+			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
 			for (const Expression* argument: new_intrinsic->get_arguments()) {
-				if (!argument->has_type<NumberType>()) {
+				if (!argument->has_type(TypeId::INT)) {
 					error(intrinsic, "array elements must be numbers");
 				}
 			}
@@ -240,44 +240,44 @@ public:
 			if (new_intrinsic->get_arguments().size() != 2) {
 				error(intrinsic, "arrayGet takes exactly 2 arguments");
 			}
-			if (!new_intrinsic->get_arguments()[0]->has_type<ArrayType>()) {
+			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::ARRAY)) {
 				error(intrinsic, "first argument of arrayGet must be an array");
 			}
-			if (!new_intrinsic->get_arguments()[1]->has_type<NumberType>()) {
+			if (!new_intrinsic->get_arguments()[1]->has_type(TypeId::INT)) {
 				error(intrinsic, "second argument of arrayGet must be a number");
 			}
-			new_intrinsic->set_type(TypeInterner::get_number_type());
+			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
 			if (new_intrinsic->get_arguments().size() != 1) {
 				error(intrinsic, "arrayLength takes exactly 1 argument");
 			}
-			if (!new_intrinsic->get_arguments()[0]->has_type<ArrayType>()) {
+			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::ARRAY)) {
 				error(intrinsic, "argument of arrayLength must be an array");
 			}
-			new_intrinsic->set_type(TypeInterner::get_number_type());
+			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
 			if (new_intrinsic->get_arguments().size() < 3) {
 				error(intrinsic, "arraySplice takes at least 3 arguments");
 			}
-			if (!new_intrinsic->get_arguments()[0]->has_type<ArrayType>()) {
+			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::ARRAY)) {
 				error(intrinsic, "first argument of arraySplice must be an array");
 			}
-			if (!new_intrinsic->get_arguments()[1]->has_type<NumberType>()) {
+			if (!new_intrinsic->get_arguments()[1]->has_type(TypeId::INT)) {
 				error(intrinsic, "second argument of arraySplice must be a number");
 			}
-			if (!new_intrinsic->get_arguments()[2]->has_type<NumberType>()) {
+			if (!new_intrinsic->get_arguments()[2]->has_type(TypeId::INT)) {
 				error(intrinsic, "third argument of arraySplice must be a number");
 			}
 			if (new_intrinsic->get_arguments().size() == 4) {
-				if (!(new_intrinsic->get_arguments()[3]->has_type<NumberType>() || new_intrinsic->get_arguments()[3]->has_type<ArrayType>())) {
+				if (!(new_intrinsic->get_arguments()[3]->has_type(TypeId::INT) || new_intrinsic->get_arguments()[3]->has_type(TypeId::ARRAY))) {
 					error(intrinsic, "argument 4 of arraySplice must be a number or an array");
 				}
 			}
 			else {
 				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
-					if (!new_intrinsic->get_arguments()[i]->has_type<NumberType>()) {
+					if (!new_intrinsic->get_arguments()[i]->has_type(TypeId::INT)) {
 						error(intrinsic, format("argument % of arraySplice must be a number", print_number(i + 1)));
 					}
 				}
@@ -398,8 +398,8 @@ class Pass2 {
 			current_block = previous_block;
 			return expression_table[source_block.get_result()];
 		}
-		Expression* visit_number(const Number& number) override {
-			return create<Number>(number.get_value());
+		Expression* visit_int_literal(const IntLiteral& int_literal) override {
+			return create<IntLiteral>(int_literal.get_value());
 		}
 		Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 			const Expression* left = expression_table[binary_expression.get_left()];
@@ -540,7 +540,7 @@ class Pass3: public Visitor<const Expression*> {
 		return expression;
 	}
 	static bool is_empty_tuple(const Type* type) {
-		if (type->get_id() == TupleType::id) {
+		if (type->get_id() == TypeId::TUPLE) {
 			for (const Type* tuple_type: static_cast<const TupleType*>(type)->get_types()) {
 				if (!is_empty_tuple(tuple_type)) {
 					return false;
@@ -575,8 +575,8 @@ public:
 		}
 		current_block = previous_block;
 	}
-	const Expression* visit_number(const Number& number) override {
-		return create<Number>(number.get_value());
+	const Expression* visit_int_literal(const IntLiteral& int_literal) override {
+		return create<IntLiteral>(int_literal.get_value());
 	}
 	const Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Expression* left = expression_table[binary_expression.get_left()];
@@ -702,7 +702,7 @@ public:
 		current_block = &block;
 		++current_level;
 		for (const Expression* expression: block) {
-			if (expression->get_type_id() == ArrayType::id) {
+			if (expression->get_type_id() == TypeId::ARRAY) {
 				table.levels[expression] = current_level;
 			}
 			visit(*this, expression);
@@ -710,7 +710,7 @@ public:
 		--current_level;
 		current_block = previous_block;
 	}
-	void visit_number(const Number& number) override {}
+	void visit_int_literal(const IntLiteral& int_literal) override {}
 	void visit_binary_expression(const BinaryExpression& binary_expression) override {}
 	void visit_if(const If& if_) override {
 		evaluate(if_.get_then_block());
@@ -723,21 +723,21 @@ public:
 	void visit_argument(const Argument& argument) override {}
 	void visit_call(const Call& call) override {
 		for (const Expression* argument: call.get_arguments()) {
-			if (argument->get_type_id() == ArrayType::id) {
+			if (argument->get_type_id() == TypeId::ARRAY) {
 				add_usage(argument, &call);
 			}
 		}
 	}
 	void visit_intrinsic(const Intrinsic& intrinsic) override {
 		for (const Expression* argument: intrinsic.get_arguments()) {
-			if (argument->get_type_id() == ArrayType::id) {
+			if (argument->get_type_id() == TypeId::ARRAY) {
 				add_usage(argument, &intrinsic);
 			}
 		}
 	}
 	void visit_bind(const Bind& bind) override {}
 	void visit_return(const Return& return_) override {
-		if (return_.get_expression()->get_type_id() == ArrayType::id) {
+		if (return_.get_expression()->get_type_id() == TypeId::ARRAY) {
 			add_usage(return_.get_expression(), &return_);
 		}
 	}
@@ -780,7 +780,7 @@ public:
 		--current_level;
 		current_block = previous_block;
 	}
-	void visit_number(const Number& number) override {}
+	void visit_int_literal(const IntLiteral& int_literal) override {}
 	void visit_binary_expression(const BinaryExpression& binary_expression) override {}
 	void visit_if(const If& if_) override {
 		remove_invalid_usages(&if_.get_then_block(), &if_);
@@ -853,8 +853,8 @@ public:
 			expression_table[expression] = visit(*this, expression);
 		}
 	}
-	const Expression* visit_number(const Number& number) override {
-		return create<Number>(number.get_value());
+	const Expression* visit_int_literal(const IntLiteral& int_literal) override {
+		return create<IntLiteral>(int_literal.get_value());
 	}
 	const Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Expression* left = expression_table[binary_expression.get_left()];
@@ -885,7 +885,7 @@ public:
 	const Expression* visit_call(const Call& call) override {
 		Call* new_call = new Call(call.get_type());
 		for (const Expression* argument: call.get_arguments()) {
-			if (argument->get_type_id() == ArrayType::id && !is_last_use(argument, &call)) {
+			if (argument->get_type_id() == TypeId::ARRAY && !is_last_use(argument, &call)) {
 				new_call->add_argument(copy(expression_table[argument]));
 			}
 			else {
@@ -901,7 +901,7 @@ public:
 			pass4.evaluate(new_function->get_block(), call.get_function()->get_block());
 		}
 		new_call->set_function(function_table[call.get_function()]);
-		if (call.get_type_id() == ArrayType::id && is_unused(&call)) {
+		if (call.get_type_id() == TypeId::ARRAY && is_unused(&call)) {
 			free(new_call);
 		}
 		return new_call;
@@ -911,7 +911,7 @@ public:
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
 			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
-			if (argument->get_type_id() == ArrayType::id && !is_borrowed && !is_last_use(argument, &intrinsic)) {
+			if (argument->get_type_id() == TypeId::ARRAY && !is_borrowed && !is_last_use(argument, &intrinsic)) {
 				new_intrinsic->add_argument(copy(expression_table[argument]));
 			}
 			else {
@@ -922,11 +922,11 @@ public:
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
 			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
-			if (argument->get_type_id() == ArrayType::id && is_borrowed && is_last_use(argument, &intrinsic)) {
+			if (argument->get_type_id() == TypeId::ARRAY && is_borrowed && is_last_use(argument, &intrinsic)) {
 				free(expression_table[argument]);
 			}
 		}
-		if (intrinsic.get_type_id() == ArrayType::id && is_unused(&intrinsic)) {
+		if (intrinsic.get_type_id() == TypeId::ARRAY && is_unused(&intrinsic)) {
 			free(new_intrinsic);
 		}
 		return new_intrinsic;
@@ -938,7 +938,7 @@ public:
 	}
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();
-		if (expression->get_type_id() == ArrayType::id && !is_last_use(expression, &return_)) {
+		if (expression->get_type_id() == TypeId::ARRAY && !is_last_use(expression, &return_)) {
 			return create<Return>(copy(expression_table[expression]));
 		}
 		else {

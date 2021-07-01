@@ -50,19 +50,19 @@ class CodegenC: public Visitor<Variable> {
 				return iterator->second;
 			}
 			switch (type->get_id()) {
-				case VoidType::id: {
+				case TypeId::VOID: {
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef void %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
-				case NumberType::id: {
+				case TypeId::INT: {
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef int32_t %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
-				case TupleType::id: {
+				case TypeId::TUPLE: {
 					std::vector<Type> element_types;
 					for (const ::Type* element_type: static_cast<const TupleType*>(type)->get_types()) {
 						element_types.push_back(get_type(element_type));
@@ -76,9 +76,9 @@ class CodegenC: public Visitor<Variable> {
 					types[type] = index;
 					return index;
 				}
-				case ArrayType::id: {
-					const Type element_type = get_type(TypeInterner::get_number_type());
-					const Type number_type = get_type(TypeInterner::get_number_type());
+				case TypeId::ARRAY: {
+					const Type element_type = get_type(TypeInterner::get_int_type());
+					const Type number_type = get_type(TypeInterner::get_int_type());
 					const std::size_t index = types.size();
 					type_declaration_printer.println_increasing("typedef struct {");
 					type_declaration_printer.println(format("%* elements;", element_type));
@@ -113,10 +113,10 @@ class CodegenC: public Visitor<Variable> {
 		return result ? result : default_value;
 	}
 public:
-	Variable visit_number(const Number& number) override {
+	Variable visit_int_literal(const IntLiteral& int_literal) override {
 		const Variable result = next_variable();
-		const Type type = function_table.get_type(number.get_type());
-		printer.println(format("% % = %;", type, result, print_number(number.get_value())));
+		const Type type = function_table.get_type(int_literal.get_type());
+		printer.println(format("% % = %;", type, result, print_number(int_literal.get_value())));
 		return result;
 	}
 	Variable visit_binary_expression(const BinaryExpression& binary_expression) override {
@@ -130,7 +130,7 @@ public:
 	Variable visit_if(const If& if_) override {
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();
-		if (if_.get_type()->get_id() == VoidType::id) {
+		if (if_.get_type()->get_id() == TypeId::VOID) {
 			printer.println_increasing(format("if (%) {", condition));
 			evaluate(if_.get_then_block());
 			printer.println_decreasing("}");
@@ -184,13 +184,13 @@ public:
 				printer.println(format("% = %;", Variable(i), argument));
 			}
 			printer.println("continue;");
-			if (call.get_function()->get_return_type()->get_id() != VoidType::id) {
+			if (call.get_function()->get_return_type()->get_id() != TypeId::VOID) {
 				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
 				printer.println(format("% %;", result_type, result));
 			}
 		}
 		else printer.println(print_functor([&](auto& printer) {
-			if (call.get_function()->get_return_type()->get_id() != VoidType::id) {
+			if (call.get_function()->get_return_type()->get_id() != TypeId::VOID) {
 				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
 				printer.print(format("% % = ", result_type, result));
 			}
@@ -215,7 +215,7 @@ public:
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
-			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
+			const Type element_type = function_table.get_type(TypeInterner::get_int_type());
 			const std::size_t size = intrinsic.get_arguments().size();
 			printer.println(print_functor([&](auto& printer) {
 				printer.print(format("% % = array_new((%[]){", type, result, element_type));
@@ -239,11 +239,11 @@ public:
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
-			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
+			const Type element_type = function_table.get_type(TypeInterner::get_int_type());
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == ArrayType::id) {
+			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == TypeId::ARRAY) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
 				printer.println(format("% % = array_splice(%, %, %, %.elements, %.length);", type, result, array, index, remove, insert, insert));
 			}
@@ -322,7 +322,7 @@ public:
 			CodegenC codegen(function_table, printer);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
-			if (function->get_return_type()->get_id() != VoidType::id) {
+			if (function->get_return_type()->get_id() != TypeId::VOID) {
 				printer.println(format("return %;", result));
 			}
 			else {
@@ -335,8 +335,8 @@ public:
 		}
 		{
 			const Type array_type = function_table.get_type(TypeInterner::get_array_type());
-			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
-			const Type number_type = function_table.get_type(TypeInterner::get_number_type());
+			const Type element_type = function_table.get_type(TypeInterner::get_int_type());
+			const Type number_type = function_table.get_type(TypeInterner::get_int_type());
 			function_declaration_printer.println(format("static % array_new(%* elements, % length);", array_type, element_type, number_type));
 			printer.println_increasing(format("static % array_new(%* elements, % length) {", array_type, element_type, number_type));
 			printer.println(format("% array;", array_type));
@@ -351,8 +351,8 @@ public:
 		}
 		{
 			const Type array_type = function_table.get_type(TypeInterner::get_array_type());
-			const Type element_type = function_table.get_type(TypeInterner::get_number_type());
-			const Type number_type = function_table.get_type(TypeInterner::get_number_type());
+			const Type element_type = function_table.get_type(TypeInterner::get_int_type());
+			const Type number_type = function_table.get_type(TypeInterner::get_int_type());
 			function_declaration_printer.println(format("static % array_splice(% array, % index, % remove, %* insert_elements, % insert_length);", array_type, array_type, number_type, number_type, element_type, number_type));
 			printer.println_increasing(format("static % array_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, number_type, number_type, element_type, number_type));
 			printer.println(format("% new_length = array.length - remove + insert_length;", number_type));

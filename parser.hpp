@@ -241,10 +241,10 @@ class MoebiusParser: private Parser {
 			parse_all(white_space);
 		}
 	}
-	Number* parse_character() {
+	IntLiteral* parse_character() {
 		char c = *cursor;
 		++cursor;
-		return current_scope->create<Number>(c);
+		return current_scope->create<IntLiteral>(c);
 	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
@@ -354,10 +354,10 @@ class MoebiusParser: private Parser {
 			if (!cursor) {
 				error("unexpected end");
 			}
-			Number* number = parse_character();
-			number->set_position(position);
+			IntLiteral* int_literal = parse_character();
+			int_literal->set_position(position);
 			expect("'");
-			return number;
+			return int_literal;
 		}
 		else if (parse("struct", alphanumeric)) {
 			parse_white_space();
@@ -403,7 +403,7 @@ class MoebiusParser: private Parser {
 				number += *cursor - '0';
 				++cursor;
 			}
-			Expression* expression = current_scope->create<Number>(number);
+			Expression* expression = current_scope->create<IntLiteral>(number);
 			expression->set_position(position);
 			return expression;
 		}

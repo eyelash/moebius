@@ -47,9 +47,9 @@ class CodegenJS: public Visitor<Variable> {
 		return expression_table[block.get_result()];
 	}
 public:
-	Variable visit_number(const Number& number) override {
+	Variable visit_int_literal(const IntLiteral& int_literal) override {
 		const Variable result = next_variable();
-		printer.println(format("const % = %;", result, print_number(number.get_value())));
+		printer.println(format("const % = %;", result, print_number(int_literal.get_value())));
 		return result;
 	}
 	Variable visit_binary_expression(const BinaryExpression& binary_expression) override {
@@ -149,7 +149,7 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == ArrayType::id) {
+			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == TypeId::ARRAY) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
 				printer.println(format("%.splice(%, %, ...%);", array, index, remove, insert));
 			}

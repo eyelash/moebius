@@ -6,7 +6,7 @@
 #include <set>
 #include <memory>
 
-class Number;
+class IntLiteral;
 class BinaryExpression;
 class If;
 class Tuple;
@@ -22,18 +22,26 @@ class Intrinsic;
 class Bind;
 class Return;
 
+enum class TypeId {
+	INT,
+	CLOSURE,
+	STRUCT,
+	TUPLE,
+	ARRAY,
+	VOID,
+	NEVER
+};
+
 class Type {
 public:
 	virtual ~Type() = default;
-	virtual int get_id() const = 0;
+	virtual TypeId get_id() const = 0;
 };
 
-class NumberType: public Type {
+class IntType: public Type {
 public:
-	NumberType() {}
-	static constexpr int id = 2;
-	int get_id() const override {
-		return id;
+	TypeId get_id() const override {
+		return TypeId::INT;
 	}
 };
 
@@ -42,9 +50,8 @@ class ClosureType: public Type {
 	std::vector<const Type*> environment_types;
 public:
 	ClosureType(const Function* function): function(function) {}
-	static constexpr int id = 3;
-	int get_id() const override {
-		return id;
+	TypeId get_id() const override {
+		return TypeId::CLOSURE;
 	}
 	void add_environment_type(const Type* type) {
 		environment_types.push_back(type);
@@ -59,26 +66,23 @@ public:
 
 class NeverType: public Type {
 public:
-	static constexpr int id = 6;
-	int get_id() const override {
-		return id;
+	TypeId get_id() const override {
+		return TypeId::NEVER;
 	}
 };
 
 class VoidType: public Type {
 public:
-	static constexpr int id = 5;
-	int get_id() const override {
-		return id;
+	TypeId get_id() const override {
+		return TypeId::VOID;
 	}
 };
 
 class TupleType: public Type {
 	std::vector<const Type*> types;
 public:
-	static constexpr int id = 9;
-	int get_id() const override {
-		return id;
+	TypeId get_id() const override {
+		return TypeId::TUPLE;
 	}
 	void add_type(const Type* type) {
 		types.push_back(type);
@@ -92,9 +96,8 @@ class StructType: public Type {
 	std::vector<std::string> field_names;
 	std::vector<const Type*> field_types;
 public:
-	static constexpr int id = 8;
-	int get_id() const override {
-		return id;
+	TypeId get_id() const override {
+		return TypeId::STRUCT;
 	}
 	void add_field(const std::string& name, const Type* type) {
 		field_names.push_back(name);
@@ -126,9 +129,8 @@ public:
 
 class ArrayType: public Type {
 public:
-	static constexpr int id = 7;
-	int get_id() const override {
-		return id;
+	TypeId get_id() const override {
+		return TypeId::ARRAY;
 	}
 };
 
@@ -141,17 +143,17 @@ public:
 		if (type1 == type2) {
 			return 0;
 		}
-		const int id1 = type1->get_id();
-		const int id2 = type2->get_id();
+		const TypeId id1 = type1->get_id();
+		const TypeId id2 = type2->get_id();
 		if (id1 != id2) {
 			return compare_(id1, id2);
 		}
-		if (id1 == TupleType::id) {
+		if (id1 == TypeId::TUPLE) {
 			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
 			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
 			return compare(tuple_type1->get_types(), tuple_type2->get_types());
 		}
-		if (id1 == ClosureType::id) {
+		if (id1 == TypeId::CLOSURE) {
 			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
 			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
 			if (closure_type1->get_function() != closure_type2->get_function()) {
@@ -159,7 +161,7 @@ public:
 			}
 			return compare(closure_type1->get_environment_types(), closure_type2->get_environment_types());
 		}
-		if (id1 == StructType::id) {
+		if (id1 == TypeId::STRUCT) {
 			const StructType* struct_type1 = static_cast<const StructType*>(type1);
 			const StructType* struct_type2 = static_cast<const StructType*>(type2);
 			if (int diff = compare(struct_type1->get_field_names(), struct_type2->get_field_names())) {
@@ -211,8 +213,8 @@ class TypeInterner {
 public:
 	static Type* copy(const Type* type) {
 		switch (type->get_id()) {
-			case NumberType::id: return new NumberType();
-			case TupleType::id: {
+			case TypeId::INT: return new IntType();
+			case TypeId::TUPLE: {
 				const TupleType* tuple_type = static_cast<const TupleType*>(type);
 				TupleType* new_tuple_type = new TupleType();
 				for (const Type* type: tuple_type->get_types()) {
@@ -221,7 +223,7 @@ public:
 				}
 				return new_tuple_type;
 			}
-			case ClosureType::id: {
+			case TypeId::CLOSURE: {
 				const ClosureType* closure_type = static_cast<const ClosureType*>(type);
 				ClosureType* new_closure_type = new ClosureType(closure_type->get_function());
 				for (const Type* environment_type: closure_type->get_environment_types()) {
@@ -229,7 +231,7 @@ public:
 				}
 				return new_closure_type;
 			}
-			case StructType::id: {
+			case TypeId::STRUCT: {
 				const StructType* struct_type = static_cast<const StructType*>(type);
 				StructType* new_struct_type = new StructType();
 				for (std::size_t i = 0; i < struct_type->get_field_types().size(); ++i) {
@@ -239,9 +241,9 @@ public:
 				}
 				return new_struct_type;
 			}
-			case VoidType::id: return new VoidType();
-			case NeverType::id: return new NeverType();
-			case ArrayType::id: return new ArrayType();
+			case TypeId::VOID: return new VoidType();
+			case TypeId::NEVER: return new NeverType();
+			case TypeId::ARRAY: return new ArrayType();
 			default: return nullptr;
 		}
 	}
@@ -254,13 +256,13 @@ public:
 		types.emplace(interned_type);
 		return interned_type;
 	}
-	static const Type* get_number_type() {
-		static const Type* number_type = nullptr;
-		if (number_type == nullptr) {
-			NumberType type;
-			number_type = intern(&type);
+	static const Type* get_int_type() {
+		static const Type* int_type = nullptr;
+		if (int_type == nullptr) {
+			IntType type;
+			int_type = intern(&type);
 		}
-		return number_type;
+		return int_type;
 	}
 	static const Type* get_void_type() {
 		static const Type* void_type = nullptr;
@@ -290,7 +292,7 @@ public:
 
 template <class T> class Visitor {
 public:
-	virtual T visit_number(const Number& number) {
+	virtual T visit_int_literal(const IntLiteral& int_literal) {
 		return T();
 	}
 	virtual T visit_binary_expression(const BinaryExpression& binary_expression) {
@@ -348,12 +350,12 @@ public:
 	void set_type(const Type* type) {
 		this->type = type;
 	}
-	int get_type_id() const {
+	TypeId get_type_id() const {
 		return get_type()->get_id();
 	}
-	template <class T> bool has_type() const {
-		const int id = type->get_id();
-		return id == T::id || id == NeverType::id;
+	bool has_type(TypeId type) const {
+		const TypeId id = this->type->get_id();
+		return id == type || id == TypeId::NEVER;
 	}
 	void set_position(const SourcePosition& position) {
 		this->position = position;
@@ -369,8 +371,8 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 	public:
 		T result;
 		VoidVisitor(Visitor<T>& visitor): visitor(visitor) {}
-		void visit_number(const Number& number) override {
-			result = visitor.visit_number(number);
+		void visit_int_literal(const IntLiteral& int_literal) override {
+			result = visitor.visit_int_literal(int_literal);
 		}
 		void visit_binary_expression(const BinaryExpression& binary_expression) override {
 			result = visitor.visit_binary_expression(binary_expression);
@@ -484,12 +486,12 @@ public:
 	}
 };
 
-class Number: public Expression {
+class IntLiteral: public Expression {
 	std::int32_t value;
 public:
-	Number(std::int32_t value): Expression(TypeInterner::get_number_type()), value(value) {}
+	IntLiteral(std::int32_t value): Expression(TypeInterner::get_int_type()), value(value) {}
 	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_number(*this);
+		visitor.visit_int_literal(*this);
 	}
 	std::int32_t get_value() const {
 		return value;
@@ -515,7 +517,7 @@ class BinaryExpression: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(TypeInterner::get_number_type()), operation(operation), left(left), right(right) {}
+	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): Expression(TypeInterner::get_int_type()), operation(operation), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_binary_expression(*this);
 	}

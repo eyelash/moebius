@@ -2,15 +2,16 @@
 
 #include "ast.hpp"
 #include "assembler.hpp"
+#include <filesystem>
 
 class CodegenX86: public Visitor<std::uint32_t> {
 	using A = Assembler;
 	using Jump = typename A::Jump;
 	static std::uint32_t get_type_size(const Type* type) {
 		switch (type->get_id()) {
-			case NumberType::id:
+			case TypeId::INT:
 				return 4;
-			case TupleType::id: {
+			case TypeId::TUPLE: {
 				std::uint32_t size = 0;
 				for (const Type* type: static_cast<const TupleType*>(type)->get_types()) {
 					size += get_type_size(type);
@@ -70,9 +71,9 @@ class CodegenX86: public Visitor<std::uint32_t> {
 		}
 	}
 public:
-	std::uint32_t visit_number(const Number& number) override {
+	std::uint32_t visit_int_literal(const IntLiteral& int_literal) override {
 		const std::uint32_t result = allocate(4);
-		assembler.MOV(PTR(EBP, result), number.get_value());
+		assembler.MOV(PTR(EBP, result), int_literal.get_value());
 		return result;
 	}
 	std::uint32_t visit_binary_expression(const BinaryExpression& binary_expression) override {
