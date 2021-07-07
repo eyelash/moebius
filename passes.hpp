@@ -4,13 +4,17 @@
 
 // type checking and monomorphization
 class Pass1: public Visitor<Expression*> {
-	static StringView print_type(const Type* type) {
-		switch (type->get_id()) {
+	static StringView print_type(TypeId id) {
+		switch (id) {
 			case TypeId::INT: return "Int";
 			case TypeId::CLOSURE: return "Function";
 			case TypeId::VOID: return "Void";
+			case TypeId::ARRAY: return "Array";
 			default: return StringView();
 		}
+	}
+	static StringView print_type(const Type* type) {
+		return print_type(type->get_id());
 	}
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
 		Printer printer(std::cerr);
@@ -208,24 +212,30 @@ public:
 		new_call->set_function(function_table[new_key].new_function);
 		return new_call;
 	}
+	void ensure_argument_types(const Intrinsic& intrinsic, const Intrinsic* new_intrinsic, std::initializer_list<TypeId> types) {
+		const std::vector<const Expression*>& arguments = new_intrinsic->get_arguments();
+		if (arguments.size() != types.size()) {
+			error(intrinsic, format("% takes % argument(s)", intrinsic.get_name(), print_number(types.size())));
+		}
+		std::size_t i = 0;
+		for (TypeId id: types) {
+			if (!arguments[i]->has_type(id)) {
+				error(intrinsic, format("argument % of % must be of type %", print_number(i + 1), intrinsic.get_name(), print_type(id)));
+			}
+			++i;
+		}
+	}
 	Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name());
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(expression_table[argument]);
 		}
 		if (intrinsic.name_equals("putChar")) {
-			if (new_intrinsic->get_arguments().size() != 1) {
-				error(intrinsic, "putChar takes exactly 1 argument");
-			}
-			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::INT)) {
-				error(intrinsic, "argument of putChar must be a number");
-			}
+			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::INT});
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
 		else if (intrinsic.name_equals("getChar")) {
-			if (new_intrinsic->get_arguments().size() != 0) {
-				error(intrinsic, "getChar takes no argument");
-			}
+			ensure_argument_types(intrinsic, new_intrinsic, {});
 			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
@@ -237,24 +247,11 @@ public:
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
 		else if (intrinsic.name_equals("arrayGet")) {
-			if (new_intrinsic->get_arguments().size() != 2) {
-				error(intrinsic, "arrayGet takes exactly 2 arguments");
-			}
-			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::ARRAY)) {
-				error(intrinsic, "first argument of arrayGet must be an array");
-			}
-			if (!new_intrinsic->get_arguments()[1]->has_type(TypeId::INT)) {
-				error(intrinsic, "second argument of arrayGet must be a number");
-			}
+			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::ARRAY, TypeId::INT});
 			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
-			if (new_intrinsic->get_arguments().size() != 1) {
-				error(intrinsic, "arrayLength takes exactly 1 argument");
-			}
-			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::ARRAY)) {
-				error(intrinsic, "argument of arrayLength must be an array");
-			}
+			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::ARRAY});
 			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
