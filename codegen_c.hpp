@@ -98,10 +98,11 @@ class CodegenC: public Visitor<Variable> {
 	IndentPrinter& printer;
 	std::size_t variable = 1;
 	std::map<const Expression*, Variable> expression_table;
+	const TailCallData& tail_call_data;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	CodegenC(FunctionTable& function_table, IndentPrinter& printer): function_table(function_table), printer(printer) {}
+	CodegenC(FunctionTable& function_table, IndentPrinter& printer, const TailCallData& tail_call_data): function_table(function_table), printer(printer), tail_call_data(tail_call_data) {}
 	Variable evaluate(const Block& block) {
 		for (const Expression* expression: block) {
 			expression_table[expression] = visit(*this, expression);
@@ -178,7 +179,7 @@ public:
 	Variable visit_call(const Call& call) override {
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
-		if (call.is_tail_call) {
+		if (tail_call_data.is_tail_call(call)) {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 				const Variable argument = expression_table[call.get_arguments()[i]];
 				printer.println(format("% = %;", Variable(i), argument));
@@ -276,7 +277,7 @@ public:
 	Variable visit_return(const Return& return_) override {
 		return next_variable();
 	}
-	static void codegen(const Program& program, const char* source_path) {
+	static void codegen(const Program& program, const char* source_path, const TailCallData& tail_call_data) {
 		std::ostringstream type_declarations;
 		std::ostringstream function_declarations;
 		std::ostringstream functions;
@@ -316,10 +317,10 @@ public:
 				}
 				printer.print(") {");
 			}));
-			if (function->has_tail_call) {
+			if (tail_call_data.has_tail_call(function)) {
 				printer.println_increasing("while (1) {");
 			}
-			CodegenC codegen(function_table, printer);
+			CodegenC codegen(function_table, printer, tail_call_data);
 			codegen.variable = arguments;
 			const Variable result = codegen.evaluate(function->get_block());
 			if (function->get_return_type()->get_id() != TypeId::VOID) {
@@ -328,7 +329,7 @@ public:
 			else {
 				printer.println("return;");
 			}
-			if (function->has_tail_call) {
+			if (tail_call_data.has_tail_call(function)) {
 				printer.println_decreasing("}");
 			}
 			printer.println_decreasing("}");

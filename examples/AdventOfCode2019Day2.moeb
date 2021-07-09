@@ -14,7 +14,7 @@ func toString(n) {
 			prefix.push('0' + n)
 		else
 			toString(n / 10, prefix).push('0' + (n % 10))
-	return if (n < 0) toString(0 - n, ['-']) else toString(n, [])
+	return if (n < 0) toString(0 - n, "-") else toString(n, "")
 }
 
 func putStrLn(s) {

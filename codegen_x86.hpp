@@ -238,6 +238,10 @@ public:
 			assembler.INT(0x80);
 			return result;
 		}
+		else if (intrinsic.name_equals("arrayNew")) {
+			print_error(Printer(std::cerr), "the x86 codegen does not support arrays");
+			std::exit(EXIT_FAILURE);
+		}
 		else {
 			return allocate(0);
 		}
@@ -248,7 +252,7 @@ public:
 	std::uint32_t visit_return(const Return& return_) override {
 		return allocate(0);
 	}
-	static void codegen(const Program& program, const char* source_path) {
+	static void codegen(const Program& program, const char* source_path, const TailCallData& tail_call_data) {
 		std::vector<DeferredCall> deferred_calls;
 		std::map<const Function*, std::size_t> function_locations;
 		A assembler;

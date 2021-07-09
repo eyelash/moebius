@@ -8,7 +8,7 @@
 class Arguments {
 public:
 	const char* source_path = nullptr;
-	void (*codegen)(const Program& program, const char* source_path) = CodegenC::codegen;
+	void (*codegen)(const Program& program, const char* source_path, const TailCallData& tail_call_data) = CodegenC::codegen;
 	void parse(int argc, char** argv) {
 		for (int i = 1; i < argc; ++i) {
 			if (StringView(argv[i]) == "-c") codegen = CodegenC::codegen;
@@ -22,8 +22,7 @@ int main(int argc, char** argv) {
 	Arguments arguments;
 	arguments.parse(argc, argv);
 	if (arguments.source_path == nullptr) {
-		Printer printer(std::cerr);
-		print_error(printer, "no input file");
+		print_error(Printer(std::cerr), "no input file");
 		return EXIT_FAILURE;
 	}
 	std::unique_ptr<Program> program = parse(arguments.source_path);
@@ -34,6 +33,7 @@ int main(int argc, char** argv) {
 	program = Pass1::run(*program);
 	program = Pass4::run(*program);
 	program = Pass1::run(*program);
-	Pass5::run(*program);
-	arguments.codegen(*program, arguments.source_path);
+	TailCallData tail_call_data;
+	Pass5::run(*program, tail_call_data);
+	arguments.codegen(*program, arguments.source_path, tail_call_data);
 }

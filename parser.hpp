@@ -205,10 +205,12 @@ public:
 class MoebiusParser: private Parser {
 	std::unique_ptr<Program> program;
 	Scope* current_scope = nullptr;
-	template <class T> [[noreturn]] void error(const T& t) {
-		Printer printer(std::cerr);
-		print_error(printer, cursor.get_position(), t);
+	template <class T> [[noreturn]] void error(const SourcePosition& position, const T& t) {
+		print_error(Printer(std::cerr), position, t);
 		std::exit(EXIT_FAILURE);
+	}
+	template <class T> [[noreturn]] void error(const T& t) {
+		error(cursor.get_position(), t);
 	}
 	template <class F> void expect(const StringView& s, F f) {
 		if (!parse(s, f)) {
@@ -411,7 +413,7 @@ class MoebiusParser: private Parser {
 			StringView identifier = parse_identifier();
 			const Expression* expression = current_scope->look_up(identifier);
 			if (expression == nullptr) {
-				error(format("undefined variable \"%\"", identifier));
+				error(position, format("undefined variable \"%\"", identifier));
 			}
 			return expression;
 		}

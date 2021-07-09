@@ -17,8 +17,7 @@ class Pass1: public Visitor<Expression*> {
 		return print_type(type->get_id());
 	}
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
-		Printer printer(std::cerr);
-		print_error(printer, expression.get_position(), t);
+		print_error(Printer(std::cerr), expression.get_position(), t);
 		std::exit(EXIT_FAILURE);
 	}
 	struct FunctionTableKey {
@@ -122,7 +121,7 @@ public:
 			const std::string& name = struct_.get_names()[i];
 			const Expression* new_expression = expression_table[struct_.get_expressions()[i]];
 			if (new_expression->get_type_id() == TypeId::ARRAY) {
-				error(struct_, "arrays inside structs are not yet supported");
+				error(struct_, "structs containing arrays are not yet supported");
 			}
 			type.add_field(name, new_expression->get_type());
 			new_struct->add_field(name, new_expression);
@@ -148,6 +147,9 @@ public:
 		Closure* new_closure = new Closure(nullptr);
 		for (const Expression* expression: closure.get_environment_expressions()) {
 			const Expression* new_expression = expression_table[expression];
+			if (new_expression->get_type_id() == TypeId::ARRAY) {
+				error(closure, "closures capturing arrays are not yet supported");
+			}
 			type.add_environment_type(new_expression->get_type());
 			new_closure->add_environment_expression(new_expression);
 		}
@@ -292,6 +294,9 @@ public:
 	Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
 		const Expression* right = expression_table[bind.get_right()];
+		if (left->get_type_id() != TypeId::VOID || right->get_type_id() != TypeId::VOID) {
+			error(bind, "arguments of bind must be of type Void");
+		}
 		return new Bind(left, right);
 	}
 	Expression* visit_return(const Return& return_) override {
@@ -670,134 +675,116 @@ public:
 	}
 };
 
-class UsageAnalysisTable {
-public:
-	std::map<const Block*, std::map<const Expression*, const Expression*>> usages;
-	std::map<const Block*, std::vector<const Expression*>> frees;
-	std::map<const Expression*, std::size_t> levels;
-};
-
-class UsageAnalysis1: public Visitor<void> {
-	const Block* current_block;
-	std::size_t current_level;
-	UsageAnalysisTable& table;
-public:
-	UsageAnalysis1(UsageAnalysisTable& table): current_block(nullptr), current_level(0), table(table) {}
-	void add_usage(const Expression* resource, const Expression* consumer) {
-		table.usages[current_block][resource] = consumer;
-	}
-	void propagate_usages(const Block* block, const Expression* consumer) {
-		for (auto& entry: table.usages[block]) {
-			const Expression* resource = entry.first;
-			if (table.levels[resource] <= current_level) {
-				add_usage(resource, consumer);
-			}
-		}
-	}
-	void evaluate(const Block& block) {
-		const Block* previous_block = current_block;
-		current_block = &block;
-		++current_level;
-		for (const Expression* expression: block) {
-			if (expression->get_type_id() == TypeId::ARRAY) {
-				table.levels[expression] = current_level;
-			}
-			visit(*this, expression);
-		}
-		--current_level;
-		current_block = previous_block;
-	}
-	void visit_int_literal(const IntLiteral& int_literal) override {}
-	void visit_binary_expression(const BinaryExpression& binary_expression) override {}
-	void visit_if(const If& if_) override {
-		evaluate(if_.get_then_block());
-		evaluate(if_.get_else_block());
-		propagate_usages(&if_.get_then_block(), &if_);
-		propagate_usages(&if_.get_else_block(), &if_);
-	}
-	void visit_tuple(const Tuple& tuple) override {}
-	void visit_tuple_access(const TupleAccess& tuple_access) override {}
-	void visit_argument(const Argument& argument) override {}
-	void visit_call(const Call& call) override {
-		for (const Expression* argument: call.get_arguments()) {
-			if (argument->get_type_id() == TypeId::ARRAY) {
-				add_usage(argument, &call);
-			}
-		}
-	}
-	void visit_intrinsic(const Intrinsic& intrinsic) override {
-		for (const Expression* argument: intrinsic.get_arguments()) {
-			if (argument->get_type_id() == TypeId::ARRAY) {
-				add_usage(argument, &intrinsic);
-			}
-		}
-	}
-	void visit_bind(const Bind& bind) override {}
-	void visit_return(const Return& return_) override {
-		if (return_.get_expression()->get_type_id() == TypeId::ARRAY) {
-			add_usage(return_.get_expression(), &return_);
-		}
-	}
-};
-
-class UsageAnalysis2: public Visitor<void> {
-	const Block* current_block;
-	UsageAnalysisTable& table;
-	std::size_t current_level;
-public:
-	UsageAnalysis2(UsageAnalysisTable& table): current_block(nullptr), table(table), current_level(0) {}
-	void remove_invalid_usages(const Block* block, const Expression* consumer) {
-		auto iterator = table.usages[block].begin();
-		while (iterator != table.usages[block].end()) {
-			const Expression* resource = iterator->first;
-			if (table.levels[resource] <= current_level && table.usages[current_block][resource] != consumer) {
-				iterator = table.usages[block].erase(iterator);
-			}
-			else {
-				++iterator;
-			}
-		}
-	}
-	void ensure_frees(const Block* source_block, const Block* target_block) {
-		for (auto& entry: table.usages[source_block]) {
-			const Expression* resource = entry.first;
-			if (table.usages[target_block].find(resource) == table.usages[target_block].end() && table.levels[resource] < current_level + 1) {
-				// if a resource from the source block has no usage in the target block, add it to the free list
-				table.frees[target_block].push_back(resource);
-			}
-		}
-	}
-	void evaluate(const Block& block) {
-		const Block* previous_block = current_block;
-		current_block = &block;
-		++current_level;
-		for (const Expression* expression: block) {
-			visit(*this, expression);
-		}
-		--current_level;
-		current_block = previous_block;
-	}
-	void visit_int_literal(const IntLiteral& int_literal) override {}
-	void visit_binary_expression(const BinaryExpression& binary_expression) override {}
-	void visit_if(const If& if_) override {
-		remove_invalid_usages(&if_.get_then_block(), &if_);
-		remove_invalid_usages(&if_.get_else_block(), &if_);
-		ensure_frees(&if_.get_then_block(), &if_.get_else_block());
-		ensure_frees(&if_.get_else_block(), &if_.get_then_block());
-		evaluate(if_.get_then_block());
-		evaluate(if_.get_else_block());
-	}
-	void visit_tuple(const Tuple& tuple) override {}
-	void visit_tuple_access(const TupleAccess& tuple_access) override {}
-	void visit_argument(const Argument& argument) override {}
-	void visit_call(const Call& call) override {}
-	void visit_intrinsic(const Intrinsic& intrinsic) override {}
-	void visit_bind(const Bind& bind) override {}
-	void visit_return(const Return& return_) override {}
-};
-
 // memory management
 class Pass4: public Visitor<const Expression*> {
+	class UsageAnalysisTable {
+	public:
+		std::map<const Block*, std::map<const Expression*, const Expression*>> usages;
+		std::map<const Block*, std::vector<const Expression*>> frees;
+		std::map<const Expression*, std::size_t> levels;
+	};
+	class UsageAnalysis1: public Visitor<void> {
+		const Block* current_block;
+		std::size_t current_level;
+		UsageAnalysisTable& table;
+	public:
+		UsageAnalysis1(UsageAnalysisTable& table): current_block(nullptr), current_level(0), table(table) {}
+		void add_usage(const Expression* resource, const Expression* consumer) {
+			table.usages[current_block][resource] = consumer;
+		}
+		void propagate_usages(const Block* block, const Expression* consumer) {
+			for (auto& entry: table.usages[block]) {
+				const Expression* resource = entry.first;
+				if (table.levels[resource] <= current_level) {
+					add_usage(resource, consumer);
+				}
+			}
+		}
+		void evaluate(const Block& block) {
+			const Block* previous_block = current_block;
+			current_block = &block;
+			++current_level;
+			for (const Expression* expression: block) {
+				if (expression->get_type_id() == TypeId::ARRAY) {
+					table.levels[expression] = current_level;
+				}
+				visit(*this, expression);
+			}
+			--current_level;
+			current_block = previous_block;
+		}
+		void visit_if(const If& if_) override {
+			evaluate(if_.get_then_block());
+			evaluate(if_.get_else_block());
+			propagate_usages(&if_.get_then_block(), &if_);
+			propagate_usages(&if_.get_else_block(), &if_);
+		}
+		void visit_call(const Call& call) override {
+			for (const Expression* argument: call.get_arguments()) {
+				if (argument->get_type_id() == TypeId::ARRAY) {
+					add_usage(argument, &call);
+				}
+			}
+		}
+		void visit_intrinsic(const Intrinsic& intrinsic) override {
+			for (const Expression* argument: intrinsic.get_arguments()) {
+				if (argument->get_type_id() == TypeId::ARRAY) {
+					add_usage(argument, &intrinsic);
+				}
+			}
+		}
+		void visit_return(const Return& return_) override {
+			if (return_.get_expression()->get_type_id() == TypeId::ARRAY) {
+				add_usage(return_.get_expression(), &return_);
+			}
+		}
+	};
+	class UsageAnalysis2: public Visitor<void> {
+		const Block* current_block;
+		UsageAnalysisTable& table;
+		std::size_t current_level;
+	public:
+		UsageAnalysis2(UsageAnalysisTable& table): current_block(nullptr), table(table), current_level(0) {}
+		void remove_invalid_usages(const Block* block, const Expression* consumer) {
+			auto iterator = table.usages[block].begin();
+			while (iterator != table.usages[block].end()) {
+				const Expression* resource = iterator->first;
+				if (table.levels[resource] <= current_level && table.usages[current_block][resource] != consumer) {
+					iterator = table.usages[block].erase(iterator);
+				}
+				else {
+					++iterator;
+				}
+			}
+		}
+		void ensure_frees(const Block* source_block, const Block* target_block) {
+			for (auto& entry: table.usages[source_block]) {
+				const Expression* resource = entry.first;
+				if (table.usages[target_block].find(resource) == table.usages[target_block].end() && table.levels[resource] < current_level + 1) {
+					// if a resource from the source block has no usage in the target block, add it to the free list
+					table.frees[target_block].push_back(resource);
+				}
+			}
+		}
+		void evaluate(const Block& block) {
+			const Block* previous_block = current_block;
+			current_block = &block;
+			++current_level;
+			for (const Expression* expression: block) {
+				visit(*this, expression);
+			}
+			--current_level;
+			current_block = previous_block;
+		}
+		void visit_if(const If& if_) override {
+			remove_invalid_usages(&if_.get_then_block(), &if_);
+			remove_invalid_usages(&if_.get_else_block(), &if_);
+			ensure_frees(&if_.get_then_block(), &if_.get_else_block());
+			ensure_frees(&if_.get_else_block(), &if_.get_then_block());
+			evaluate(if_.get_then_block());
+			evaluate(if_.get_else_block());
+		}
+	};
 	class Scope {
 		Scope*& current_scope;
 		Scope* previous_scope;
@@ -880,6 +867,7 @@ public:
 		return create<Argument>(argument.get_index(), argument.get_type());
 	}
 	const Expression* visit_call(const Call& call) override {
+		// TODO: handle more than one argument pointing to the same resource
 		Call* new_call = new Call(call.get_type());
 		for (const Expression* argument: call.get_arguments()) {
 			if (argument->get_type_id() == TypeId::ARRAY && !is_last_use(argument, &call)) {
@@ -904,6 +892,7 @@ public:
 		return new_call;
 	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
+		// TODO: handle more than one argument pointing to the same resource
 		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
@@ -964,11 +953,24 @@ public:
 	}
 };
 
+class TailCallData {
+public:
+	std::map<const Expression*, bool> tail_call_expressions;
+	std::map<const Function*, bool> tail_call_functions;
+	bool is_tail_call(const Call& call) const {
+		return tail_call_expressions.find(&call) != tail_call_expressions.end();
+	}
+	bool has_tail_call(const Function* function) const {
+		return tail_call_functions.find(function) != tail_call_functions.end();
+	}
+};
+
 // tail call optimization
 class Pass5: public Visitor<void> {
 	const Function* function;
+	TailCallData& data;
 public:
-	Pass5(const Function* function): function(function) {}
+	Pass5(const Function* function, TailCallData& data): function(function), data(data) {}
 	void evaluate(const Block& block) {
 		visit(*this, block.get_result());
 	}
@@ -978,13 +980,13 @@ public:
 	}
 	void visit_call(const Call& call) override {
 		if (call.get_function() == function) {
-			call.is_tail_call = true;
-			function->has_tail_call = true;
+			data.tail_call_expressions[&call] = true;
+			data.tail_call_functions[function] = true;
 		}
 	}
-	static void run(const Program& program) {
+	static void run(const Program& program, TailCallData& data) {
 		for (const Function* function: program) {
-			Pass5 pass5(function);
+			Pass5 pass5(function, data);
 			pass5.evaluate(function->get_block());
 		}
 	}
