@@ -34,13 +34,10 @@ class Pass1: public Visitor<Expression*> {
 	};
 	struct FunctionTableValue {
 		const Function* new_function = nullptr;
-		std::size_t pass = 0;
 	};
 	class FunctionTable {
 		std::map<FunctionTableKey, FunctionTableValue> functions;
 	public:
-		bool recursion = true;
-		std::size_t pass = 0;
 		FunctionTableValue& operator [](const FunctionTableKey& key) {
 			return functions[key];
 		}
@@ -189,25 +186,27 @@ public:
 			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size() - 1), print_number(old_function->get_arguments() - 1)));
 		}
 
-		if (function_table[new_key].pass < function_table.pass) {
-			function_table[new_key].pass = function_table.pass;
+		if (function_table[new_key].new_function == nullptr) {
 			Pass1 pass1(program, function_table, new_key);
 			Function* new_function = new Function(new_key.argument_types);
 			program->add_function(new_function);
-			if (function_table[new_key].new_function) {
-				new_function->set_return_type(function_table[new_key].new_function->get_return_type());
+			if (old_function->get_return_type()) {
+				new_function->set_return_type(old_function->get_return_type());
 			}
 			else {
 				new_function->set_return_type(TypeInterner::get_never_type());
 			}
 			function_table[new_key].new_function = new_function;
 			const Expression* new_expression = pass1.evaluate(new_function->get_block(), old_function->get_block());
+			if (old_function->get_return_type() && old_function->get_return_type() != new_expression->get_type()) {
+				error(call, format("function does not return the declared return type %", print_type(old_function->get_return_type())));
+			}
 			new_function->set_return_type(new_expression->get_type());
 		}
 		else {
 			// detect recursion
 			if (function_table[new_key].new_function->get_return_type()->get_id() == TypeId::NEVER) {
-				function_table.recursion = true;
+				error(call, "cannot determine return type of recursive call");
 			}
 		}
 		new_call->set_type(function_table[new_key].new_function->get_return_type());
@@ -303,24 +302,14 @@ public:
 		const Expression* expression = expression_table[return_.get_expression()];
 		return new Return(expression);
 	}
-	static std::unique_ptr<Program> run_pass(const Function* main_function, FunctionTable& function_table) {
+	static std::unique_ptr<Program> run(const Program& program) {
+		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+		FunctionTable function_table;
 		Pass1 pass1(new_program.get(), function_table, FunctionTableKey(main_function));
 		Function* new_function = new Function(TypeInterner::get_void_type());
 		new_program->add_function(new_function);
-		function_table.recursion = false;
-		function_table.pass += 1;
 		pass1.evaluate(new_function->get_block(), main_function->get_block());
-		return new_program;
-	}
-	static std::unique_ptr<Program> run(const Program& program) {
-		const Function* main_function = program.get_main_function();
-		std::unique_ptr<Program> new_program;
-		FunctionTable function_table;
-		// TODO: prevent infinite loop
-		while (function_table.recursion) {
-			new_program = run_pass(main_function, function_table);
-		}
 		return new_program;
 	}
 };

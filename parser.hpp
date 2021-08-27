@@ -273,6 +273,20 @@ class MoebiusParser: private Parser {
 		}
 		error(format("unknown intrinsic \"%\"", name));
 	}
+	const Type* parse_type() {
+		if (parse("Int", alphanumeric)) {
+			return TypeInterner::get_int_type();
+		}
+		else if (parse("Array", alphanumeric)) {
+			return TypeInterner::get_array_type();
+		}
+		else if (parse("Void", alphanumeric)) {
+			return TypeInterner::get_void_type();
+		}
+		else {
+			error("invalid type");
+		}
+	}
 	const Expression* parse_expression_last() {
 		const SourcePosition position = cursor.get_position();
 		if (parse("{")) {
@@ -555,6 +569,11 @@ class MoebiusParser: private Parser {
 					}
 					expect(")");
 					parse_white_space();
+					if (parse(":")) {
+						parse_white_space();
+						function->set_return_type(parse_type());
+						parse_white_space();
+					}
 					const Expression* expression = parse_expression();
 					current_scope->create<Return>(expression);
 				}
