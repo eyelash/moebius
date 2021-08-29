@@ -112,20 +112,35 @@ public:
 		const Type* type = tuple_type->get_types()[argument_index];
 		return new TupleAccess(tuple, argument_index, type);
 	}
-	Expression* visit_struct(const Struct& struct_) override {
-		StructType type;
-		Struct* new_struct = new Struct();
-		for (std::size_t i = 0; i < struct_.get_expressions().size(); ++i) {
-			const std::string& name = struct_.get_names()[i];
-			const Expression* new_expression = expression_table[struct_.get_expressions()[i]];
-			if (new_expression->get_type_id() == TypeId::ARRAY) {
-				error(struct_, "structs containing arrays are not yet supported");
-			}
-			type.add_field(name, new_expression->get_type());
-			new_struct->add_field(name, new_expression);
+	Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
+		const Expression* type_expression = expression_table[struct_instantiation.get_type_expression()];
+		if (type_expression->get_type_id() != TypeId::TYPE) {
+			error(struct_instantiation, "struct instantiation requires a struct type");
 		}
-		new_struct->set_type(TypeInterner::intern(&type));
-		return new_struct;
+		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+		if (type->get_id() != TypeId::STRUCT) {
+			error(struct_instantiation, "struct instantiation requires a struct type");
+		}
+		const StructType* struct_type = static_cast<const StructType*>(type);
+		if (struct_instantiation.get_expressions().size() != struct_type->get_field_types().size()) {
+			error(struct_instantiation, "invalid number of fields");
+		}
+		StructInstantiation* new_struct_instantiation = new StructInstantiation(type_expression, type);
+		for (std::size_t i = 0; i < struct_instantiation.get_expressions().size(); ++i) {
+			const std::string& name = struct_instantiation.get_names()[i];
+			if (name != struct_type->get_field_names()[i]) {
+				error(struct_instantiation, format("invalid field name \"%\"", name));
+			}
+			const Expression* new_expression = expression_table[struct_instantiation.get_expressions()[i]];
+			if (new_expression->get_type_id() == TypeId::ARRAY) {
+				error(struct_instantiation, "structs containing arrays are not yet supported");
+			}
+			if (new_expression->get_type() != struct_type->get_field_types()[i]) {
+				error(struct_instantiation, format("invalid type for field \"%\"", name));
+			}
+			new_struct_instantiation->add_field(name, new_expression);
+		}
+		return new_struct_instantiation;
 	}
 	Expression* visit_struct_access(const StructAccess& struct_access) override {
 		const Expression* struct_ = expression_table[struct_access.get_struct()];
@@ -307,6 +322,22 @@ public:
 		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
 		return new TypeLiteral(type);
 	}
+	Expression* visit_struct_definition(const StructDefinition& struct_definition) override {
+		StructDefinition* new_struct_definition = new StructDefinition();
+		StructType struct_type;
+		for (std::size_t i = 0; i < struct_definition.get_type_expressions().size(); ++i) {
+			const std::string& name = struct_definition.get_names()[i];
+			const Expression* type_expression = expression_table[struct_definition.get_type_expressions()[i]];
+			new_struct_definition->add_field(name, type_expression);
+			if (type_expression->get_type_id() != TypeId::TYPE) {
+				error(struct_definition, "fields must be types");
+			}
+			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+			struct_type.add_field(name, type);
+		}
+		new_struct_definition->set_type(TypeInterner::get_type_type(TypeInterner::intern(&struct_type)));
+		return new_struct_definition;
+	}
 	Expression* visit_return_type(const ReturnType& return_type) override {
 		const Expression* type_expression = expression_table[return_type.get_type()];
 		if (type_expression->get_type_id() != TypeId::TYPE) {
@@ -429,9 +460,9 @@ class Pass2 {
 			const Expression* tuple = expression_table[tuple_access.get_tuple()];
 			return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
 		}
-		Expression* visit_struct(const Struct& struct_) override {
+		Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
 			Tuple* tuple = create<Tuple>();
-			for (const Expression* expression: struct_.get_expressions()) {
+			for (const Expression* expression: struct_instantiation.get_expressions()) {
 				tuple->add_expression(expression_table[expression]);
 			}
 			return tuple;

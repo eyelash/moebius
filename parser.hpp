@@ -361,28 +361,6 @@ class MoebiusParser: private Parser {
 			expect("'");
 			return int_literal;
 		}
-		else if (parse("struct", alphanumeric)) {
-			parse_white_space();
-			expect("{");
-			parse_white_space();
-			Struct* struct_ = new Struct();
-			struct_->set_position(position);
-			while (cursor && *cursor != '}') {
-				StringView name = parse_identifier();
-				parse_white_space();
-				expect(":");
-				parse_white_space();
-				const Expression* expression = parse_expression();
-				struct_->add_field(name, expression);
-				parse_white_space();
-				if (parse(",")) {
-					parse_white_space();
-				}
-			}
-			expect("}");
-			current_scope->add_expression(struct_);
-			return struct_;
-		}
 		else if (parse("[")) {
 			parse_white_space();
 			Intrinsic* intrinsic = new Intrinsic("arrayNew");
@@ -511,6 +489,27 @@ class MoebiusParser: private Parser {
 						expression = struct_access;
 					}
 				}
+				else if (parse("{")) {
+					parse_white_space();
+					StructInstantiation* struct_instantiation = new StructInstantiation(expression);
+					struct_instantiation->set_position(position);
+					while (cursor && *cursor != '}') {
+						const StringView field_name = parse_identifier();
+						parse_white_space();
+						expect(":");
+						parse_white_space();
+						const Expression* field_expression = parse_expression();
+						struct_instantiation->add_field(field_name, field_expression);
+						parse_white_space();
+						if (parse(",")) {
+							parse_white_space();
+						}
+					}
+					expect("}");
+					current_scope->add_expression(struct_instantiation);
+					expression = struct_instantiation;
+					parse_white_space();
+				}
 				else {
 					break;
 				}
@@ -560,9 +559,9 @@ class MoebiusParser: private Parser {
 					Scope scope(current_scope, closure, function->get_block());
 					current_scope->add_variable(name, current_scope->create<Argument>(0));
 					while (cursor && *cursor != ')') {
-						const StringView name = parse_identifier();
+						const StringView argument_name = parse_identifier();
 						const std::size_t index = function->add_argument();
-						current_scope->add_variable(name, current_scope->create<Argument>(index));
+						current_scope->add_variable(argument_name, current_scope->create<Argument>(index));
 						parse_white_space();
 						if (parse(",")) {
 							parse_white_space();
@@ -585,6 +584,32 @@ class MoebiusParser: private Parser {
 				current_scope->add_expression(closure);
 				current_scope->add_variable(name, closure);
 				parse_white_space();
+			}
+			else if (parse("struct", alphanumeric)) {
+				parse_white_space();
+				StringView name = parse_identifier();
+				parse_white_space();
+				StructDefinition* struct_definition = new StructDefinition();
+				struct_definition->set_position(position);
+				if (parse("{")) {
+					parse_white_space();
+					while (cursor && *cursor != '}') {
+						const StringView field_name = parse_identifier();
+						parse_white_space();
+						expect(":");
+						parse_white_space();
+						const Expression* field_type = parse_expression();
+						struct_definition->add_field(field_name, field_type);
+						parse_white_space();
+						if (parse(",")) {
+							parse_white_space();
+						}
+					}
+					expect("}");
+					parse_white_space();
+				}
+				current_scope->add_expression(struct_definition);
+				current_scope->add_variable(name, struct_definition);
 			}
 			else {
 				break;

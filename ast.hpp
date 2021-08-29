@@ -11,7 +11,7 @@ class BinaryExpression;
 class If;
 class Tuple;
 class TupleAccess;
-class Struct;
+class StructInstantiation;
 class StructAccess;
 class Function;
 class Closure;
@@ -22,6 +22,7 @@ class Intrinsic;
 class Bind;
 class Return;
 class TypeLiteral;
+class StructDefinition;
 class ReturnType;
 
 enum class TypeId {
@@ -335,7 +336,7 @@ public:
 	virtual T visit_tuple_access(const TupleAccess& tuple_access) {
 		return T();
 	}
-	virtual T visit_struct(const Struct& struct_) {
+	virtual T visit_struct_instantiation(const StructInstantiation& struct_instantiation) {
 		return T();
 	}
 	virtual T visit_struct_access(const StructAccess& struct_access) {
@@ -363,6 +364,9 @@ public:
 		return T();
 	}
 	virtual T visit_type_literal(const TypeLiteral& type_literal) {
+		return T();
+	}
+	virtual T visit_struct_definition(const StructDefinition& struct_definition) {
 		return T();
 	}
 	virtual T visit_return_type(const ReturnType& return_type) {
@@ -420,8 +424,8 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			result = visitor.visit_tuple_access(tuple_access);
 		}
-		void visit_struct(const Struct& struct_) override {
-			result = visitor.visit_struct(struct_);
+		void visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
+			result = visitor.visit_struct_instantiation(struct_instantiation);
 		}
 		void visit_struct_access(const StructAccess& struct_access) override {
 			result = visitor.visit_struct_access(struct_access);
@@ -449,6 +453,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_type_literal(const TypeLiteral& type_literal) override {
 			result = visitor.visit_type_literal(type_literal);
+		}
+		void visit_struct_definition(const StructDefinition& struct_definition) override {
+			result = visitor.visit_struct_definition(struct_definition);
 		}
 		void visit_return_type(const ReturnType& return_type) override {
 			result = visitor.visit_return_type(return_type);
@@ -632,13 +639,17 @@ public:
 	}
 };
 
-class Struct: public Expression {
+class StructInstantiation: public Expression {
+	const Expression* type_expression;
 	std::vector<std::string> names;
 	std::vector<const Expression*> expressions;
 public:
-	Struct(const Type* type = nullptr): Expression(type) {}
+	StructInstantiation(const Expression* type_expression, const Type* type = nullptr): Expression(type), type_expression(type_expression) {}
 	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_struct(*this);
+		visitor.visit_struct_instantiation(*this);
+	}
+	const Expression* get_type_expression() const {
+		return type_expression;
 	}
 	void add_field(const std::string& name, const Expression* expression) {
 		names.push_back(name);
@@ -825,6 +836,29 @@ public:
 	TypeLiteral(const Type* type): Expression(TypeInterner::get_type_type(type)) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_type_literal(*this);
+	}
+};
+
+class StructDefinition: public Expression {
+	std::vector<std::string> names;
+	std::vector<const Expression*> type_expressions;
+public:
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_struct_definition(*this);
+	}
+	void add_field(const std::string& name, const Expression* type_expression) {
+		names.push_back(name);
+		type_expressions.push_back(type_expression);
+	}
+	void add_field(const StringView& name, const Expression* type_expression) {
+		names.emplace_back(name.begin(), name.end());
+		type_expressions.push_back(type_expression);
+	}
+	const std::vector<std::string>& get_names() const {
+		return names;
+	}
+	const std::vector<const Expression*>& get_type_expressions() const {
+		return type_expressions;
 	}
 };
 
