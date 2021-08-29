@@ -326,9 +326,9 @@ class MoebiusParser: private Parser {
 			{
 				Scope scope(current_scope, closure, function->get_block());
 				while (cursor && *cursor != ')') {
-					const StringView name = parse_identifier();
+					const StringView argument_name = parse_identifier();
 					const std::size_t index = function->add_argument();
-					current_scope->add_variable(name, current_scope->create<Argument>(index));
+					current_scope->add_variable(argument_name, current_scope->create<Argument>(index));
 					parse_white_space();
 					if (parse(",")) {
 						parse_white_space();
@@ -547,7 +547,7 @@ class MoebiusParser: private Parser {
 			const SourcePosition position = cursor.get_position();
 			if (parse("let", alphanumeric)) {
 				parse_white_space();
-				StringView name = parse_identifier();
+				const StringView name = parse_identifier();
 				parse_white_space();
 				expect("=");
 				parse_white_space();
@@ -557,7 +557,7 @@ class MoebiusParser: private Parser {
 			}
 			else if (parse("func", alphanumeric)) {
 				parse_white_space();
-				StringView name = parse_identifier();
+				const StringView name = parse_identifier();
 				parse_white_space();
 				expect("(");
 				parse_white_space();
@@ -605,7 +605,7 @@ class MoebiusParser: private Parser {
 			}
 			else if (parse("struct", alphanumeric)) {
 				parse_white_space();
-				StringView name = parse_identifier();
+				const StringView name = parse_identifier();
 				parse_white_space();
 				StructDefinition* struct_definition = new StructDefinition();
 				struct_definition->set_position(position);
