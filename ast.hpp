@@ -21,6 +21,8 @@ class Call;
 class Intrinsic;
 class Bind;
 class Return;
+class TypeLiteral;
+class ReturnType;
 
 enum class TypeId {
 	INT,
@@ -29,7 +31,8 @@ enum class TypeId {
 	TUPLE,
 	ARRAY,
 	VOID,
-	NEVER
+	NEVER,
+	TYPE
 };
 
 class Type {
@@ -134,6 +137,18 @@ public:
 	}
 };
 
+class TypeType: public Type {
+	const Type* type;
+public:
+	TypeType(const Type* type): type(type) {}
+	TypeId get_id() const override {
+		return TypeId::TYPE;
+	}
+	const Type* get_type() const {
+		return type;
+	}
+};
+
 class TypeCompare {
 	template <class T> static constexpr int compare_(const T& t1, const T& t2) {
 		return std::less<T>()(t2, t1) - std::less<T>()(t1, t2);
@@ -168,6 +183,11 @@ public:
 				return diff;
 			}
 			return compare(struct_type1->get_field_types(), struct_type2->get_field_types());
+		}
+		if (id1 == TypeId::TYPE) {
+			const TypeType* type_type1 = static_cast<const TypeType*>(type1);
+			const TypeType* type_type2 = static_cast<const TypeType*>(type2);
+			return compare(type_type1->get_type(), type_type2->get_type());
 		}
 		return 0;
 	}
@@ -244,6 +264,10 @@ public:
 			case TypeId::VOID: return new VoidType();
 			case TypeId::NEVER: return new NeverType();
 			case TypeId::ARRAY: return new ArrayType();
+			case TypeId::TYPE: {
+				const TypeType* type_type = static_cast<const TypeType*>(type);
+				return new TypeType(type_type->get_type());
+			}
 			default: return nullptr;
 		}
 	}
@@ -287,6 +311,10 @@ public:
 			array_type = intern(&type);
 		}
 		return array_type;
+	}
+	static const Type* get_type_type(const Type* type) {
+		TypeType type_type(type);
+		return intern(&type_type);
 	}
 };
 
@@ -332,6 +360,12 @@ public:
 		return T();
 	}
 	virtual T visit_return(const Return& return_) {
+		return T();
+	}
+	virtual T visit_type_literal(const TypeLiteral& type_literal) {
+		return T();
+	}
+	virtual T visit_return_type(const ReturnType& return_type) {
 		return T();
 	}
 };
@@ -412,6 +446,12 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_return(const Return& return_) override {
 			result = visitor.visit_return(return_);
+		}
+		void visit_type_literal(const TypeLiteral& type_literal) override {
+			result = visitor.visit_type_literal(type_literal);
+		}
+		void visit_return_type(const ReturnType& return_type) override {
+			result = visitor.visit_return_type(return_type);
 		}
 	};
 	VoidVisitor void_visitor(visitor);
@@ -777,6 +817,26 @@ public:
 	}
 	static Expression* create(const Expression* left, const Expression* right) {
 		return new Bind(left, right);
+	}
+};
+
+class TypeLiteral: public Expression {
+public:
+	TypeLiteral(const Type* type): Expression(TypeInterner::get_type_type(type)) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_type_literal(*this);
+	}
+};
+
+class ReturnType: public Expression {
+	const Expression* type;
+public:
+	ReturnType(const Expression* type): Expression(TypeInterner::get_void_type()), type(type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_return_type(*this);
+	}
+	const Expression* get_type() const {
+		return type;
 	}
 };
 

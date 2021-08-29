@@ -273,20 +273,6 @@ class MoebiusParser: private Parser {
 		}
 		error(format("unknown intrinsic \"%\"", name));
 	}
-	const Type* parse_type() {
-		if (parse("Int", alphanumeric)) {
-			return TypeInterner::get_int_type();
-		}
-		else if (parse("Array", alphanumeric)) {
-			return TypeInterner::get_array_type();
-		}
-		else if (parse("Void", alphanumeric)) {
-			return TypeInterner::get_void_type();
-		}
-		else {
-			error("invalid type");
-		}
-	}
 	const Expression* parse_expression_last() {
 		const SourcePosition position = cursor.get_position();
 		if (parse("{")) {
@@ -411,6 +397,21 @@ class MoebiusParser: private Parser {
 			expect("]");
 			current_scope->add_expression(intrinsic);
 			return intrinsic;
+		}
+		else if (parse("Int", alphanumeric)) {
+			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_int_type());
+			expression->set_position(position);
+			return expression;
+		}
+		else if (parse("Array", alphanumeric)) {
+			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_array_type());
+			expression->set_position(position);
+			return expression;
+		}
+		else if (parse("Void", alphanumeric)) {
+			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_void_type());
+			expression->set_position(position);
+			return expression;
 		}
 		else if (copy().parse(numeric)) {
 			std::int32_t number = 0;
@@ -571,9 +572,13 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					if (parse(":")) {
 						parse_white_space();
-						function->set_return_type(parse_type());
+						const Expression* return_type = parse_expression();
+						// TODO: set_position
+						current_scope->create<ReturnType>(return_type);
 						parse_white_space();
 					}
+					expect("=");
+					parse_white_space();
 					const Expression* expression = parse_expression();
 					current_scope->create<Return>(expression);
 				}

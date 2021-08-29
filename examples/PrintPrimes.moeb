@@ -1,11 +1,11 @@
-func putChar(c) @putChar(c)
+func putChar(c) = @putChar(c)
 
 let false = 0
 let true = 1
 let newline = 10
 
-func printNum(num) {
-	func printNum(num): Void
+func printNum(num) = {
+	func printNum(num): Void =
 		if (num < 10)
 			putChar('0' + num)
 		else
@@ -13,8 +13,8 @@ func printNum(num) {
 	return printNum(num) >> putChar(newline)
 }
 
-func isPrime(n) {
-	func isPrime(n, i): Int
+func isPrime(n) = {
+	func isPrime(n, i): Int =
 		if (i * i > n)
 			true
 		else
@@ -26,8 +26,8 @@ func isPrime(n) {
 }
 
 // print the first 100 primes
-func printPrimes() {
-	func printPrimes(n, count): Void
+func printPrimes() = {
+	func printPrimes(n, count): Void =
 		if (count < 100)
 			if (isPrime(n))
 				printNum(n) >> printPrimes(n + 1, count + 1)

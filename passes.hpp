@@ -10,6 +10,7 @@ class Pass1: public Visitor<Expression*> {
 			case TypeId::CLOSURE: return "Function";
 			case TypeId::VOID: return "Void";
 			case TypeId::ARRAY: return "Array";
+			case TypeId::TYPE: return "Type";
 			default: return StringView();
 		}
 	}
@@ -33,7 +34,7 @@ class Pass1: public Visitor<Expression*> {
 		}
 	};
 	struct FunctionTableValue {
-		const Function* new_function = nullptr;
+		Function* new_function = nullptr;
 	};
 	class FunctionTable {
 		std::map<FunctionTableKey, FunctionTableValue> functions;
@@ -302,6 +303,19 @@ public:
 		const Expression* expression = expression_table[return_.get_expression()];
 		return new Return(expression);
 	}
+	Expression* visit_type_literal(const TypeLiteral& type_literal) override {
+		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
+		return new TypeLiteral(type);
+	}
+	Expression* visit_return_type(const ReturnType& return_type) override {
+		const Expression* type_expression = expression_table[return_type.get_type()];
+		if (type_expression->get_type_id() != TypeId::TYPE) {
+			error(return_type, "return type must be a type");
+		}
+		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+		function_table[key].new_function->set_return_type(type);
+		return new ReturnType(type_expression);
+	}
 	static std::unique_ptr<Program> run(const Program& program) {
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
@@ -492,6 +506,14 @@ class Pass2 {
 				return create<Return>(expression);
 			}
 		}
+		Expression* visit_type_literal(const TypeLiteral& type_literal) override {
+			const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
+			return create<TypeLiteral>(type);
+		}
+		Expression* visit_return_type(const ReturnType& return_type) override {
+			const Expression* type_expression = expression_table[return_type.get_type()];
+			return create<ReturnType>(type_expression);
+		}
 	};
 public:
 	Pass2() = delete;
@@ -651,6 +673,14 @@ public:
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = expression_table[return_.get_expression()];
 		return create<Return>(expression);
+	}
+	const Expression* visit_type_literal(const TypeLiteral& type_literal) override {
+		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
+		return create<TypeLiteral>(type);
+	}
+	const Expression* visit_return_type(const ReturnType& return_type) override {
+		const Expression* type_expression = expression_table[return_type.get_type()];
+		return create<ReturnType>(type_expression);
 	}
 	static std::unique_ptr<Program> run(const Program& program) {
 		const Function* main_function = program.get_main_function();
@@ -919,6 +949,14 @@ public:
 		else {
 			return create<Return>(expression_table[expression]);
 		}
+	}
+	const Expression* visit_type_literal(const TypeLiteral& type_literal) override {
+		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
+		return create<TypeLiteral>(type);
+	}
+	const Expression* visit_return_type(const ReturnType& return_type) override {
+		const Expression* type_expression = expression_table[return_type.get_type()];
+		return create<ReturnType>(type_expression);
 	}
 	static void perform_usage_analysis(const Program& program, UsageAnalysisTable& table) {
 		for (const Function* function: program) {
