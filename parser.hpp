@@ -561,8 +561,16 @@ class MoebiusParser: private Parser {
 					while (cursor && *cursor != ')') {
 						const StringView argument_name = parse_identifier();
 						const std::size_t index = function->add_argument();
-						current_scope->add_variable(argument_name, current_scope->create<Argument>(index));
+						const Expression* argument = current_scope->create<Argument>(index);
+						current_scope->add_variable(argument_name, argument);
 						parse_white_space();
+						if (parse(":")) {
+							parse_white_space();
+							const Expression* argument_type = parse_expression();
+							// TODO: set_position
+							current_scope->create<TypeAssert>(argument, argument_type);
+							parse_white_space();
+						}
 						if (parse(",")) {
 							parse_white_space();
 						}

@@ -23,6 +23,7 @@ class Bind;
 class Return;
 class TypeLiteral;
 class StructDefinition;
+class TypeAssert;
 class ReturnType;
 
 enum class TypeId {
@@ -369,6 +370,9 @@ public:
 	virtual T visit_struct_definition(const StructDefinition& struct_definition) {
 		return T();
 	}
+	virtual T visit_type_assert(const TypeAssert& type_assert) {
+		return T();
+	}
 	virtual T visit_return_type(const ReturnType& return_type) {
 		return T();
 	}
@@ -456,6 +460,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_struct_definition(const StructDefinition& struct_definition) override {
 			result = visitor.visit_struct_definition(struct_definition);
+		}
+		void visit_type_assert(const TypeAssert& type_assert) override {
+			result = visitor.visit_type_assert(type_assert);
 		}
 		void visit_return_type(const ReturnType& return_type) override {
 			result = visitor.visit_return_type(return_type);
@@ -859,6 +866,22 @@ public:
 	}
 	const std::vector<const Expression*>& get_type_expressions() const {
 		return type_expressions;
+	}
+};
+
+class TypeAssert: public Expression {
+	const Expression* expression;
+	const Expression* type;
+public:
+	TypeAssert(const Expression* expression, const Expression* type): Expression(TypeInterner::get_void_type()), expression(expression), type(type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_type_assert(*this);
+	}
+	const Expression* get_expression() const {
+		return expression;
+	}
+	const Expression* get_type() const {
+		return type;
 	}
 };
 

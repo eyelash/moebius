@@ -338,6 +338,18 @@ public:
 		new_struct_definition->set_type(TypeInterner::get_type_type(TypeInterner::intern(&struct_type)));
 		return new_struct_definition;
 	}
+	Expression* visit_type_assert(const TypeAssert& type_assert) override {
+		const Expression* expression = expression_table[type_assert.get_expression()];
+		const Expression* type_expression = expression_table[type_assert.get_type()];
+		if (type_expression->get_type_id() != TypeId::TYPE) {
+			error(type_assert, "argument type must be a type");
+		}
+		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+		if (expression->get_type() != type) {
+			error(type_assert, "invalid argument type");
+		}
+		return new TypeAssert(expression, type_expression);
+	}
 	Expression* visit_return_type(const ReturnType& return_type) override {
 		const Expression* type_expression = expression_table[return_type.get_type()];
 		if (type_expression->get_type_id() != TypeId::TYPE) {
