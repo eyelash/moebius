@@ -729,7 +729,7 @@ public:
 class Pass4: public Visitor<const Expression*> {
 	class UsageAnalysisTable {
 	public:
-		std::map<const Block*, std::map<const Expression*, const Expression*>> usages;
+		std::map<const Block*, std::map<const Expression*, std::pair<const Expression*, std::size_t>>> usages;
 		std::map<const Block*, std::vector<const Expression*>> frees;
 		std::map<const Expression*, std::size_t> levels;
 	};
@@ -739,14 +739,14 @@ class Pass4: public Visitor<const Expression*> {
 		UsageAnalysisTable& table;
 	public:
 		UsageAnalysis1(UsageAnalysisTable& table): current_block(nullptr), current_level(0), table(table) {}
-		void add_usage(const Expression* resource, const Expression* consumer) {
-			table.usages[current_block][resource] = consumer;
+		void add_usage(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
+			table.usages[current_block][resource] = std::make_pair(consumer, argument_index);
 		}
 		void propagate_usages(const Block* block, const Expression* consumer) {
 			for (auto& entry: table.usages[block]) {
 				const Expression* resource = entry.first;
 				if (table.levels[resource] <= current_level) {
-					add_usage(resource, consumer);
+					add_usage(resource, consumer, 0);
 				}
 			}
 		}
@@ -770,22 +770,24 @@ class Pass4: public Visitor<const Expression*> {
 			propagate_usages(&if_.get_else_block(), &if_);
 		}
 		void visit_call(const Call& call) override {
-			for (const Expression* argument: call.get_arguments()) {
+			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
+				const Expression* argument = call.get_arguments()[i];
 				if (argument->get_type_id() == TypeId::ARRAY) {
-					add_usage(argument, &call);
+					add_usage(argument, &call, i);
 				}
 			}
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {
-			for (const Expression* argument: intrinsic.get_arguments()) {
+			for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
+				const Expression* argument = intrinsic.get_arguments()[i];
 				if (argument->get_type_id() == TypeId::ARRAY) {
-					add_usage(argument, &intrinsic);
+					add_usage(argument, &intrinsic, i);
 				}
 			}
 		}
 		void visit_return(const Return& return_) override {
 			if (return_.get_expression()->get_type_id() == TypeId::ARRAY) {
-				add_usage(return_.get_expression(), &return_);
+				add_usage(return_.get_expression(), &return_, 0);
 			}
 		}
 	};
@@ -795,11 +797,14 @@ class Pass4: public Visitor<const Expression*> {
 		std::size_t current_level;
 	public:
 		UsageAnalysis2(UsageAnalysisTable& table): current_block(nullptr), table(table), current_level(0) {}
+		bool is_last_use(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
+			return table.usages[current_block][resource] == std::make_pair(consumer, argument_index);
+		}
 		void remove_invalid_usages(const Block* block, const Expression* consumer) {
 			auto iterator = table.usages[block].begin();
 			while (iterator != table.usages[block].end()) {
 				const Expression* resource = iterator->first;
-				if (table.levels[resource] <= current_level && table.usages[current_block][resource] != consumer) {
+				if (table.levels[resource] <= current_level && !is_last_use(resource, consumer, 0)) {
 					iterator = table.usages[block].erase(iterator);
 				}
 				else {
@@ -861,8 +866,8 @@ class Pass4: public Visitor<const Expression*> {
 		current_scope->block->add_expression(expression);
 		return expression;
 	}
-	bool is_last_use(const Expression* resource, const Expression* consumer) {
-		return usage_analysis.usages[current_scope->old_block][resource] == consumer;
+	bool is_last_use(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
+		return usage_analysis.usages[current_scope->old_block][resource] == std::make_pair(consumer, argument_index);
 	}
 	bool is_unused(const Expression* resource) {
 		return usage_analysis.usages[current_scope->old_block].count(resource) == 0;
@@ -917,10 +922,10 @@ public:
 		return create<Argument>(argument.get_index(), argument.get_type());
 	}
 	const Expression* visit_call(const Call& call) override {
-		// TODO: handle more than one argument pointing to the same resource
 		Call* new_call = new Call(call.get_type());
-		for (const Expression* argument: call.get_arguments()) {
-			if (argument->get_type_id() == TypeId::ARRAY && !is_last_use(argument, &call)) {
+		for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
+			const Expression* argument = call.get_arguments()[i];
+			if (argument->get_type_id() == TypeId::ARRAY && !is_last_use(argument, &call, i)) {
 				new_call->add_argument(copy(expression_table[argument]));
 			}
 			else {
@@ -942,12 +947,11 @@ public:
 		return new_call;
 	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
-		// TODO: handle more than one argument pointing to the same resource
 		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
 			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
-			if (argument->get_type_id() == TypeId::ARRAY && !is_borrowed && !is_last_use(argument, &intrinsic)) {
+			if (argument->get_type_id() == TypeId::ARRAY && !is_borrowed && !is_last_use(argument, &intrinsic, i)) {
 				new_intrinsic->add_argument(copy(expression_table[argument]));
 			}
 			else {
@@ -958,7 +962,7 @@ public:
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
 			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
-			if (argument->get_type_id() == TypeId::ARRAY && is_borrowed && is_last_use(argument, &intrinsic)) {
+			if (argument->get_type_id() == TypeId::ARRAY && is_borrowed && is_last_use(argument, &intrinsic, i)) {
 				free(expression_table[argument]);
 			}
 		}
@@ -974,7 +978,7 @@ public:
 	}
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();
-		if (expression->get_type_id() == TypeId::ARRAY && !is_last_use(expression, &return_)) {
+		if (expression->get_type_id() == TypeId::ARRAY && !is_last_use(expression, &return_, 0)) {
 			return create<Return>(copy(expression_table[expression]));
 		}
 		else {
