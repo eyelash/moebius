@@ -22,7 +22,7 @@ func putStrLn(s) = {
 		if (i < s.length())
 			putChar(s.get(i)) >> putStrLn(s, i + 1)
 		else
-			putChar(10)
+			putChar('\n')
 	return putStrLn(s, 0)
 }
 

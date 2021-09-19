@@ -1,14 +1,12 @@
 func putChar(c) = @putChar(c)
 
-let newline = 10
-
 func printNum(num) = {
 	func printNum(num): Void =
 		if (num < 10)
 			putChar('0' + num)
 		else
 			printNum(num / 10) >> putChar('0' + (num % 10))
-	return printNum(num) >> putChar(newline)
+	return printNum(num) >> putChar('\n')
 }
 
 func isPrime(n) = {
@@ -32,7 +30,7 @@ func printPrimes() = {
 			else
 				printPrimes(n + 1, count)
 		else
-			putChar(newline)
+			putChar('\n')
 	return printPrimes(2, 0)
 }
 

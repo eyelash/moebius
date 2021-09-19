@@ -246,6 +246,19 @@ class MoebiusParser: private Parser {
 	IntLiteral* parse_character() {
 		char c = *cursor;
 		++cursor;
+		if (c == '\\') {
+			if (!cursor) {
+				error("unexpected end");
+			}
+			c = *cursor;
+			++cursor;
+			if (c == 'n') c = '\n';
+			else if (c == 'r') c = '\r';
+			else if (c == 't') c = '\t';
+			else if (c == 'v') c = '\v';
+			else if (c == '\'' || c == '\"' || c == '\\') c = c;
+			else error("invalid escape");
+		}
 		return current_scope->create<IntLiteral>(c);
 	}
 	StringView parse_identifier() {
