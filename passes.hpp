@@ -334,18 +334,18 @@ public:
 		const Expression* expression = expression_table[type_assert.get_expression()];
 		const Expression* type_expression = expression_table[type_assert.get_type()];
 		if (type_expression->get_type_id() != TypeId::TYPE) {
-			error(type_assert, "argument type must be a type");
+			error(*type_assert.get_type(), "expression is not a type");
 		}
 		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 		if (expression->get_type() != type) {
-			error(type_assert, "invalid argument type");
+			error(*type_assert.get_type(), format("expression does not have the declared type %", print_type(type)));
 		}
 		return create<TypeAssert>(expression, type_expression);
 	}
 	const Expression* visit_return_type(const ReturnType& return_type) override {
 		const Expression* type_expression = expression_table[return_type.get_type()];
 		if (type_expression->get_type_id() != TypeId::TYPE) {
-			error(return_type, "return type must be a type");
+			error(*return_type.get_type(), "return type must be a type");
 		}
 		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 		function_table[key]->set_return_type(type);

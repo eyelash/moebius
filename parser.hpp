@@ -549,9 +549,18 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				const StringView name = parse_identifier();
 				parse_white_space();
+				const Expression* type = nullptr;
+				if (parse(":")) {
+					parse_white_space();
+					type = parse_expression();
+					parse_white_space();
+				}
 				expect("=");
 				parse_white_space();
 				const Expression* expression = parse_expression();
+				if (type) {
+					current_scope->create<TypeAssert>(expression, type);
+				}
 				current_scope->add_variable(name, expression);
 				parse_white_space();
 			}
