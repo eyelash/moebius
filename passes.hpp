@@ -296,6 +296,13 @@ public:
 		else if (intrinsic.name_equals("arrayFree")) {
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
+		else if (intrinsic.name_equals("typeOf")) {
+			if (new_intrinsic->get_arguments().size() != 1) {
+				error(intrinsic, "typeOf takes exactly 1 argument");
+			}
+			const Expression* expression = new_intrinsic->get_arguments()[0];
+			new_intrinsic->set_type(TypeInterner::get_type_type(expression->get_type()));
+		}
 		return new_intrinsic;
 	}
 	const Expression* visit_bind(const Bind& bind) override {
