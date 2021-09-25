@@ -120,8 +120,7 @@ public:
 		const Variable result = next_variable();
 		if (intrinsic.name_equals("putChar")) {
 			const Variable argument = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("const s = String.fromCharCode(%);", argument));
-			printer.println("document.body.appendChild(s === '\\n' ? document.createElement('br') : document.createTextNode(s));");
+			printer.println(format("putChar(%);", argument));
 			printer.println(format("const % = null;", result));
 		}
 		else if (intrinsic.name_equals("getChar")) {
@@ -192,6 +191,7 @@ public:
 			printer.println_increasing("function main() {");
 			const std::size_t index = function_table.look_up(program.get_main_function());
 			printer.println(format("f%();", print_number(index)));
+			printer.println("flushStdout();");
 			printer.println_decreasing("}");
 		}
 		for (const Function* function: program) {
@@ -215,6 +215,26 @@ public:
 			if (tail_call_data.has_tail_call(function)) {
 				printer.println_decreasing("}");
 			}
+			printer.println_decreasing("}");
+		}
+		printer.println("const stdoutBuffer = [];");
+		{
+			printer.println_increasing("function flushStdout() {");
+			printer.println("const textDecoder = new TextDecoder();");
+			printer.println("const s = textDecoder.decode(new Int8Array(stdoutBuffer));");
+			printer.println("document.body.appendChild(document.createTextNode(s));");
+			printer.println("stdoutBuffer.splice(0);");
+			printer.println_decreasing("}");
+		}
+		{
+			printer.println_increasing("function putChar(c) {");
+			printer.println_increasing("if (c === 0x0A) {");
+			printer.println("flushStdout();");
+			printer.println("document.body.appendChild(document.createElement('br'));");
+			printer.println_decreasing("}");
+			printer.println_increasing("else {");
+			printer.println("stdoutBuffer.push(c);");
+			printer.println_decreasing("}");
 			printer.println_decreasing("}");
 		}
 		printer.println("</script></head><body></body></html>");
