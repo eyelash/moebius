@@ -128,6 +128,21 @@ public:
 		printer.println(format("% % = % % %;", type, result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
+	Variable visit_string_literal(const StringLiteral& string_literal) override {
+		const Variable result = next_variable();
+		const Type type = function_table.get_type(string_literal.get_type());
+		const Type element_type = function_table.get_type(TypeInterner::get_int_type());
+		const std::size_t size = string_literal.get_value().size();
+		printer.println(print_functor([&](auto& printer) {
+			printer.print(format("% % = array_new((%[]){", type, result, element_type));
+			for (std::size_t i = 0; i < size; ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(print_number(string_literal.get_value()[i]));
+			}
+			printer.print(format("}, %);", print_number(size)));
+		}));
+		return result;
+	}
 	Variable visit_if(const If& if_) override {
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();

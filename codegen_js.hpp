@@ -60,6 +60,18 @@ public:
 		printer.println(format("const % = (% % %) | 0;", result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
+	Variable visit_string_literal(const StringLiteral& string_literal) override {
+		const Variable result = next_variable();
+		printer.println(print_functor([&](auto& printer) {
+			printer.print(format("const % = [", result));
+			for (std::size_t i = 0; i < string_literal.get_value().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(print_number(string_literal.get_value()[i]));
+			}
+			printer.print("];");
+		}));
+		return result;
+	}
 	Variable visit_if(const If& if_) override {
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();

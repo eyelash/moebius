@@ -68,6 +68,9 @@ public:
 			error(binary_expression, format("binary expression of types % and %", print_type(left->get_type()), print_type(right->get_type())));
 		}
 	}
+	const Expression* visit_string_literal(const StringLiteral& string_literal) override {
+		return create<StringLiteral>(string_literal.get_value());
+	}
 	const Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];
 		if (condition->has_type(TypeId::INT)) {
@@ -453,6 +456,9 @@ class Pass2 {
 			const Expression* right = expression_table[binary_expression.get_right()];
 			return create<BinaryExpression>(binary_expression.get_operation(), left, right);
 		}
+		const Expression* visit_string_literal(const StringLiteral& string_literal) override {
+			return create<StringLiteral>(string_literal.get_value());
+		}
 		const Expression* visit_if(const If& if_) override {
 			const Expression* condition = expression_table[if_.get_condition()];
 			If* new_if = create<If>(condition, if_.get_type());
@@ -641,6 +647,9 @@ public:
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
 		return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+	}
+	const Expression* visit_string_literal(const StringLiteral& string_literal) override {
+		return create<StringLiteral>(string_literal.get_value());
 	}
 	const Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];
@@ -906,6 +915,9 @@ public:
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
 		return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+	}
+	const Expression* visit_string_literal(const StringLiteral& string_literal) override {
+		return create<StringLiteral>(string_literal.get_value());
 	}
 	const Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];

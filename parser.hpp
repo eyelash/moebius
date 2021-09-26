@@ -244,7 +244,7 @@ class MoebiusParser: private Parser {
 			parse_all(white_space);
 		}
 	}
-	IntLiteral* parse_character() {
+	char parse_character() {
 		char c = *cursor;
 		++cursor;
 		if (c == '\\') {
@@ -260,7 +260,7 @@ class MoebiusParser: private Parser {
 			else if (c == '\'' || c == '\"' || c == '\\') c = c;
 			else error("invalid escape");
 		}
-		return current_scope->create<IntLiteral>(c);
+		return c;
 	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
@@ -357,20 +357,20 @@ class MoebiusParser: private Parser {
 			return closure;
 		}
 		else if (parse("\"")) {
-			Intrinsic* intrinsic = new Intrinsic("arrayNew");
-			intrinsic->set_position(position);
+			std::string string;
 			while (cursor && *cursor != '"') {
-				intrinsic->add_argument(parse_character());
+				string.push_back(parse_character());
 			}
+			StringLiteral* string_literal = current_scope->create<StringLiteral>(string);
+			string_literal->set_position(position);
 			expect("\"");
-			current_scope->add_expression(intrinsic);
-			return intrinsic;
+			return string_literal;
 		}
 		else if (parse("'")) {
 			if (!cursor) {
 				error("unexpected end");
 			}
-			IntLiteral* int_literal = parse_character();
+			IntLiteral* int_literal = current_scope->create<IntLiteral>(parse_character());
 			int_literal->set_position(position);
 			expect("'");
 			return int_literal;

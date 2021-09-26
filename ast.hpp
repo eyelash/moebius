@@ -8,6 +8,7 @@
 
 class IntLiteral;
 class BinaryExpression;
+class StringLiteral;
 class If;
 class Tuple;
 class TupleAccess;
@@ -328,6 +329,9 @@ public:
 	virtual T visit_binary_expression(const BinaryExpression& binary_expression) {
 		return T();
 	}
+	virtual T visit_string_literal(const StringLiteral& string_literal) {
+		return T();
+	}
 	virtual T visit_if(const If& if_) {
 		return T();
 	}
@@ -418,6 +422,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_binary_expression(const BinaryExpression& binary_expression) override {
 			result = visitor.visit_binary_expression(binary_expression);
+		}
+		void visit_string_literal(const StringLiteral& string_literal) override {
+			result = visitor.visit_string_literal(string_literal);
 		}
 		void visit_if(const If& if_) override {
 			result = visitor.visit_if(if_);
@@ -586,6 +593,18 @@ public:
 	}
 	template <BinaryOperation operation> static Expression* create(const Expression* left, const Expression* right) {
 		return new BinaryExpression(operation, left, right);
+	}
+};
+
+class StringLiteral: public Expression {
+	std::string value;
+public:
+	StringLiteral(const std::string& value): Expression(TypeInterner::get_array_type()), value(value) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_string_literal(*this);
+	}
+	const std::string& get_value() const {
+		return value;
 	}
 };
 
