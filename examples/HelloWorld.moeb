@@ -1,7 +1,7 @@
 func putStrLn(s) = {
 	func putStrLn(s, i): Void =
-		if (i < @arrayLength(s))
-			@putChar(@arrayGet(s, i)) >> putStrLn(s, i + 1)
+		if (i < @stringLength(s))
+			@putChar(@stringGet(s, i)) >> putStrLn(s, i + 1)
 		else
 			@putChar('\n')
 	return putStrLn(s, 0)

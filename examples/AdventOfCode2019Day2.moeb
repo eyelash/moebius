@@ -2,25 +2,30 @@ let input = [1, 0, 0, 3, 1, 1, 2, 3, 1, 3, 4, 3, 1, 5, 0, 3, 2, 1, 9, 19, 1, 5, 
 
 func putChar(c) = @putChar(c)
 
-func length(array) = @arrayLength(array)
-func get(array, index) = @arrayGet(array, index)
-func set(array, index, newElement) = @arraySplice(array, index, 1, newElement)
-func push(array, element) = @arraySplice(array, @arrayLength(array), 0, element)
-func concat(array1, array2) = @arraySplice(array1, @arrayLength(array1), 0, array2)
+func arrayLength(array) = @arrayLength(array)
+func arrayGet(array, index) = @arrayGet(array, index)
+func arraySet(array, index, newElement) = @arraySplice(array, index, 1, newElement)
+func arrayPush(array, element) = @arraySplice(array, @arrayLength(array), 0, element)
+func arrayConcat(array1, array2) = @arraySplice(array1, @arrayLength(array1), 0, array2)
+func stringLength(array) = @stringLength(array)
+func stringGet(array, index) = @stringGet(array, index)
+func stringSet(array, index, newElement) = @stringSplice(array, index, 1, newElement)
+func stringPush(array, element) = @stringSplice(array, @stringLength(array), 0, element)
+func stringConcat(array1, array2) = @stringSplice(array1, @stringLength(array1), 0, array2)
 
 func toString(n) = {
-	func toString(n, prefix): Array =
+	func toString(n, prefix): String =
 		if (n < 10)
-			prefix.push('0' + n)
+			prefix.stringPush('0' + n)
 		else
-			toString(n / 10, prefix).push('0' + (n % 10))
+			toString(n / 10, prefix).stringPush('0' + (n % 10))
 	return if (n < 0) toString(0 - n, "-") else toString(n, "")
 }
 
 func putStrLn(s) = {
 	func putStrLn(s, i): Void =
-		if (i < s.length())
-			putChar(s.get(i)) >> putStrLn(s, i + 1)
+		if (i < s.stringLength())
+			putChar(s.stringGet(i)) >> putStrLn(s, i + 1)
 		else
 			putChar('\n')
 	return putStrLn(s, 0)
@@ -36,17 +41,17 @@ func getOp(opcode) =
 			0
 
 func runProgram(p, noun, verb) = {
-	let p = p.set(1, noun)
-	let p = p.set(2, verb)
+	let p = p.arraySet(1, noun)
+	let p = p.arraySet(2, verb)
 	func step(p, i): Int =
-		if (p.get(i) == 99)
-			p.get(0)
+		if (p.arrayGet(i) == 99)
+			p.arrayGet(0)
 		else {
-			let opcode = p.get(i)
-			let arg1 = p.get(p.get(i + 1))
-			let arg2 = p.get(p.get(i + 2))
-			let dst = p.get(i + 3)
-			let p = p.set(dst, getOp(opcode)(arg1, arg2))
+			let opcode = p.arrayGet(i)
+			let arg1 = p.arrayGet(p.arrayGet(i + 1))
+			let arg2 = p.arrayGet(p.arrayGet(i + 2))
+			let dst = p.arrayGet(i + 3)
+			let p = p.arraySet(dst, getOp(opcode)(arg1, arg2))
 			return step(p, i + 4)
 		}
 	return step(p, 0)
@@ -57,9 +62,9 @@ func findInputs(p) = {
 		if (noun < 99)
 			if (verb < 99)
 				if (runProgram(p, noun, verb) == 19690720)
-					putStrLn(concat("noun = ", toString(noun))) >>
-					putStrLn(concat("verb = ", toString(verb))) >>
-					putStrLn(concat("100 * noun + verb = ", toString(100 * noun + verb)))
+					putStrLn(stringConcat("noun = ", toString(noun))) >>
+					putStrLn(stringConcat("verb = ", toString(verb))) >>
+					putStrLn(stringConcat("100 * noun + verb = ", toString(100 * noun + verb)))
 				else
 					iterate(p, noun, verb + 1)
 			else

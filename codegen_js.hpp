@@ -148,12 +148,12 @@ public:
 				printer.print("];");
 			}));
 		}
-		else if (intrinsic.name_equals("arrayGet")) {
+		else if (intrinsic.name_equals("arrayGet") || intrinsic.name_equals("stringGet")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			printer.println(format("const % = %[%];", result, array, index));
 		}
-		else if (intrinsic.name_equals("arrayLength")) {
+		else if (intrinsic.name_equals("arrayLength") || intrinsic.name_equals("stringLength")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			printer.println(format("const % = %.length;", result, array));
 		}
@@ -178,7 +178,28 @@ public:
 			}
 			printer.println(format("const % = %;", result, array));
 		}
-		else if (intrinsic.name_equals("arrayCopy")) {
+		else if (intrinsic.name_equals("stringSplice")) {
+			const Variable string = expression_table[intrinsic.get_arguments()[0]];
+			const Variable index = expression_table[intrinsic.get_arguments()[1]];
+			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
+			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == TypeId::STRING) {
+				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
+				printer.println(format("%.splice(%, %, ...%);", string, index, remove, insert));
+			}
+			else {
+				const std::size_t insert = intrinsic.get_arguments().size() - 3;
+				printer.println(print_functor([&](auto& printer) {
+					printer.print(format("%.splice(%, %", string, index, remove));
+					for (std::size_t i = 0; i < insert; ++i) {
+						printer.print(", ");
+						printer.print(expression_table[intrinsic.get_arguments()[i + 3]]);
+					}
+					printer.print(");");
+				}));
+			}
+			printer.println(format("const % = %;", result, string));
+		}
+		else if (intrinsic.name_equals("copy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			printer.println(format("const % = %.slice();", result, array));
 		}

@@ -10,6 +10,7 @@ class Pass1: public Visitor<const Expression*> {
 			case TypeId::CLOSURE: return "Function";
 			case TypeId::VOID: return "Void";
 			case TypeId::ARRAY: return "Array";
+			case TypeId::STRING: return "String";
 			case TypeId::TYPE: return "Type";
 			default: return StringView();
 		}
@@ -293,10 +294,45 @@ public:
 			}
 			new_intrinsic->set_type(TypeInterner::get_array_type());
 		}
-		else if (intrinsic.name_equals("arrayCopy")) {
-			new_intrinsic->set_type(TypeInterner::get_array_type());
+		else if (intrinsic.name_equals("stringGet")) {
+			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::STRING, TypeId::INT});
+			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
-		else if (intrinsic.name_equals("arrayFree")) {
+		else if (intrinsic.name_equals("stringLength")) {
+			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::STRING});
+			new_intrinsic->set_type(TypeInterner::get_int_type());
+		}
+		else if (intrinsic.name_equals("stringSplice")) {
+			if (new_intrinsic->get_arguments().size() < 3) {
+				error(intrinsic, "stringSplice takes at least 3 arguments");
+			}
+			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::STRING)) {
+				error(intrinsic, "first argument of stringSplice must be a string");
+			}
+			if (!new_intrinsic->get_arguments()[1]->has_type(TypeId::INT)) {
+				error(intrinsic, "second argument of stringSplice must be a number");
+			}
+			if (!new_intrinsic->get_arguments()[2]->has_type(TypeId::INT)) {
+				error(intrinsic, "third argument of stringSplice must be a number");
+			}
+			if (new_intrinsic->get_arguments().size() == 4) {
+				if (!(new_intrinsic->get_arguments()[3]->has_type(TypeId::INT) || new_intrinsic->get_arguments()[3]->has_type(TypeId::STRING))) {
+					error(intrinsic, "argument 4 of stringSplice must be a number or a string");
+				}
+			}
+			else {
+				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
+					if (!new_intrinsic->get_arguments()[i]->has_type(TypeId::INT)) {
+						error(intrinsic, format("argument % of stringSplice must be a number", print_number(i + 1)));
+					}
+				}
+			}
+			new_intrinsic->set_type(TypeInterner::get_string_type());
+		}
+		else if (intrinsic.name_equals("copy")) {
+			new_intrinsic->set_type(new_intrinsic->get_arguments()[0]->get_type());
+		}
+		else if (intrinsic.name_equals("free")) {
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
 		else if (intrinsic.name_equals("typeOf")) {
@@ -749,6 +785,9 @@ class Pass4: public Visitor<const Expression*> {
 		std::map<const Block*, std::vector<const Expression*>> frees;
 		std::map<const Expression*, std::size_t> levels;
 	};
+	static bool is_managed(const Expression* expression) {
+		return expression->get_type_id() == TypeId::ARRAY || expression->get_type_id() == TypeId::STRING;
+	}
 	class UsageAnalysis1: public Visitor<void> {
 		const Block* current_block;
 		std::size_t current_level;
@@ -771,7 +810,7 @@ class Pass4: public Visitor<const Expression*> {
 			current_block = &block;
 			++current_level;
 			for (const Expression* expression: block) {
-				if (expression->get_type_id() == TypeId::ARRAY) {
+				if (is_managed(expression)) {
 					table.levels[expression] = current_level;
 				}
 				visit(*this, expression);
@@ -788,7 +827,7 @@ class Pass4: public Visitor<const Expression*> {
 		void visit_call(const Call& call) override {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 				const Expression* argument = call.get_arguments()[i];
-				if (argument->get_type_id() == TypeId::ARRAY) {
+				if (is_managed(argument)) {
 					add_usage(argument, &call, i);
 				}
 			}
@@ -796,13 +835,13 @@ class Pass4: public Visitor<const Expression*> {
 		void visit_intrinsic(const Intrinsic& intrinsic) override {
 			for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 				const Expression* argument = intrinsic.get_arguments()[i];
-				if (argument->get_type_id() == TypeId::ARRAY) {
+				if (is_managed(argument)) {
 					add_usage(argument, &intrinsic, i);
 				}
 			}
 		}
 		void visit_return(const Return& return_) override {
-			if (return_.get_expression()->get_type_id() == TypeId::ARRAY) {
+			if (is_managed(return_.get_expression())) {
 				add_usage(return_.get_expression(), &return_, 0);
 			}
 		}
@@ -888,13 +927,22 @@ class Pass4: public Visitor<const Expression*> {
 	bool is_unused(const Expression* resource) {
 		return usage_analysis.usages[current_scope->old_block].count(resource) == 0;
 	}
+	bool is_borrowed(const Intrinsic& intrinsic, std::size_t i) {
+		return
+			(intrinsic.name_equals("arrayGet") && i == 0) ||
+			(intrinsic.name_equals("arrayLength") && i == 0) ||
+			(intrinsic.name_equals("arraySplice") && i == 3) ||
+			(intrinsic.name_equals("stringGet") && i == 0) ||
+			(intrinsic.name_equals("stringLength") && i == 0) ||
+			(intrinsic.name_equals("stringSplice") && i == 3);
+	}
 	const Expression* copy(const Expression* resource) {
-		Intrinsic* copy_intrinsic = create<Intrinsic>("arrayCopy", TypeInterner::get_array_type());
+		Intrinsic* copy_intrinsic = create<Intrinsic>("copy", resource->get_type());
 		copy_intrinsic->add_argument(resource);
 		return copy_intrinsic;
 	}
 	void free(const Expression* resource) {
-		Intrinsic* free_intrinsic = create<Intrinsic>("arrayFree", TypeInterner::get_void_type());
+		Intrinsic* free_intrinsic = create<Intrinsic>("free", TypeInterner::get_void_type());
 		free_intrinsic->add_argument(resource);
 	}
 public:
@@ -944,7 +992,7 @@ public:
 		Call* new_call = new Call(call.get_type());
 		for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 			const Expression* argument = call.get_arguments()[i];
-			if (argument->get_type_id() == TypeId::ARRAY && !is_last_use(argument, &call, i)) {
+			if (is_managed(argument) && !is_last_use(argument, &call, i)) {
 				new_call->add_argument(copy(expression_table[argument]));
 			}
 			else {
@@ -960,7 +1008,7 @@ public:
 			pass4.evaluate(new_function->get_block(), call.get_function()->get_block());
 		}
 		new_call->set_function(function_table[call.get_function()]);
-		if (call.get_type_id() == TypeId::ARRAY && is_unused(&call)) {
+		if (is_managed(&call) && is_unused(&call)) {
 			free(new_call);
 		}
 		return new_call;
@@ -969,8 +1017,7 @@ public:
 		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
-			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
-			if (argument->get_type_id() == TypeId::ARRAY && !is_borrowed && !is_last_use(argument, &intrinsic, i)) {
+			if (is_managed(argument) && !is_borrowed(intrinsic, i) && !is_last_use(argument, &intrinsic, i)) {
 				new_intrinsic->add_argument(copy(expression_table[argument]));
 			}
 			else {
@@ -980,12 +1027,11 @@ public:
 		current_scope->block->add_expression(new_intrinsic);
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
-			const bool is_borrowed = intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || (intrinsic.name_equals("arraySplice") && i == 3);
-			if (argument->get_type_id() == TypeId::ARRAY && is_borrowed && is_last_use(argument, &intrinsic, i)) {
+			if (is_managed(argument) && is_borrowed(intrinsic, i) && is_last_use(argument, &intrinsic, i)) {
 				free(expression_table[argument]);
 			}
 		}
-		if (intrinsic.get_type_id() == TypeId::ARRAY && is_unused(&intrinsic)) {
+		if (is_managed(&intrinsic) && is_unused(&intrinsic)) {
 			free(new_intrinsic);
 		}
 		return new_intrinsic;
@@ -997,7 +1043,7 @@ public:
 	}
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();
-		if (expression->get_type_id() == TypeId::ARRAY && !is_last_use(expression, &return_, 0)) {
+		if (is_managed(expression) && !is_last_use(expression, &return_, 0)) {
 			return create<Return>(copy(expression_table[expression]));
 		}
 		else {

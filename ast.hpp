@@ -33,6 +33,7 @@ enum class TypeId {
 	STRUCT,
 	TUPLE,
 	ARRAY,
+	STRING,
 	VOID,
 	NEVER,
 	TYPE
@@ -137,6 +138,13 @@ class ArrayType: public Type {
 public:
 	TypeId get_id() const override {
 		return TypeId::ARRAY;
+	}
+};
+
+class StringType: public Type {
+public:
+	TypeId get_id() const override {
+		return TypeId::STRING;
 	}
 };
 
@@ -267,6 +275,7 @@ public:
 			case TypeId::VOID: return new VoidType();
 			case TypeId::NEVER: return new NeverType();
 			case TypeId::ARRAY: return new ArrayType();
+			case TypeId::STRING: return new StringType();
 			case TypeId::TYPE: {
 				const TypeType* type_type = static_cast<const TypeType*>(type);
 				return new TypeType(type_type->get_type());
@@ -314,6 +323,14 @@ public:
 			array_type = intern(&type);
 		}
 		return array_type;
+	}
+	static const Type* get_string_type() {
+		static const Type* string_type = nullptr;
+		if (string_type == nullptr) {
+			StringType type;
+			string_type = intern(&type);
+		}
+		return string_type;
 	}
 	static const Type* get_type_type(const Type* type) {
 		TypeType type_type(type);
@@ -599,7 +616,7 @@ public:
 class StringLiteral: public Expression {
 	std::string value;
 public:
-	StringLiteral(const std::string& value): Expression(TypeInterner::get_array_type()), value(value) {}
+	StringLiteral(const std::string& value): Expression(TypeInterner::get_string_type()), value(value) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_string_literal(*this);
 	}

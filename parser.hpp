@@ -48,6 +48,9 @@ constexpr const char* intrinsics[] = {
 	"arrayGet",
 	"arrayLength",
 	"arraySplice",
+	"stringGet",
+	"stringLength",
+	"stringSplice",
 	"typeOf"
 };
 
@@ -407,6 +410,11 @@ class MoebiusParser: private Parser {
 		}
 		else if (parse("Array", alphanumeric)) {
 			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_array_type());
+			expression->set_position(position);
+			return expression;
+		}
+		else if (parse("String", alphanumeric)) {
+			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_string_type());
 			expression->set_position(position);
 			return expression;
 		}
