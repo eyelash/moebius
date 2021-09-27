@@ -8,9 +8,9 @@ class Pass1: public Visitor<const Expression*> {
 		switch (id) {
 			case TypeId::INT: return "Int";
 			case TypeId::CLOSURE: return "Function";
-			case TypeId::VOID: return "Void";
 			case TypeId::ARRAY: return "Array";
 			case TypeId::STRING: return "String";
+			case TypeId::VOID: return "Void";
 			case TypeId::TYPE: return "Type";
 			default: return StringView();
 		}
@@ -36,23 +36,32 @@ class Pass1: public Visitor<const Expression*> {
 	};
 	using FunctionTable = std::map<FunctionTableKey, Function*>;
 	Program* program;
-	Block* current_block;
 	FunctionTable& function_table;
 	const FunctionTableKey& key;
-	std::map<const Expression*, const Expression*> expression_table;
-	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key): program(program), function_table(function_table), key(key) {}
-	const Expression* evaluate(Block* destination_block, const Block& source_block) {
-		Block* previous_block = current_block;
-		current_block = destination_block;
+	using ExpressionTable = std::map<const Expression*, const Expression*>;
+	ExpressionTable& expression_table;
+	Block* destination_block;
+	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block): program(program), function_table(function_table), key(key), expression_table(expression_table), destination_block(destination_block) {}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
+		Pass1 pass1(program, function_table, key, expression_table, destination_block);
 		for (const Expression* expression: source_block) {
-			expression_table[expression] = visit(*this, expression);
+			const Expression* new_expression = visit(pass1, expression);
+			if (new_expression) {
+				expression_table[expression] = new_expression;
+			}
 		}
-		current_block = previous_block;
-		return destination_block->get_result();
+		return expression_table[source_block.get_result()];
+	}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
+		ExpressionTable expression_table;
+		return evaluate(program, function_table, key, expression_table, destination_block, source_block);
+	}
+	const Expression* evaluate(Block* destination_block, const Block& source_block) {
+		return evaluate(program, function_table, key, expression_table, destination_block, source_block);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
-		current_block->add_expression(expression);
+		destination_block->add_expression(expression);
 		return expression;
 	}
 public:
@@ -62,7 +71,7 @@ public:
 	const Expression* visit_binary_expression(const BinaryExpression& binary_expression) override {
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
-		if (left->has_type(TypeId::INT) && right->has_type(TypeId::INT)) {
+		if (left->get_type_id() == TypeId::INT && right->get_type_id() == TypeId::INT) {
 			return create<BinaryExpression>(binary_expression.get_operation(), left, right);
 		}
 		else {
@@ -74,27 +83,17 @@ public:
 	}
 	const Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];
-		if (condition->has_type(TypeId::INT)) {
-			If* new_if = create<If>(condition);
-			const Expression* then_expression = evaluate(new_if->get_then_block(), if_.get_then_block());
-			const Expression* else_expression = evaluate(new_if->get_else_block(), if_.get_else_block());
-			if (then_expression->get_type() == else_expression->get_type()) {
-				new_if->set_type(then_expression->get_type());
-			}
-			else if (then_expression->get_type_id() == TypeId::NEVER) {
-				new_if->set_type(else_expression->get_type());
-			}
-			else if (else_expression->get_type_id() == TypeId::NEVER) {
-				new_if->set_type(then_expression->get_type());
-			}
-			else {
-				error(if_, "if and else branches must return values of the same type");
-			}
-			return new_if;
-		}
-		else {
+		if (condition->get_type_id() != TypeId::INT) {
 			error(if_, "type of condition must be a number");
 		}
+		If* new_if = create<If>(condition);
+		const Expression* then_expression = evaluate(new_if->get_then_block(), if_.get_then_block());
+		const Expression* else_expression = evaluate(new_if->get_else_block(), if_.get_else_block());
+		if (then_expression->get_type() != else_expression->get_type()) {
+			error(if_, "if and else branches must return values of the same type");
+		}
+		new_if->set_type(then_expression->get_type());
+		return new_if;
 	}
 	const Expression* visit_tuple(const Tuple& tuple) override {
 		TupleType type;
@@ -205,11 +204,10 @@ public:
 		}
 
 		if (function_table[new_key] == nullptr) {
-			Pass1 pass1(program, function_table, new_key);
 			Function* new_function = new Function(new_key.argument_types, old_function->get_return_type());
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			const Expression* new_expression = pass1.evaluate(new_function->get_block(), old_function->get_block());
+			const Expression* new_expression = evaluate(program, function_table, new_key, new_function->get_block(), old_function->get_block());
 			if (new_function->get_return_type() && new_function->get_return_type() != new_expression->get_type()) {
 				error(call, format("function does not return the declared return type %", print_type(new_function->get_return_type())));
 			}
@@ -232,7 +230,7 @@ public:
 		}
 		std::size_t i = 0;
 		for (TypeId id: types) {
-			if (!arguments[i]->has_type(id)) {
+			if (arguments[i]->get_type_id() != id) {
 				error(intrinsic, format("argument % of % must be of type %", print_number(i + 1), intrinsic.get_name(), print_type(id)));
 			}
 			++i;
@@ -253,7 +251,7 @@ public:
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
 			for (const Expression* argument: new_intrinsic->get_arguments()) {
-				if (!argument->has_type(TypeId::INT)) {
+				if (argument->get_type_id() != TypeId::INT) {
 					error(intrinsic, "array elements must be numbers");
 				}
 			}
@@ -271,23 +269,23 @@ public:
 			if (new_intrinsic->get_arguments().size() < 3) {
 				error(intrinsic, "arraySplice takes at least 3 arguments");
 			}
-			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::ARRAY)) {
+			if (new_intrinsic->get_arguments()[0]->get_type_id() != TypeId::ARRAY) {
 				error(intrinsic, "first argument of arraySplice must be an array");
 			}
-			if (!new_intrinsic->get_arguments()[1]->has_type(TypeId::INT)) {
+			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
 				error(intrinsic, "second argument of arraySplice must be a number");
 			}
-			if (!new_intrinsic->get_arguments()[2]->has_type(TypeId::INT)) {
+			if (new_intrinsic->get_arguments()[2]->get_type_id() != TypeId::INT) {
 				error(intrinsic, "third argument of arraySplice must be a number");
 			}
 			if (new_intrinsic->get_arguments().size() == 4) {
-				if (!(new_intrinsic->get_arguments()[3]->has_type(TypeId::INT) || new_intrinsic->get_arguments()[3]->has_type(TypeId::ARRAY))) {
+				if (!(new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::INT || new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::ARRAY)) {
 					error(intrinsic, "argument 4 of arraySplice must be a number or an array");
 				}
 			}
 			else {
 				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
-					if (!new_intrinsic->get_arguments()[i]->has_type(TypeId::INT)) {
+					if (new_intrinsic->get_arguments()[i]->get_type_id() != TypeId::INT) {
 						error(intrinsic, format("argument % of arraySplice must be a number", print_number(i + 1)));
 					}
 				}
@@ -306,23 +304,23 @@ public:
 			if (new_intrinsic->get_arguments().size() < 3) {
 				error(intrinsic, "stringSplice takes at least 3 arguments");
 			}
-			if (!new_intrinsic->get_arguments()[0]->has_type(TypeId::STRING)) {
+			if (new_intrinsic->get_arguments()[0]->get_type_id() != TypeId::STRING) {
 				error(intrinsic, "first argument of stringSplice must be a string");
 			}
-			if (!new_intrinsic->get_arguments()[1]->has_type(TypeId::INT)) {
+			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
 				error(intrinsic, "second argument of stringSplice must be a number");
 			}
-			if (!new_intrinsic->get_arguments()[2]->has_type(TypeId::INT)) {
+			if (new_intrinsic->get_arguments()[2]->get_type_id() != TypeId::INT) {
 				error(intrinsic, "third argument of stringSplice must be a number");
 			}
 			if (new_intrinsic->get_arguments().size() == 4) {
-				if (!(new_intrinsic->get_arguments()[3]->has_type(TypeId::INT) || new_intrinsic->get_arguments()[3]->has_type(TypeId::STRING))) {
+				if (!(new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::INT || new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::STRING)) {
 					error(intrinsic, "argument 4 of stringSplice must be a number or a string");
 				}
 			}
 			else {
 				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
-					if (!new_intrinsic->get_arguments()[i]->has_type(TypeId::INT)) {
+					if (new_intrinsic->get_arguments()[i]->get_type_id() != TypeId::INT) {
 						error(intrinsic, format("argument % of stringSplice must be a number", print_number(i + 1)));
 					}
 				}
@@ -386,7 +384,7 @@ public:
 		if (expression->get_type() != type) {
 			error(*type_assert.get_type(), format("expression does not have the declared type %", print_type(type)));
 		}
-		return create<TypeAssert>(expression, type_expression);
+		return nullptr;
 	}
 	const Expression* visit_return_type(const ReturnType& return_type) override {
 		const Expression* type_expression = expression_table[return_type.get_type()];
@@ -395,16 +393,15 @@ public:
 		}
 		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 		function_table[key]->set_return_type(type);
-		return create<ReturnType>(type_expression);
+		return nullptr;
 	}
 	static std::unique_ptr<Program> run(const Program& program) {
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Pass1 pass1(new_program.get(), function_table, FunctionTableKey(main_function));
 		Function* new_function = new Function(TypeInterner::get_void_type());
 		new_program->add_function(new_function);
-		pass1.evaluate(new_function->get_block(), main_function->get_block());
+		evaluate(new_program.get(), function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };
@@ -426,6 +423,7 @@ class Pass2 {
 		}
 	};
 	using FunctionTable = std::map<const Function*, FunctionTableEntry>;
+	using ExpressionTable = std::map<const Expression*, const Expression*>;
 	class Analyze: public Visitor<void> {
 		FunctionTable& function_table;
 		const Function* function;
@@ -460,29 +458,49 @@ class Pass2 {
 	};
 	class Replace: public Visitor<const Expression*> {
 		Program* program;
-		Block* current_block;
 		FunctionTable& function_table;
 		const Function* function;
-		std::vector<const Expression*> arguments;
-		std::size_t level;
-		std::map<const Expression*, const Expression*> expression_table;
+		const std::vector<const Expression*>& arguments;
+		ExpressionTable& expression_table;
+		Block* destination_block;
+		bool omit_return;
 		template <class T, class... A> T* create(A&&... arguments) {
 			T* expression = new T(std::forward<A>(arguments)...);
-			current_block->add_expression(expression);
+			destination_block->add_expression(expression);
 			return expression;
 		}
 	public:
-		Replace(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function), level(0) {}
-		const Expression* evaluate(Block* destination_block, const Block& source_block) {
-			Block* previous_block = current_block;
-			current_block = destination_block;
-			++level;
+		Replace(Program* program, FunctionTable& function_table, const Function* function, const std::vector<const Expression*>& arguments, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), function(function), arguments(arguments), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+		static const Expression* evaluate(Program* program, FunctionTable& function_table, const Function* function, const std::vector<const Expression*>& arguments, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+			Replace replace(program, function_table, function, arguments, expression_table, destination_block, omit_return);
 			for (const Expression* expression: source_block) {
-				expression_table[expression] = visit(*this, expression);
+				const Expression* new_expression = visit(replace, expression);
+				if (new_expression) {
+					expression_table[expression] = new_expression;
+				}
 			}
-			--level;
-			current_block = previous_block;
 			return expression_table[source_block.get_result()];
+		}
+		// main function
+		static const Expression* evaluate(Program* program, FunctionTable& function_table, const Function* function, Block* destination_block, const Block& source_block) {
+			std::vector<const Expression*> arguments;
+			ExpressionTable expression_table;
+			return evaluate(program, function_table, function, arguments, expression_table, destination_block, source_block, false);
+		}
+		// inlined functions
+		const Expression* evaluate(const Function* function, const std::vector<const Expression*>& arguments, Block* destination_block, const Block& source_block) {
+			ExpressionTable expression_table;
+			return evaluate(program, function_table, function, arguments, expression_table, destination_block, source_block, true);
+		}
+		// non-inlined functions
+		const Expression* evaluate(const Function* function, Block* destination_block, const Block& source_block) {
+			std::vector<const Expression*> arguments;
+			ExpressionTable expression_table;
+			return evaluate(program, function_table, function, arguments, expression_table, destination_block, source_block, false);
+		}
+		// if blocks
+		const Expression* evaluate(Block* destination_block, const Block& source_block) {
+			return evaluate(program, function_table, function, arguments, expression_table, destination_block, source_block, false);
 		}
 		const Expression* visit_int_literal(const IntLiteral& int_literal) override {
 			return create<IntLiteral>(int_literal.get_value());
@@ -547,11 +565,11 @@ class Pass2 {
 		}
 		const Expression* visit_call(const Call& call) override {
 			if (function_table[call.get_function()].should_inline()) {
-				Replace replace(program, function_table, call.get_function());
+				std::vector<const Expression*> new_arguments;
 				for (const Expression* argument: call.get_arguments()) {
-					replace.arguments.push_back(expression_table[argument]);
+					new_arguments.push_back(expression_table[argument]);
 				}
-				return replace.evaluate(current_block, call.get_function()->get_block());
+				return evaluate(call.get_function(), new_arguments, destination_block, call.get_function()->get_block());
 			}
 			else {
 				Call* new_call = create<Call>(call.get_type());
@@ -562,8 +580,7 @@ class Pass2 {
 					Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
 					program->add_function(new_function);
 					function_table[call.get_function()].new_function = new_function;
-					Replace replace(program, function_table, call.get_function());
-					replace.evaluate(new_function->get_block(), call.get_function()->get_block());
+					evaluate(call.get_function(), new_function->get_block(), call.get_function()->get_block());
 				}
 				new_call->set_function(function_table[call.get_function()].new_function);
 				return new_call;
@@ -583,7 +600,7 @@ class Pass2 {
 		}
 		const Expression* visit_return(const Return& return_) override {
 			const Expression* expression = expression_table[return_.get_expression()];
-			if (function_table[function].should_inline() && level == 1) {
+			if (omit_return) {
 				return expression;
 			}
 			else {
@@ -596,12 +613,6 @@ class Pass2 {
 		const Expression* visit_struct_definition(const StructDefinition& struct_definition) override {
 			return nullptr;
 		}
-		const Expression* visit_type_assert(const TypeAssert& type_assert) override {
-			return nullptr;
-		}
-		const Expression* visit_return_type(const ReturnType& return_type) override {
-			return nullptr;
-		}
 	};
 public:
 	Pass2() = delete;
@@ -611,10 +622,9 @@ public:
 		FunctionTable function_table;
 		Analyze analyze(function_table, main_function);
 		analyze.evaluate(main_function->get_block());
-		Replace replace(new_program.get(), function_table, main_function);
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
-		replace.evaluate(new_function->get_block(), main_function->get_block());
+		Replace::evaluate(new_program.get(), function_table, main_function, new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };
@@ -630,14 +640,15 @@ class Pass3: public Visitor<const Expression*> {
 		}
 	};
 	Program* program;
-	Block* current_block;
 	using FunctionTable = std::map<const Function*, const Function*>;
 	FunctionTable& function_table;
 	const Function* function;
-	std::map<const Expression*, const Expression*> expression_table;
+	using ExpressionTable = std::map<const Expression*, const Expression*>;
+	ExpressionTable& expression_table;
+	Block* destination_block;
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
-		current_block->add_expression(expression);
+		destination_block->add_expression(expression);
 		return expression;
 	}
 	static bool is_empty_tuple(const Type* type) {
@@ -664,17 +675,22 @@ class Pass3: public Visitor<const Expression*> {
 		return new_index;
 	}
 public:
-	Pass3(Program* program, FunctionTable& function_table, const Function* function): program(program), function_table(function_table), function(function) {}
-	void evaluate(Block* destination_block, const Block& source_block) {
-		Block* previous_block = current_block;
-		current_block = destination_block;
+	Pass3(Program* program, FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block): program(program), function_table(function_table), function(function),  expression_table(expression_table), destination_block(destination_block) {}
+	static void evaluate(Program* program, FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
+		Pass3 pass3(program, function_table, function, expression_table, destination_block);
 		for (const Expression* expression: source_block) {
-			const Expression* new_expression = visit(*this, expression);
+			const Expression* new_expression = visit(pass3, expression);
 			if (new_expression) {
 				expression_table[expression] = new_expression;
 			}
 		}
-		current_block = previous_block;
+	}
+	static void evaluate(Program* program, FunctionTable& function_table, const Function* function, Block* destination_block, const Block& source_block) {
+		ExpressionTable expression_table;
+		evaluate(program, function_table, function, expression_table, destination_block, source_block);
+	}
+	void evaluate(Block* destination_block, const Block& source_block) {
+		evaluate(program, function_table, function, expression_table, destination_block, source_block);
 	}
 	const Expression* visit_int_literal(const IntLiteral& int_literal) override {
 		return create<IntLiteral>(int_literal.get_value());
@@ -743,8 +759,7 @@ public:
 			Function* new_function = new Function(argument_types, call.get_function()->get_return_type());
 			program->add_function(new_function);
 			function_table[call.get_function()] = new_function;
-			Pass3 pass3(program, function_table, call.get_function());
-			pass3.evaluate(new_function->get_block(), call.get_function()->get_block());
+			evaluate(program, function_table, call.get_function(), new_function->get_block(), call.get_function()->get_block());
 		}
 		new_call->set_function(function_table[call.get_function()]);
 		return new_call;
@@ -769,10 +784,9 @@ public:
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Pass3 pass3(new_program.get(), function_table, main_function);
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program->add_function(new_function);
-		pass3.evaluate(new_function->get_block(), main_function->get_block());
+		evaluate(new_program.get(), function_table, main_function, new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };

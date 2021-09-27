@@ -35,7 +35,6 @@ enum class TypeId {
 	ARRAY,
 	STRING,
 	VOID,
-	NEVER,
 	TYPE
 };
 
@@ -68,34 +67,6 @@ public:
 	}
 	const std::vector<const Type*>& get_environment_types() const {
 		return environment_types;
-	}
-};
-
-class NeverType: public Type {
-public:
-	TypeId get_id() const override {
-		return TypeId::NEVER;
-	}
-};
-
-class VoidType: public Type {
-public:
-	TypeId get_id() const override {
-		return TypeId::VOID;
-	}
-};
-
-class TupleType: public Type {
-	std::vector<const Type*> types;
-public:
-	TypeId get_id() const override {
-		return TypeId::TUPLE;
-	}
-	void add_type(const Type* type) {
-		types.push_back(type);
-	}
-	const std::vector<const Type*>& get_types() const {
-		return types;
 	}
 };
 
@@ -134,6 +105,20 @@ public:
 	}
 };
 
+class TupleType: public Type {
+	std::vector<const Type*> types;
+public:
+	TypeId get_id() const override {
+		return TypeId::TUPLE;
+	}
+	void add_type(const Type* type) {
+		types.push_back(type);
+	}
+	const std::vector<const Type*>& get_types() const {
+		return types;
+	}
+};
+
 class ArrayType: public Type {
 public:
 	TypeId get_id() const override {
@@ -145,6 +130,13 @@ class StringType: public Type {
 public:
 	TypeId get_id() const override {
 		return TypeId::STRING;
+	}
+};
+
+class VoidType: public Type {
+public:
+	TypeId get_id() const override {
+		return TypeId::VOID;
 	}
 };
 
@@ -174,11 +166,6 @@ public:
 		if (id1 != id2) {
 			return compare_(id1, id2);
 		}
-		if (id1 == TypeId::TUPLE) {
-			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
-			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
-			return compare(tuple_type1->get_types(), tuple_type2->get_types());
-		}
 		if (id1 == TypeId::CLOSURE) {
 			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
 			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
@@ -194,6 +181,11 @@ public:
 				return diff;
 			}
 			return compare(struct_type1->get_field_types(), struct_type2->get_field_types());
+		}
+		if (id1 == TypeId::TUPLE) {
+			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
+			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
+			return compare(tuple_type1->get_types(), tuple_type2->get_types());
 		}
 		if (id1 == TypeId::TYPE) {
 			const TypeType* type_type1 = static_cast<const TypeType*>(type1);
@@ -245,15 +237,6 @@ public:
 	static Type* copy(const Type* type) {
 		switch (type->get_id()) {
 			case TypeId::INT: return new IntType();
-			case TypeId::TUPLE: {
-				const TupleType* tuple_type = static_cast<const TupleType*>(type);
-				TupleType* new_tuple_type = new TupleType();
-				for (const Type* type: tuple_type->get_types()) {
-					// TODO: maybe intern the type
-					new_tuple_type->add_type(type);
-				}
-				return new_tuple_type;
-			}
 			case TypeId::CLOSURE: {
 				const ClosureType* closure_type = static_cast<const ClosureType*>(type);
 				ClosureType* new_closure_type = new ClosureType(closure_type->get_function());
@@ -272,10 +255,18 @@ public:
 				}
 				return new_struct_type;
 			}
-			case TypeId::VOID: return new VoidType();
-			case TypeId::NEVER: return new NeverType();
+			case TypeId::TUPLE: {
+				const TupleType* tuple_type = static_cast<const TupleType*>(type);
+				TupleType* new_tuple_type = new TupleType();
+				for (const Type* type: tuple_type->get_types()) {
+					// TODO: maybe intern the type
+					new_tuple_type->add_type(type);
+				}
+				return new_tuple_type;
+			}
 			case TypeId::ARRAY: return new ArrayType();
 			case TypeId::STRING: return new StringType();
+			case TypeId::VOID: return new VoidType();
 			case TypeId::TYPE: {
 				const TypeType* type_type = static_cast<const TypeType*>(type);
 				return new TypeType(type_type->get_type());
@@ -300,22 +291,6 @@ public:
 		}
 		return int_type;
 	}
-	static const Type* get_void_type() {
-		static const Type* void_type = nullptr;
-		if (void_type == nullptr) {
-			VoidType type;
-			void_type = intern(&type);
-		}
-		return void_type;
-	}
-	static const Type* get_never_type() {
-		static const Type* never_type = nullptr;
-		if (never_type == nullptr) {
-			NeverType type;
-			never_type = intern(&type);
-		}
-		return never_type;
-	}
 	static const Type* get_array_type() {
 		static const Type* array_type = nullptr;
 		if (array_type == nullptr) {
@@ -331,6 +306,14 @@ public:
 			string_type = intern(&type);
 		}
 		return string_type;
+	}
+	static const Type* get_void_type() {
+		static const Type* void_type = nullptr;
+		if (void_type == nullptr) {
+			VoidType type;
+			void_type = intern(&type);
+		}
+		return void_type;
 	}
 	static const Type* get_type_type(const Type* type) {
 		TypeType type_type(type);
@@ -415,10 +398,6 @@ public:
 	}
 	TypeId get_type_id() const {
 		return get_type()->get_id();
-	}
-	bool has_type(TypeId type) const {
-		const TypeId id = this->type->get_id();
-		return id == type || id == TypeId::NEVER;
 	}
 	void set_position(const SourcePosition& position) {
 		this->position = position;

@@ -171,7 +171,7 @@ public:
 	template <class F> bool parse(const StringView& s, F f) {
 		Cursor copy = cursor;
 		for (char c: s) {
-			if (!copy || *copy != c) {
+			if (!(copy && *copy == c)) {
 				return false;
 			}
 			++copy;
@@ -185,7 +185,7 @@ public:
 	bool parse(const StringView& s) {
 		Cursor copy = cursor;
 		for (char c: s) {
-			if (!copy || *copy != c) {
+			if (!(copy && *copy == c)) {
 				return false;
 			}
 			++copy;
