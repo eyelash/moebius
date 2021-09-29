@@ -2,6 +2,15 @@
 
 #include "ast.hpp"
 
+class GetInt: public Visitor<bool> {
+public:
+	std::int32_t value;
+	bool visit_int_literal(const IntLiteral& int_literal) override {
+		value = int_literal.get_value();
+		return true;
+	}
+};
+
 // type checking and monomorphization
 class Pass1: public Visitor<const Expression*> {
 	static StringView print_type(TypeId id) {
@@ -22,6 +31,22 @@ class Pass1: public Visitor<const Expression*> {
 		print_error(Printer(std::cerr), expression.get_position(), t);
 		std::exit(EXIT_FAILURE);
 	}
+	static std::int32_t execute_binary_operation(BinaryOperation operation, std::int32_t left, std::int32_t right) {
+		switch (operation) {
+			case BinaryOperation::ADD: return left + right;
+			case BinaryOperation::SUB: return left - right;
+			case BinaryOperation::MUL: return left * right;
+			case BinaryOperation::DIV: return left / right;
+			case BinaryOperation::REM: return left % right;
+			case BinaryOperation::EQ: return left == right;
+			case BinaryOperation::NE: return left != right;
+			case BinaryOperation::LT: return left < right;
+			case BinaryOperation::LE: return left <= right;
+			case BinaryOperation::GT: return left > right;
+			case BinaryOperation::GE: return left >= right;
+			default: return 0;
+		}
+	}
 	struct FunctionTableKey {
 		const Function* old_function;
 		std::vector<const Type*> argument_types;
@@ -41,9 +66,10 @@ class Pass1: public Visitor<const Expression*> {
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
 	ExpressionTable& expression_table;
 	Block* destination_block;
-	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block): program(program), function_table(function_table), key(key), expression_table(expression_table), destination_block(destination_block) {}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
-		Pass1 pass1(program, function_table, key, expression_table, destination_block);
+	bool omit_return;
+	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+		Pass1 pass1(program, function_table, key, expression_table, destination_block, omit_return);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(pass1, expression);
 			if (new_expression) {
@@ -54,10 +80,10 @@ class Pass1: public Visitor<const Expression*> {
 	}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, expression_table, destination_block, source_block);
+		return evaluate(program, function_table, key, expression_table, destination_block, source_block, false);
 	}
-	const Expression* evaluate(Block* destination_block, const Block& source_block) {
-		return evaluate(program, function_table, key, expression_table, destination_block, source_block);
+	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
+		return evaluate(program, function_table, key, expression_table, destination_block, source_block, omit_return);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -72,7 +98,25 @@ public:
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
 		if (left->get_type_id() == TypeId::INT && right->get_type_id() == TypeId::INT) {
+			GetInt get_left_int;
+			GetInt get_right_int;
+			if (visit(get_left_int, left) && visit(get_right_int, right)) {
+				return create<IntLiteral>(execute_binary_operation(binary_expression.get_operation(), get_left_int.value, get_right_int.value));
+			}
 			return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+		}
+		else if (left->get_type_id() == TypeId::TYPE && right->get_type_id() == TypeId::TYPE) {
+			const Type* left_type = static_cast<const TypeType*>(left->get_type())->get_type();
+			const Type* right_type = static_cast<const TypeType*>(right->get_type())->get_type();
+			if (binary_expression.get_operation() == BinaryOperation::EQ) {
+				return create<IntLiteral>(left_type == right_type);
+			}
+			else if (binary_expression.get_operation() == BinaryOperation::NE) {
+				return create<IntLiteral>(left_type != right_type);
+			}
+			else {
+				error(binary_expression, "invalid binary expression");
+			}
 		}
 		else {
 			error(binary_expression, format("binary expression of types % and %", print_type(left->get_type()), print_type(right->get_type())));
@@ -86,14 +130,25 @@ public:
 		if (condition->get_type_id() != TypeId::INT) {
 			error(if_, "type of condition must be a number");
 		}
-		If* new_if = create<If>(condition);
-		const Expression* then_expression = evaluate(new_if->get_then_block(), if_.get_then_block());
-		const Expression* else_expression = evaluate(new_if->get_else_block(), if_.get_else_block());
-		if (then_expression->get_type() != else_expression->get_type()) {
-			error(if_, "if and else branches must return values of the same type");
+		GetInt get_int;
+		if (visit(get_int, condition)) {
+			if (get_int.value) {
+				return evaluate(destination_block, if_.get_then_block(), true);
+			}
+			else {
+				return evaluate(destination_block, if_.get_else_block(), true);
+			}
 		}
-		new_if->set_type(then_expression->get_type());
-		return new_if;
+		else {
+			If* new_if = create<If>(condition);
+			const Expression* then_expression = evaluate(new_if->get_then_block(), if_.get_then_block(), false);
+			const Expression* else_expression = evaluate(new_if->get_else_block(), if_.get_else_block(), false);
+			if (then_expression->get_type() != else_expression->get_type()) {
+				error(if_, "if and else branches must return values of the same type");
+			}
+			new_if->set_type(then_expression->get_type());
+			return new_if;
+		}
 	}
 	const Expression* visit_tuple(const Tuple& tuple) override {
 		TupleType type;
@@ -237,6 +292,13 @@ public:
 		}
 	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
+		if (intrinsic.name_equals("typeOf")) {
+			if (intrinsic.get_arguments().size() != 1) {
+				error(intrinsic, "typeOf takes exactly 1 argument");
+			}
+			const Expression* expression = expression_table[intrinsic.get_arguments()[0]];
+			return create<TypeLiteral>(expression->get_type());
+		}
 		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name());
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(expression_table[argument]);
@@ -333,13 +395,6 @@ public:
 		else if (intrinsic.name_equals("free")) {
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
-		else if (intrinsic.name_equals("typeOf")) {
-			if (new_intrinsic->get_arguments().size() != 1) {
-				error(intrinsic, "typeOf takes exactly 1 argument");
-			}
-			const Expression* expression = new_intrinsic->get_arguments()[0];
-			new_intrinsic->set_type(TypeInterner::get_type_type(expression->get_type()));
-		}
 		return new_intrinsic;
 	}
 	const Expression* visit_bind(const Bind& bind) override {
@@ -352,7 +407,12 @@ public:
 	}
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = expression_table[return_.get_expression()];
-		return create<Return>(expression);
+		if (omit_return) {
+			return expression;
+		}
+		else {
+			return create<Return>(expression);
+		}
 	}
 	const Expression* visit_type_literal(const TypeLiteral& type_literal) override {
 		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();

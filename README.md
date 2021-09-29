@@ -17,7 +17,7 @@
   - [x] monomorphization
   - [ ] dead code elimination
   - [x] inlining
-  - [ ] constant propagation
+  - [x] constant propagation
   - [x] tail call optimization
   - [ ] common subexpression elimination
   - [ ] graph coloring register allocation
