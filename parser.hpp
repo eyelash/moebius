@@ -10,13 +10,11 @@ struct BinaryOperator {
 	using Create = Expression* (*)(const Expression* left, const Expression* right);
 	Create create;
 	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
-	constexpr BinaryOperator(): string(nullptr), create(nullptr) {}
-	constexpr operator bool() const {
-		return string != nullptr;
-	}
 };
 
-constexpr BinaryOperator operators[][5] = {
+using OperatorLevel = std::initializer_list<BinaryOperator>;
+
+constexpr std::initializer_list<OperatorLevel> operators = {
 	{
 		BinaryOperator(">>", Bind::create)
 	},
@@ -273,13 +271,13 @@ class MoebiusParser: private Parser {
 		parse_all(alphanumeric);
 		return cursor - start;
 	}
-	BinaryOperator parse_operator(int level) {
-		for (int i = 0; operators[level][i]; ++i) {
-			if (parse(operators[level][i].string, operator_char)) {
-				return operators[level][i];
+	const BinaryOperator* parse_operator(const OperatorLevel* level) {
+		for (const BinaryOperator& op: *level) {
+			if (parse(op.string, operator_char)) {
+				return &op;
 			}
 		}
-		return BinaryOperator();
+		return nullptr;
 	}
 	const char* parse_intrinsic_name() {
 		StringView name = parse_identifier();
@@ -464,8 +462,8 @@ class MoebiusParser: private Parser {
 			error("unexpected character");
 		}
 	}
-	const Expression* parse_expression(int level = 0) {
-		if (level == 5) {
+	const Expression* parse_expression(const OperatorLevel* level = operators.begin()) {
+		if (level == operators.end()) {
 			const Expression* expression = parse_expression_last();
 			parse_white_space();
 			while (true) {
@@ -551,10 +549,10 @@ class MoebiusParser: private Parser {
 		const Expression* left = parse_expression(level + 1);
 		parse_white_space();
 		SourcePosition position = cursor.get_position();
-		while (BinaryOperator op = parse_operator(level)) {
+		while (const BinaryOperator* op = parse_operator(level)) {
 			parse_white_space();
 			const Expression* right = parse_expression(level + 1);
-			Expression* expression = op.create(left, right);
+			Expression* expression = op->create(left, right);
 			expression->set_position(position);
 			current_scope->add_expression(expression);
 			left = expression;
