@@ -233,7 +233,11 @@ public:
 		const Variable result = next_variable();
 		if (intrinsic.name_equals("putChar")) {
 			const Variable argument = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("putchar(%);", argument));
+			printer.println(format("fputc(%, stdout);", argument));
+		}
+		else if (intrinsic.name_equals("putStr")) {
+			const Variable argument = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("fputs(%.elements, stdout);", argument));
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			const Type type = function_table.get_type(intrinsic.get_type());

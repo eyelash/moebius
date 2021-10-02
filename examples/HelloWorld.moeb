@@ -1,10 +1,3 @@
-func putStrLn(s) = {
-	func putStrLn(s, i): Void =
-		if (i < @stringLength(s))
-			@putChar(@stringGet(s, i)) >> putStrLn(s, i + 1)
-		else
-			@putChar('\n')
-	return putStrLn(s, 0)
-}
+func putStrLn(s) = @putStr(s) >> @putChar('\n')
 
 return putStrLn("Hello, World!")

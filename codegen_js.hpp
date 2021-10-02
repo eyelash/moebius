@@ -135,6 +135,11 @@ public:
 			printer.println(format("putChar(%);", argument));
 			printer.println(format("const % = null;", result));
 		}
+		else if (intrinsic.name_equals("putStr")) {
+			const Variable argument = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("putStr(%);", argument));
+			printer.println(format("const % = null;", result));
+		}
 		else if (intrinsic.name_equals("getChar")) {
 			// TODO
 		}
@@ -268,6 +273,11 @@ public:
 			printer.println_increasing("else {");
 			printer.println("stdoutBuffer.push(c);");
 			printer.println_decreasing("}");
+			printer.println_decreasing("}");
+		}
+		{
+			printer.println_increasing("function putStr(s) {");
+			printer.println("s.forEach(putChar);");
 			printer.println_decreasing("}");
 		}
 		printer.println("</script></head><body></body></html>");

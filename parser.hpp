@@ -41,6 +41,7 @@ constexpr std::initializer_list<OperatorLevel> operators = {
 
 constexpr const char* intrinsics[] = {
 	"putChar",
+	"putStr",
 	"getChar",
 	"arrayNew",
 	"arrayGet",

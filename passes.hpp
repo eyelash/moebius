@@ -307,6 +307,10 @@ public:
 			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::INT});
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
+		else if (intrinsic.name_equals("putStr")) {
+			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::STRING});
+			new_intrinsic->set_type(TypeInterner::get_void_type());
+		}
 		else if (intrinsic.name_equals("getChar")) {
 			ensure_argument_types(intrinsic, new_intrinsic, {});
 			new_intrinsic->set_type(TypeInterner::get_int_type());
@@ -1008,7 +1012,8 @@ class Pass4: public Visitor<const Expression*> {
 			(intrinsic.name_equals("arraySplice") && i == 3) ||
 			(intrinsic.name_equals("stringGet") && i == 0) ||
 			(intrinsic.name_equals("stringLength") && i == 0) ||
-			(intrinsic.name_equals("stringSplice") && i == 3);
+			(intrinsic.name_equals("stringSplice") && i == 3) ||
+			(intrinsic.name_equals("putStr") && i == 0);
 	}
 	const Expression* copy(const Expression* resource) {
 		Intrinsic* copy_intrinsic = create<Intrinsic>("copy", resource->get_type());
