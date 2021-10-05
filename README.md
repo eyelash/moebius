@@ -1,5 +1,7 @@
 # Moebius
 
+a simple and fast functional programming language
+
 ## Selling Points
 
 - simplicity
@@ -10,7 +12,7 @@
 ## Roadmap
 
 - codegen
-  - [x] x86
+  - [ ] x86
   - [x] C
   - [x] JavaScript
 - optimizations
@@ -34,6 +36,7 @@
   - [x] arithmetic (`+`, `-`, `*`, `/`, and `%`)
   - [x] relational (`==`, `!=`, `<`, `<=`, `>`, and `>=`)
   - [ ] logical (`&&`, `||`, and `!`)
+- [x] compile-time garbage collection
+- [x] compile-time reflection
 - [ ] testing
 - [ ] monadic IO
-- [ ] metaprogramming/reflection

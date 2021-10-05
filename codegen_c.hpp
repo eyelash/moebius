@@ -156,7 +156,7 @@ public:
 	Variable visit_if(const If& if_) override {
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();
-		if (if_.get_type()->get_id() == TypeId::VOID) {
+		if (if_.get_type_id() == TypeId::VOID) {
 			printer.println_increasing(format("if (%) {", condition));
 			evaluate(if_.get_then_block());
 			printer.println_decreasing("}");

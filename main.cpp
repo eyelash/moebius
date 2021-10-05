@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
 		print_error(Printer(std::cerr), "no input file");
 		return EXIT_FAILURE;
 	}
-	std::unique_ptr<Program> program = parse(arguments.source_path);
+	std::unique_ptr<Program> program = MoebiusParser::parse_program(arguments.source_path);
 	program = Pass1::run(*program);
 	program = Pass2::run(*program);
 	program = Pass1::run(*program);

@@ -206,7 +206,7 @@ public:
 };
 
 class MoebiusParser: private Parser {
-	std::unique_ptr<Program> program;
+	Program* program;
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const SourcePosition& position, const T& t) {
 		print_error(Printer(std::cerr), position, t);
@@ -491,8 +491,8 @@ class MoebiusParser: private Parser {
 					StringView name = parse_identifier();
 					parse_white_space();
 					// method call syntax
-					if (parse("(")) {
-						const Expression* function = current_scope->look_up(name);
+					const Expression* function = current_scope->look_up(name);
+					if (function && parse("(")) {
 						if (function == nullptr) {
 							error(format("undefined variable \"%\"", name));
 						}
@@ -514,9 +514,8 @@ class MoebiusParser: private Parser {
 						parse_white_space();
 					}
 					else {
-						StructAccess* struct_access = new StructAccess(expression, name);
+						StructAccess* struct_access = current_scope->create<StructAccess>(expression, name);
 						struct_access->set_position(position);
-						current_scope->add_expression(struct_access);
 						expression = struct_access;
 					}
 				}
@@ -668,9 +667,8 @@ class MoebiusParser: private Parser {
 		return parse_expression();
 	}
 public:
-	MoebiusParser(const SourceFile* file): Parser(file) {}
-	std::unique_ptr<Program> parse_program() {
-		program = std::make_unique<Program>();
+	MoebiusParser(const SourceFile* file, Program* program): Parser(file), program(program) {}
+	const Function* parse_program() {
 		parse_white_space();
 		Function* main_function = new Function();
 		program->add_function(main_function);
@@ -681,12 +679,16 @@ public:
 		if (cursor) {
 			error("unexpected character at end of program");
 		}
-		return std::move(program);
+		return main_function;
+	}
+	static const Function* parse_program(const char* file_name, Program* program) {
+		SourceFile file(file_name);
+		MoebiusParser parser(&file, program);
+		return parser.parse_program();
+	}
+	static std::unique_ptr<Program> parse_program(const char* file_name) {
+		std::unique_ptr<Program> program = std::make_unique<Program>();
+		parse_program(file_name, program.get());
+		return program;
 	}
 };
-
-std::unique_ptr<Program> parse(const char* file_name) {
-	SourceFile file(file_name);
-	MoebiusParser parser(&file);
-	return parser.parse_program();
-}

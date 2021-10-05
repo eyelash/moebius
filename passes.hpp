@@ -704,7 +704,7 @@ class Pass3: public Visitor<const Expression*> {
 		}
 	};
 	Program* program;
-	using FunctionTable = std::map<const Function*, const Function*>;
+	using FunctionTable = std::map<const Function*, Function*>;
 	FunctionTable& function_table;
 	const Function* function;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
@@ -813,18 +813,6 @@ public:
 				new_call->add_argument(expression_table[argument]);
 			}
 		}
-		if (function_table[call.get_function()] == nullptr) {
-			std::vector<const Type*> argument_types;
-			for (const Type* type: call.get_function()->get_argument_types()) {
-				if (!is_empty_tuple(type)) {
-					argument_types.push_back(type);
-				}
-			}
-			Function* new_function = new Function(argument_types, call.get_function()->get_return_type());
-			program->add_function(new_function);
-			function_table[call.get_function()] = new_function;
-			evaluate(program, function_table, call.get_function(), new_function->get_block(), call.get_function()->get_block());
-		}
 		new_call->set_function(function_table[call.get_function()]);
 		return new_call;
 	}
@@ -845,12 +833,23 @@ public:
 		return create<Return>(expression);
 	}
 	static std::unique_ptr<Program> run(const Program& program) {
-		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Function* new_function = new Function(main_function->get_return_type());
-		new_program->add_function(new_function);
-		evaluate(new_program.get(), function_table, main_function, new_function->get_block(), main_function->get_block());
+		for (const Function* function: program) {
+			std::vector<const Type*> argument_types;
+			for (const Type* type: function->get_argument_types()) {
+				if (!is_empty_tuple(type)) {
+					argument_types.push_back(type);
+				}
+			}
+			Function* new_function = new Function(argument_types, function->get_return_type());
+			new_program->add_function(new_function);
+			function_table[function] = new_function;
+		}
+		for (const Function* function: program) {
+			Function* new_function = function_table[function];
+			evaluate(new_program.get(), function_table, function, new_function->get_block(), function->get_block());
+		}
 		return new_program;
 	}
 };
@@ -867,34 +866,33 @@ class Pass4: public Visitor<const Expression*> {
 		return expression->get_type_id() == TypeId::ARRAY || expression->get_type_id() == TypeId::STRING;
 	}
 	class UsageAnalysis1: public Visitor<void> {
-		const Block* current_block;
-		std::size_t current_level;
 		UsageAnalysisTable& table;
+		const Block* block;
+		std::size_t level;
 	public:
-		UsageAnalysis1(UsageAnalysisTable& table): current_block(nullptr), current_level(0), table(table) {}
+		UsageAnalysis1(UsageAnalysisTable& table, const Block* block, std::size_t level): table(table), block(block), level(level) {}
 		void add_usage(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
-			table.usages[current_block][resource] = std::make_pair(consumer, argument_index);
+			table.usages[block][resource] = std::make_pair(consumer, argument_index);
 		}
 		void propagate_usages(const Block* block, const Expression* consumer) {
 			for (auto& entry: table.usages[block]) {
 				const Expression* resource = entry.first;
-				if (table.levels[resource] <= current_level) {
+				if (table.levels[resource] <= level) {
 					add_usage(resource, consumer, 0);
 				}
 			}
 		}
-		void evaluate(const Block& block) {
-			const Block* previous_block = current_block;
-			current_block = &block;
-			++current_level;
+		static void evaluate(UsageAnalysisTable& table, const Block& block, std::size_t level = 1) {
+			UsageAnalysis1 usage_analysis1(table, &block, level);
 			for (const Expression* expression: block) {
 				if (is_managed(expression)) {
-					table.levels[expression] = current_level;
+					table.levels[expression] = level;
 				}
-				visit(*this, expression);
+				visit(usage_analysis1, expression);
 			}
-			--current_level;
-			current_block = previous_block;
+		}
+		void evaluate(const Block& block) {
+			evaluate(table, block, level + 1);
 		}
 		void visit_if(const If& if_) override {
 			evaluate(if_.get_then_block());
@@ -925,19 +923,19 @@ class Pass4: public Visitor<const Expression*> {
 		}
 	};
 	class UsageAnalysis2: public Visitor<void> {
-		const Block* current_block;
 		UsageAnalysisTable& table;
-		std::size_t current_level;
+		const Block* block;
+		std::size_t level;
 	public:
-		UsageAnalysis2(UsageAnalysisTable& table): current_block(nullptr), table(table), current_level(0) {}
+		UsageAnalysis2(UsageAnalysisTable& table, const Block* block, std::size_t level): table(table), block(block), level(level) {}
 		bool is_last_use(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
-			return table.usages[current_block][resource] == std::make_pair(consumer, argument_index);
+			return table.usages[block][resource] == std::make_pair(consumer, argument_index);
 		}
 		void remove_invalid_usages(const Block* block, const Expression* consumer) {
 			auto iterator = table.usages[block].begin();
 			while (iterator != table.usages[block].end()) {
 				const Expression* resource = iterator->first;
-				if (table.levels[resource] <= current_level && !is_last_use(resource, consumer, 0)) {
+				if (table.levels[resource] <= level && !is_last_use(resource, consumer, 0)) {
 					iterator = table.usages[block].erase(iterator);
 				}
 				else {
@@ -948,21 +946,20 @@ class Pass4: public Visitor<const Expression*> {
 		void ensure_frees(const Block* source_block, const Block* target_block) {
 			for (auto& entry: table.usages[source_block]) {
 				const Expression* resource = entry.first;
-				if (table.usages[target_block].find(resource) == table.usages[target_block].end() && table.levels[resource] < current_level + 1) {
+				if (table.usages[target_block].find(resource) == table.usages[target_block].end() && table.levels[resource] < level + 1) {
 					// if a resource from the source block has no usage in the target block, add it to the free list
 					table.frees[target_block].push_back(resource);
 				}
 			}
 		}
-		void evaluate(const Block& block) {
-			const Block* previous_block = current_block;
-			current_block = &block;
-			++current_level;
+		static void evaluate(UsageAnalysisTable& table, const Block& block, std::size_t level = 1) {
+			UsageAnalysis2 usage_analysis2(table, &block, level);
 			for (const Expression* expression: block) {
-				visit(*this, expression);
+				visit(usage_analysis2, expression);
 			}
-			--current_level;
-			current_block = previous_block;
+		}
+		void evaluate(const Block& block) {
+			evaluate(table, block, level + 1);
 		}
 		void visit_if(const If& if_) override {
 			remove_invalid_usages(&if_.get_then_block(), &if_);
@@ -973,37 +970,24 @@ class Pass4: public Visitor<const Expression*> {
 			evaluate(if_.get_else_block());
 		}
 	};
-	class Scope {
-		Scope*& current_scope;
-		Scope* previous_scope;
-	public:
-		Block* block;
-		const Block* old_block;
-		Scope(Scope*& current_scope, Block* block, const Block* old_block): current_scope(current_scope), block(block), old_block(old_block) {
-			previous_scope = current_scope;
-			current_scope = this;
-		}
-		~Scope() {
-			current_scope = previous_scope;
-		}
-	};
 	Program* program;
-	Scope* current_scope;
-	Block* current_block;
-	using FunctionTable = std::map<const Function*, const Function*>;
+	using FunctionTable = std::map<const Function*, Function*>;
 	FunctionTable& function_table;
 	UsageAnalysisTable& usage_analysis;
-	std::map<const Expression*, const Expression*> expression_table;
+	using ExpressionTable = std::map<const Expression*, const Expression*>;
+	ExpressionTable& expression_table;
+	Block* destination_block;
+	const Block* source_block;
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
-		current_scope->block->add_expression(expression);
+		destination_block->add_expression(expression);
 		return expression;
 	}
 	bool is_last_use(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
-		return usage_analysis.usages[current_scope->old_block][resource] == std::make_pair(consumer, argument_index);
+		return usage_analysis.usages[source_block][resource] == std::make_pair(consumer, argument_index);
 	}
 	bool is_unused(const Expression* resource) {
-		return usage_analysis.usages[current_scope->old_block].count(resource) == 0;
+		return usage_analysis.usages[source_block].count(resource) == 0;
 	}
 	bool is_borrowed(const Intrinsic& intrinsic, std::size_t i) {
 		return
@@ -1025,15 +1009,22 @@ class Pass4: public Visitor<const Expression*> {
 		free_intrinsic->add_argument(resource);
 	}
 public:
-	Pass4(Program* program, FunctionTable& function_table, UsageAnalysisTable& usage_analysis): program(program), function_table(function_table), usage_analysis(usage_analysis) {}
-	void evaluate(Block* destination_block, const Block& source_block) {
-		Scope scope(current_scope, destination_block, &source_block);
-		for (const Expression* expression: usage_analysis.frees[current_scope->old_block]) {
-			free(expression_table[expression]);
+	Pass4(Program* program, FunctionTable& function_table, UsageAnalysisTable& usage_analysis, ExpressionTable& expression_table, Block* destination_block, const Block* source_block): program(program), function_table(function_table), usage_analysis(usage_analysis), expression_table(expression_table), destination_block(destination_block), source_block(source_block) {}
+	static void evaluate(Program* program, FunctionTable& function_table, UsageAnalysisTable& usage_analysis, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
+		Pass4 pass4(program, function_table, usage_analysis, expression_table, destination_block, &source_block);
+		for (const Expression* expression: usage_analysis.frees[&source_block]) {
+			pass4.free(expression_table[expression]);
 		}
 		for (const Expression* expression: source_block) {
-			expression_table[expression] = visit(*this, expression);
+			expression_table[expression] = visit(pass4, expression);
 		}
+	}
+	static void evaluate(Program* program, FunctionTable& function_table, UsageAnalysisTable& usage_analysis, Block* destination_block, const Block& source_block) {
+		ExpressionTable expression_table;
+		evaluate(program, function_table, usage_analysis, expression_table, destination_block, source_block);
+	}
+	void evaluate(Block* destination_block, const Block& source_block) {
+		evaluate(program, function_table, usage_analysis, expression_table, destination_block, source_block);
 	}
 	const Expression* visit_int_literal(const IntLiteral& int_literal) override {
 		return create<IntLiteral>(int_literal.get_value());
@@ -1078,14 +1069,7 @@ public:
 				new_call->add_argument(expression_table[argument]);
 			}
 		}
-		current_scope->block->add_expression(new_call);
-		if (function_table[call.get_function()] == nullptr) {
-			Function* new_function = new Function(call.get_function()->get_argument_types(), call.get_function()->get_return_type());
-			program->add_function(new_function);
-			function_table[call.get_function()] = new_function;
-			Pass4 pass4(program, function_table, usage_analysis);
-			pass4.evaluate(new_function->get_block(), call.get_function()->get_block());
-		}
+		destination_block->add_expression(new_call);
 		new_call->set_function(function_table[call.get_function()]);
 		if (is_managed(&call) && is_unused(&call)) {
 			free(new_call);
@@ -1103,7 +1087,7 @@ public:
 				new_intrinsic->add_argument(expression_table[argument]);
 			}
 		}
-		current_scope->block->add_expression(new_intrinsic);
+		destination_block->add_expression(new_intrinsic);
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
 			if (is_managed(argument) && is_borrowed(intrinsic, i) && is_last_use(argument, &intrinsic, i)) {
@@ -1129,24 +1113,21 @@ public:
 			return create<Return>(expression_table[expression]);
 		}
 	}
-	static void perform_usage_analysis(const Program& program, UsageAnalysisTable& table) {
-		for (const Function* function: program) {
-			UsageAnalysis1 usage_analysis1(table);
-			usage_analysis1.evaluate(function->get_block());
-			UsageAnalysis2 usage_analysis2(table);
-			usage_analysis2.evaluate(function->get_block());
-		}
-	}
 	static std::unique_ptr<Program> run(const Program& program) {
-		UsageAnalysisTable usage_analysis;
-		perform_usage_analysis(program, usage_analysis);
-		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
-		Pass4 pass4(new_program.get(), function_table, usage_analysis);
-		Function* new_function = new Function(main_function->get_return_type());
-		new_program->add_function(new_function);
-		pass4.evaluate(new_function->get_block(), main_function->get_block());
+		for (const Function* function: program) {
+			Function* new_function = new Function(function->get_argument_types(), function->get_return_type());
+			new_program->add_function(new_function);
+			function_table[function] = new_function;
+		}
+		for (const Function* function: program) {
+			Function* new_function = function_table[function];
+			UsageAnalysisTable usage_analysis;
+			UsageAnalysis1::evaluate(usage_analysis, function->get_block());
+			UsageAnalysis2::evaluate(usage_analysis, function->get_block());
+			evaluate(new_program.get(), function_table, usage_analysis, new_function->get_block(), function->get_block());
+		}
 		return new_program;
 	}
 };

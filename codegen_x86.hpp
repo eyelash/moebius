@@ -2,7 +2,6 @@
 
 #include "ast.hpp"
 #include "assembler.hpp"
-#include <filesystem>
 
 class CodegenX86: public Visitor<std::uint32_t> {
 	using A = Assembler;
