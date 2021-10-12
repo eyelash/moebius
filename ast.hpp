@@ -29,6 +29,7 @@ class ReturnType;
 
 enum class TypeId {
 	INT,
+	CHAR,
 	CLOSURE,
 	STRUCT,
 	TUPLE,
@@ -48,6 +49,13 @@ class IntType: public Type {
 public:
 	TypeId get_id() const override {
 		return TypeId::INT;
+	}
+};
+
+class CharType: public Type {
+public:
+	TypeId get_id() const override {
+		return TypeId::CHAR;
 	}
 };
 
@@ -237,6 +245,7 @@ public:
 	static Type* copy(const Type* type) {
 		switch (type->get_id()) {
 			case TypeId::INT: return new IntType();
+			case TypeId::CHAR: return new CharType();
 			case TypeId::CLOSURE: {
 				const ClosureType* closure_type = static_cast<const ClosureType*>(type);
 				ClosureType* new_closure_type = new ClosureType(closure_type->get_function());
@@ -290,6 +299,14 @@ public:
 			int_type = intern(&type);
 		}
 		return int_type;
+	}
+	static const Type* get_char_type() {
+		static const Type* char_type = nullptr;
+		if (char_type == nullptr) {
+			CharType type;
+			char_type = intern(&type);
+		}
+		return char_type;
 	}
 	static const Type* get_array_type() {
 		static const Type* array_type = nullptr;
