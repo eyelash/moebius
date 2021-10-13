@@ -9,6 +9,20 @@ a simple and fast functional programming language
 - safety
 - a fast compiler
 
+## Instructions
+
+```bash
+# clone the repo
+git clone https://github.com/eyelash/moebius
+# compile the compiler
+cmake .
+make
+# compile some moebius code
+./compiler examples/HelloWorld.moeb
+# run the compiled code
+examples/HelloWorld.moeb.exe
+```
+
 ## Roadmap
 
 - codegen
