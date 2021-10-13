@@ -59,12 +59,6 @@ class CodegenC: public Visitor<Variable> {
 				return iterator->second;
 			}
 			switch (type->get_id()) {
-				case TypeId::VOID: {
-					const std::size_t index = types.size();
-					type_declaration_printer.println(format("typedef void %;", Type(index)));
-					types[type] = index;
-					return index;
-				}
 				case TypeId::INT: {
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef int32_t %;", Type(index)));
@@ -104,6 +98,12 @@ class CodegenC: public Visitor<Variable> {
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
 					types[type] = index;
 					generate_array_functions(type, type->get_id() == TypeId::STRING);
+					return index;
+				}
+				case TypeId::VOID: {
+					const std::size_t index = types.size();
+					type_declaration_printer.println(format("typedef void %;", Type(index)));
+					types[type] = index;
 					return index;
 				}
 				default: {
@@ -204,6 +204,11 @@ class CodegenC: public Visitor<Variable> {
 
 			// array_splice
 			printer.println_increasing(format("static % %_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, array_type, number_type, number_type, element_type, number_type));
+			if (is_managed(get_element_type(type))) {
+				printer.println_increasing(format("for (% i = 0; i < remove; i++) {", number_type));
+				printer.println(format("%_free(array.elements[index + i]);", element_type));
+				printer.println_decreasing("}");
+			}
 			printer.println(format("% new_length = array.length - remove + insert_length;", number_type));
 			printer.println_increasing("if (new_length > array.capacity) {");
 			printer.println(format("% new_capacity = array.capacity * 2;", number_type));
@@ -348,12 +353,7 @@ public:
 		const Variable tuple = expression_table[tuple_access.get_tuple()];
 		const Variable result = next_variable();
 		const Type result_type = function_table.get_type(tuple_access.get_type());
-		if (is_managed(tuple_access.get_type())) {
-			printer.println(format("% % = %_copy(%.v%);", result_type, result, result_type, tuple, print_number(tuple_access.get_index())));
-		}
-		else {
-			printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
-		}
+		printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
 		return result;
 	}
 	Variable visit_argument(const Argument& argument) override {
@@ -414,18 +414,13 @@ public:
 				printer.print(format("}, %);", print_number(size)));
 			}));
 		}
-		else if (intrinsic.name_equals("arrayGet") || intrinsic.name_equals("stringGet")) {
+		else if (intrinsic.name_equals("arrayGet")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			if (is_managed(intrinsic.get_type())) {
-				printer.println(format("% % = %_copy(%.elements[%]);", type, result, type, array, index));
-			}
-			else {
-				printer.println(format("% % = %.elements[%];", type, result, array, index));
-			}
+			printer.println(format("% % = %.elements[%];", type, result, array, index));
 		}
-		else if (intrinsic.name_equals("arrayLength") || intrinsic.name_equals("stringLength")) {
+		else if (intrinsic.name_equals("arrayLength")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_type());
 			printer.println(format("% % = %.length;", type, result, array));
@@ -436,36 +431,15 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == TypeId::ARRAY) {
+			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type() == intrinsic.get_type()) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
 				printer.println(format("% % = %_splice(%, %, %, %.elements, %.length);", type, result, type, array, index, remove, insert, insert));
+				printer.println(format("free(%.elements);", insert));
 			}
 			else {
 				const std::size_t insert = intrinsic.get_arguments().size() - 3;
 				printer.println(print_functor([&](auto& printer) {
 					printer.print(format("% % = %_splice(%, %, %, (%[]){", type, result, type, array, index, remove, element_type));
-					for (std::size_t i = 0; i < insert; ++i) {
-						if (i > 0) printer.print(", ");
-						printer.print(expression_table[intrinsic.get_arguments()[i + 3]]);
-					}
-					printer.print(format("}, %);", print_number(insert)));
-				}));
-			}
-		}
-		else if (intrinsic.name_equals("stringSplice")) {
-			const Type type = function_table.get_type(intrinsic.get_type());
-			const Type element_type = function_table.get_type(get_element_type(intrinsic.get_type()));
-			const Variable string = expression_table[intrinsic.get_arguments()[0]];
-			const Variable index = expression_table[intrinsic.get_arguments()[1]];
-			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == TypeId::STRING) {
-				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
-				printer.println(format("% % = %_splice(%, %, %, %.elements, %.length);", type, result, type, string, index, remove, insert, insert));
-			}
-			else {
-				const std::size_t insert = intrinsic.get_arguments().size() - 3;
-				printer.println(print_functor([&](auto& printer) {
-					printer.print(format("% % = %_splice(%, %, %, (%[]){", type, result, type, string, index, remove, element_type));
 					for (std::size_t i = 0; i < insert; ++i) {
 						if (i > 0) printer.print(", ");
 						printer.print(expression_table[intrinsic.get_arguments()[i + 3]]);

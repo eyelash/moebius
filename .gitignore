@@ -1,0 +1,11 @@
+examples/*.c
+examples/*.exe
+examples/*.html
+
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+build.ninja
+rules.ninja
+compiler

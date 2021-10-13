@@ -19,9 +19,6 @@ class CodegenJS: public Visitor<Variable> {
 			default: return StringView();
 		}
 	}
-	static bool is_managed(const ::Type* type) {
-		return type->get_id() == TypeId::ARRAY || type->get_id() == TypeId::STRING;
-	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
 	public:
@@ -119,7 +116,7 @@ public:
 				printer.println(format("% = %;", Variable(i), argument));
 			}
 			printer.println("continue;");
-			printer.println(format("let %;", result));
+			printer.println(format("const % = null;", result));
 		}
 		else printer.println(print_functor([&](auto& printer) {
 			printer.print(format("const % = f%(", result, print_number(new_index)));
@@ -156,17 +153,12 @@ public:
 				printer.print("];");
 			}));
 		}
-		else if (intrinsic.name_equals("arrayGet") || intrinsic.name_equals("stringGet")) {
+		else if (intrinsic.name_equals("arrayGet")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
-			if (is_managed(intrinsic.get_type())) {
-				printer.println(format("const % = %[%].slice();", result, array, index));
-			}
-			else {
-				printer.println(format("const % = %[%];", result, array, index));
-			}
+			printer.println(format("const % = %[%];", result, array, index));
 		}
-		else if (intrinsic.name_equals("arrayLength") || intrinsic.name_equals("stringLength")) {
+		else if (intrinsic.name_equals("arrayLength")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			printer.println(format("const % = %.length;", result, array));
 		}
@@ -174,7 +166,7 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == TypeId::ARRAY) {
+			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type() == intrinsic.get_type()) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
 				printer.println(format("%.splice(%, %, ...%);", array, index, remove, insert));
 			}
@@ -191,30 +183,15 @@ public:
 			}
 			printer.println(format("const % = %;", result, array));
 		}
-		else if (intrinsic.name_equals("stringSplice")) {
-			const Variable string = expression_table[intrinsic.get_arguments()[0]];
-			const Variable index = expression_table[intrinsic.get_arguments()[1]];
-			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
-			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type_id() == TypeId::STRING) {
-				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
-				printer.println(format("%.splice(%, %, ...%);", string, index, remove, insert));
+		else if (intrinsic.name_equals("copy")) {
+			const Expression* resource = intrinsic.get_arguments()[0];
+			if (resource->get_type_id() == TypeId::ARRAY || resource->get_type_id() == TypeId::STRING) {
+				// TODO: some of these copies are unnecessary
+				printer.println(format("const % = %.slice();", result, expression_table[resource]));
 			}
 			else {
-				const std::size_t insert = intrinsic.get_arguments().size() - 3;
-				printer.println(print_functor([&](auto& printer) {
-					printer.print(format("%.splice(%, %", string, index, remove));
-					for (std::size_t i = 0; i < insert; ++i) {
-						printer.print(", ");
-						printer.print(expression_table[intrinsic.get_arguments()[i + 3]]);
-					}
-					printer.print(");");
-				}));
+				printer.println(format("const % = %;", result, expression_table[resource]));
 			}
-			printer.println(format("const % = %;", result, string));
-		}
-		else if (intrinsic.name_equals("copy")) {
-			const Variable array = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("const % = %.slice();", result, array));
 		}
 		return result;
 	}

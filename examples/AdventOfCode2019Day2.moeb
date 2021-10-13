@@ -4,19 +4,11 @@ func putChar(c) = @putChar(c)
 func putStr(s) = @putStr(s)
 func putStrLn(s) = putStr(s) >> putChar('\n')
 
-func length(array) = if (@typeOf(array) == String) @stringLength(array) else @arrayLength(array)
-func get(array, index) = if (@typeOf(array) == String) @stringGet(array, index) else @arrayGet(array, index)
-func set(array, index, newElement) =
-	if (@typeOf(array) == String)
-		@stringSplice(array, index, 1, newElement)
-	else
-		@arraySplice(array, index, 1, newElement)
-func push(array, element) =
-	if (@typeOf(array) == String)
-		@stringSplice(array, @stringLength(array), 0, element)
-	else
-		@arraySplice(array, @arrayLength(array), 0, element)
-func concat(string1, string2) = @stringSplice(string1, @stringLength(string1), 0, string2)
+func length(array) = @arrayLength(array)
+func get(array, index) = @arrayGet(array, index)
+func set(array, index, newElement) = @arraySplice(array, index, 1, newElement)
+func push(array, element) = @arraySplice(array, @arrayLength(array), 0, element)
+func concat(array1, array2) = @arraySplice(array1, @arrayLength(array1), 0, array2)
 
 func toString(n) = {
 	func toString(n, prefix): String =

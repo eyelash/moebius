@@ -13,8 +13,8 @@ public:
 
 // type checking and monomorphization
 class Pass1: public Visitor<const Expression*> {
-	static StringView print_type(TypeId id) {
-		switch (id) {
+	static StringView print_type(const Type* type) {
+		switch (type->get_id()) {
 			case TypeId::INT: return "Int";
 			case TypeId::CLOSURE: return "Function";
 			case TypeId::ARRAY: return "Array";
@@ -23,9 +23,6 @@ class Pass1: public Visitor<const Expression*> {
 			case TypeId::TYPE: return "Type";
 			default: return StringView();
 		}
-	}
-	static StringView print_type(const Type* type) {
-		return print_type(type->get_id());
 	}
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
 		print_error(Printer(std::cerr), expression.get_position(), t);
@@ -198,8 +195,8 @@ public:
 		Closure* new_closure = create<Closure>(nullptr);
 		for (const Expression* expression: closure.get_environment_expressions()) {
 			const Expression* new_expression = expression_table[expression];
-			if (new_expression->get_type_id() == TypeId::ARRAY) {
-				error(closure, "closures capturing arrays are not yet supported");
+			if (new_expression->get_type_id() == TypeId::TYPE) {
+				error(closure, "closures capturing types are not yet supported");
 			}
 			type.add_environment_type(new_expression->get_type());
 			new_closure->add_environment_expression(new_expression);
@@ -260,24 +257,36 @@ public:
 		new_call->set_function(function_table[new_key]);
 		return new_call;
 	}
-	void ensure_argument_types(const Intrinsic& intrinsic, const Intrinsic* new_intrinsic, std::initializer_list<TypeId> types) {
-		const std::vector<const Expression*>& arguments = new_intrinsic->get_arguments();
-		if (arguments.size() != types.size()) {
-			error(intrinsic, format("% takes % argument(s)", intrinsic.get_name(), print_number(types.size())));
+	void ensure_argument_count(const Intrinsic& intrinsic, std::size_t argument_count) {
+		if (intrinsic.get_arguments().size() != argument_count) {
+			error(intrinsic, format("% takes % %", intrinsic.get_name(), print_number(argument_count), argument_count == 1 ? "argument" : "arguments"));
 		}
+	}
+	void ensure_argument_types(const Intrinsic& intrinsic, std::initializer_list<const Type*> types) {
+		ensure_argument_count(intrinsic, types.size());
 		std::size_t i = 0;
-		for (TypeId id: types) {
-			if (arguments[i]->get_type_id() != id) {
-				error(intrinsic, format("argument % of % must be of type %", print_number(i + 1), intrinsic.get_name(), print_type(id)));
+		for (const Type* type: types) {
+			const Expression* argument = expression_table[intrinsic.get_arguments()[i]];
+			if (argument->get_type() != type) {
+				error(intrinsic, format("argument % of % must be of type %", print_number(i + 1), intrinsic.get_name(), print_type(type)));
 			}
 			++i;
 		}
 	}
+	const Type* get_element_type(const Intrinsic& intrinsic, const Type* array_type) {
+		if (array_type->get_id() == TypeId::ARRAY) {
+			return static_cast<const ArrayType*>(array_type)->get_element_type();
+		}
+		else if (array_type->get_id() == TypeId::STRING) {
+			return TypeInterner::get_int_type();
+		}
+		else {
+			error(intrinsic, format("first argument of % must be an array or a string", intrinsic.get_name()));
+		}
+	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 		if (intrinsic.name_equals("typeOf")) {
-			if (intrinsic.get_arguments().size() != 1) {
-				error(intrinsic, "typeOf takes exactly 1 argument");
-			}
+			ensure_argument_count(intrinsic, 1);
 			const Expression* expression = expression_table[intrinsic.get_arguments()[0]];
 			return create<TypeLiteral>(expression->get_type());
 		}
@@ -286,15 +295,15 @@ public:
 			new_intrinsic->add_argument(expression_table[argument]);
 		}
 		if (intrinsic.name_equals("putChar")) {
-			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::INT});
+			ensure_argument_types(intrinsic, {TypeInterner::get_int_type()});
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
 		else if (intrinsic.name_equals("putStr")) {
-			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::STRING});
+			ensure_argument_types(intrinsic, {TypeInterner::get_string_type()});
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
 		else if (intrinsic.name_equals("getChar")) {
-			ensure_argument_types(intrinsic, new_intrinsic, {});
+			ensure_argument_types(intrinsic, {});
 			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
@@ -310,21 +319,18 @@ public:
 			new_intrinsic->set_type(TypeInterner::get_array_type(element_type));
 		}
 		else if (intrinsic.name_equals("arrayGet")) {
-			if (new_intrinsic->get_arguments().size() != 2) {
-				error(intrinsic, "arrayGet takes 2 arguments");
-			}
+			ensure_argument_count(intrinsic, 2);
 			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
-			if (array_type->get_id() != TypeId::ARRAY) {
-				error(intrinsic, "first argument of arrayGet must be an array");
-			}
-			const Type* element_type = static_cast<const ArrayType*>(array_type)->get_element_type();
+			const Type* element_type = get_element_type(intrinsic, array_type);
 			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
 				error(intrinsic, "second argument of arrayGet must be a number");
 			}
 			new_intrinsic->set_type(element_type);
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
-			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::ARRAY});
+			ensure_argument_count(intrinsic, 1);
+			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
+			get_element_type(intrinsic, array_type);
 			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
@@ -332,10 +338,7 @@ public:
 				error(intrinsic, "arraySplice takes at least 3 arguments");
 			}
 			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
-			if (array_type->get_id() != TypeId::ARRAY) {
-				error(intrinsic, "first argument of arraySplice must be an array");
-			}
-			const Type* element_type = static_cast<const ArrayType*>(array_type)->get_element_type();
+			const Type* element_type = get_element_type(intrinsic, array_type);
 			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
 				error(intrinsic, "second argument of arraySplice must be a number");
 			}
@@ -355,41 +358,6 @@ public:
 				}
 			}
 			new_intrinsic->set_type(array_type);
-		}
-		else if (intrinsic.name_equals("stringGet")) {
-			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::STRING, TypeId::INT});
-			new_intrinsic->set_type(TypeInterner::get_int_type());
-		}
-		else if (intrinsic.name_equals("stringLength")) {
-			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::STRING});
-			new_intrinsic->set_type(TypeInterner::get_int_type());
-		}
-		else if (intrinsic.name_equals("stringSplice")) {
-			if (new_intrinsic->get_arguments().size() < 3) {
-				error(intrinsic, "stringSplice takes at least 3 arguments");
-			}
-			if (new_intrinsic->get_arguments()[0]->get_type_id() != TypeId::STRING) {
-				error(intrinsic, "first argument of stringSplice must be a string");
-			}
-			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
-				error(intrinsic, "second argument of stringSplice must be a number");
-			}
-			if (new_intrinsic->get_arguments()[2]->get_type_id() != TypeId::INT) {
-				error(intrinsic, "third argument of stringSplice must be a number");
-			}
-			if (new_intrinsic->get_arguments().size() == 4) {
-				if (!(new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::INT || new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::STRING)) {
-					error(intrinsic, "argument 4 of stringSplice must be a number or a string");
-				}
-			}
-			else {
-				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
-					if (new_intrinsic->get_arguments()[i]->get_type_id() != TypeId::INT) {
-						error(intrinsic, format("argument % of stringSplice must be a number", print_number(i + 1)));
-					}
-				}
-			}
-			new_intrinsic->set_type(TypeInterner::get_string_type());
 		}
 		else if (intrinsic.name_equals("copy")) {
 			new_intrinsic->set_type(new_intrinsic->get_arguments()[0]->get_type());
@@ -999,14 +967,7 @@ class Pass4: public Visitor<const Expression*> {
 		return usage_analysis.usages[source_block].count(resource) == 0;
 	}
 	bool is_borrowed(const Intrinsic& intrinsic, std::size_t i) {
-		return
-			(intrinsic.name_equals("arrayGet") && i == 0) ||
-			(intrinsic.name_equals("arrayLength") && i == 0) ||
-			(intrinsic.name_equals("arraySplice") && i == 3) ||
-			(intrinsic.name_equals("stringGet") && i == 0) ||
-			(intrinsic.name_equals("stringLength") && i == 0) ||
-			(intrinsic.name_equals("stringSplice") && i == 3) ||
-			(intrinsic.name_equals("putStr") && i == 0);
+		return intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || intrinsic.name_equals("putStr");
 	}
 	const Expression* copy(const Expression* resource) {
 		Intrinsic* copy_intrinsic = create<Intrinsic>("copy", resource->get_type());
@@ -1072,7 +1033,10 @@ public:
 	}
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
-		TupleAccess* new_tuple_access = create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+		const Expression* new_tuple_access = create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+		if (is_managed(&tuple_access)) {
+			new_tuple_access = copy(new_tuple_access);
+		}
 		if (is_last_use(tuple_access.get_tuple(), &tuple_access, 0)) {
 			free(tuple);
 		}
@@ -1111,6 +1075,10 @@ public:
 			}
 		}
 		destination_block->add_expression(new_intrinsic);
+		const Expression* result = new_intrinsic;
+		if (is_managed(&intrinsic) && (intrinsic.name_equals("arrayGet") || intrinsic.name_equals("stringGet"))) {
+			result = copy(result);
+		}
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
 			if (is_managed(argument) && is_borrowed(intrinsic, i) && is_last_use(argument, &intrinsic, i)) {
@@ -1118,9 +1086,9 @@ public:
 			}
 		}
 		if (is_managed(&intrinsic) && is_unused(&intrinsic)) {
-			free(new_intrinsic);
+			free(result);
 		}
-		return new_intrinsic;
+		return result;
 	}
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];

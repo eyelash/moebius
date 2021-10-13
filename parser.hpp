@@ -47,9 +47,6 @@ constexpr const char* intrinsics[] = {
 	"arrayGet",
 	"arrayLength",
 	"arraySplice",
-	"stringGet",
-	"stringLength",
-	"stringSplice",
 	"typeOf"
 };
 
