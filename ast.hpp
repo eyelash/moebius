@@ -128,9 +128,14 @@ public:
 };
 
 class ArrayType: public Type {
+	const Type* element_type;
 public:
+	ArrayType(const Type* element_type): element_type(element_type) {}
 	TypeId get_id() const override {
 		return TypeId::ARRAY;
+	}
+	const Type* get_element_type() const {
+		return element_type;
 	}
 };
 
@@ -194,6 +199,11 @@ public:
 			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
 			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
 			return compare(tuple_type1->get_types(), tuple_type2->get_types());
+		}
+		if (id1 == TypeId::ARRAY) {
+			const ArrayType* array_type1 = static_cast<const ArrayType*>(type1);
+			const ArrayType* array_type2 = static_cast<const ArrayType*>(type2);
+			return compare(array_type1->get_element_type(), array_type2->get_element_type());
 		}
 		if (id1 == TypeId::TYPE) {
 			const TypeType* type_type1 = static_cast<const TypeType*>(type1);
@@ -273,7 +283,10 @@ public:
 				}
 				return new_tuple_type;
 			}
-			case TypeId::ARRAY: return new ArrayType();
+			case TypeId::ARRAY: {
+				const ArrayType* array_type = static_cast<const ArrayType*>(type);
+				return new ArrayType(array_type->get_element_type());
+			}
 			case TypeId::STRING: return new StringType();
 			case TypeId::VOID: return new VoidType();
 			case TypeId::TYPE: {
@@ -308,13 +321,9 @@ public:
 		}
 		return char_type;
 	}
-	static const Type* get_array_type() {
-		static const Type* array_type = nullptr;
-		if (array_type == nullptr) {
-			ArrayType type;
-			array_type = intern(&type);
-		}
-		return array_type;
+	static const Type* get_array_type(const Type* element_type) {
+		ArrayType type(element_type);
+		return intern(&type);
 	}
 	static const Type* get_string_type() {
 		static const Type* string_type = nullptr;

@@ -29,6 +29,15 @@ class CodegenC: public Visitor<Variable> {
 			default: return StringView();
 		}
 	}
+	static const ::Type* get_element_type(const ::Type* type) {
+		if (type->get_id() == TypeId::STRING) {
+			return TypeInterner::get_char_type();
+		}
+		return static_cast<const ArrayType*>(type)->get_element_type();
+	}
+	static bool is_managed(const ::Type* type) {
+		return type->get_id() == TypeId::ARRAY || type->get_id() == TypeId::STRING;
+	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
 		std::map<const ::Type*, std::size_t> types;
@@ -84,7 +93,7 @@ class CodegenC: public Visitor<Variable> {
 				}
 				case TypeId::ARRAY:
 				case TypeId::STRING: {
-					const Type element_type = get_element_type(type);
+					const Type element_type = get_type(get_element_type(type));
 					const Type number_type = get_type(TypeInterner::get_int_type());
 					const std::size_t index = types.size();
 					type_declaration_printer.println_increasing("typedef struct {");
@@ -93,7 +102,7 @@ class CodegenC: public Visitor<Variable> {
 					type_declaration_printer.println(format("% capacity;", number_type));
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
 					types[type] = index;
-					generate_array_functions(index, element_type, type->get_id() == TypeId::STRING);
+					generate_array_functions(type, type->get_id() == TypeId::STRING);
 					return index;
 				}
 				default: {
@@ -101,12 +110,11 @@ class CodegenC: public Visitor<Variable> {
 				}
 			}
 		}
-		Type get_element_type(const ::Type* type) {
-			const ::Type* element_type = type->get_id() == TypeId::STRING ? TypeInterner::get_char_type() : TypeInterner::get_int_type();
-			return get_type(element_type);
-		}
-		void generate_array_functions(Type array_type, Type element_type, bool null_terminated = false) {
+		void generate_array_functions(const ::Type* type, bool null_terminated = false) {
+			const Type array_type = get_type(type);
+			const Type element_type = get_type(get_element_type(type));
 			const Type number_type = get_type(TypeInterner::get_int_type());
+			const Type void_type = get_type(TypeInterner::get_void_type());
 			IndentPrinter& printer = type_declaration_printer;
 
 			// array_new
@@ -127,6 +135,41 @@ class CodegenC: public Visitor<Variable> {
 			printer.println("array.length = length;");
 			printer.println("array.capacity = length;");
 			printer.println("return array;");
+			printer.println_decreasing("}");
+
+			// array_copy
+			printer.println_increasing(format("static % %_copy(% array) {", array_type, array_type, array_type));
+			printer.println(format("% new_array;", array_type));
+			if (null_terminated) {
+				printer.println(format("new_array.elements = malloc((array.length + 1) * sizeof(%));", element_type));
+			}
+			else {
+				printer.println(format("new_array.elements = malloc(array.length * sizeof(%));", element_type));
+			}
+			printer.println_increasing(format("for (% i = 0; i < array.length; i++) {", number_type));
+			if (is_managed(get_element_type(type))) {
+				printer.println(format("new_array.elements[i] = %_copy(array.elements[i]);", element_type));
+			}
+			else {
+				printer.println("new_array.elements[i] = array.elements[i];");
+			}
+			printer.println_decreasing("}");
+			if (null_terminated) {
+				printer.println("new_array.elements[array.length] = 0;");
+			}
+			printer.println("new_array.length = array.length;");
+			printer.println("new_array.capacity = array.length;");
+			printer.println("return new_array;");
+			printer.println_decreasing("}");
+
+			// array_free
+			printer.println_increasing(format("static % %_free(% array) {", void_type, array_type, array_type));
+			if (is_managed(get_element_type(type))) {
+				printer.println_increasing(format("for (% i = 0; i < array.length; i++) {", number_type));
+				printer.println(format("%_free(array.elements[i]);", element_type));
+				printer.println_decreasing("}");
+			}
+			printer.println("free(array.elements);");
 			printer.println_decreasing("}");
 
 			// array_splice
@@ -221,7 +264,7 @@ public:
 	Variable visit_string_literal(const StringLiteral& string_literal) override {
 		const Variable result = next_variable();
 		const Type type = function_table.get_type(string_literal.get_type());
-		const Type element_type = function_table.get_element_type(string_literal.get_type());
+		const Type element_type = function_table.get_type(get_element_type(string_literal.get_type()));
 		const std::size_t size = string_literal.get_value().size();
 		printer.println(print_functor([&](auto& printer) {
 			printer.print(format("% % = %_new((%[]){", type, result, type, element_type));
@@ -325,7 +368,7 @@ public:
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
-			const Type element_type = function_table.get_element_type(intrinsic.get_type());
+			const Type element_type = function_table.get_type(get_element_type(intrinsic.get_type()));
 			const std::size_t size = intrinsic.get_arguments().size();
 			printer.println(print_functor([&](auto& printer) {
 				printer.print(format("% % = %_new((%[]){", type, result, type, element_type));
@@ -340,7 +383,12 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %.elements[%];", type, result, array, index));
+			if (is_managed(intrinsic.get_type())) {
+				printer.println(format("% % = %_copy(%.elements[%]);", type, result, type, array, index));
+			}
+			else {
+				printer.println(format("% % = %.elements[%];", type, result, array, index));
+			}
 		}
 		else if (intrinsic.name_equals("arrayLength") || intrinsic.name_equals("stringLength")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
@@ -349,7 +397,7 @@ public:
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
-			const Type element_type = function_table.get_element_type(intrinsic.get_type());
+			const Type element_type = function_table.get_type(get_element_type(intrinsic.get_type()));
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
@@ -371,7 +419,7 @@ public:
 		}
 		else if (intrinsic.name_equals("stringSplice")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
-			const Type element_type = function_table.get_element_type(intrinsic.get_type());
+			const Type element_type = function_table.get_type(get_element_type(intrinsic.get_type()));
 			const Variable string = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
@@ -394,11 +442,12 @@ public:
 		else if (intrinsic.name_equals("copy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %_new(%.elements, %.length);", type, result, type, array, array));
+			printer.println(format("% % = %_copy(%);", type, result, type, array));
 		}
 		else if (intrinsic.name_equals("free")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("free(%.elements);", array));
+			const Type type = function_table.get_type(intrinsic.get_arguments()[0]->get_type());
+			printer.println(format("%_free(%);", type, array));
 		}
 		return result;
 	}

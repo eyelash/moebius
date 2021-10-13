@@ -316,16 +316,30 @@ public:
 			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arrayNew")) {
+			if (new_intrinsic->get_arguments().size() == 0) {
+				error(intrinsic, "emtpy arrays are not yet supported");
+			}
+			const Type* element_type = new_intrinsic->get_arguments()[0]->get_type();
 			for (const Expression* argument: new_intrinsic->get_arguments()) {
-				if (argument->get_type_id() != TypeId::INT) {
+				if (argument->get_type() != element_type) {
 					error(intrinsic, "array elements must be numbers");
 				}
 			}
-			new_intrinsic->set_type(TypeInterner::get_array_type());
+			new_intrinsic->set_type(TypeInterner::get_array_type(element_type));
 		}
 		else if (intrinsic.name_equals("arrayGet")) {
-			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::ARRAY, TypeId::INT});
-			new_intrinsic->set_type(TypeInterner::get_int_type());
+			if (new_intrinsic->get_arguments().size() != 2) {
+				error(intrinsic, "arrayGet takes 2 arguments");
+			}
+			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
+			if (array_type->get_id() != TypeId::ARRAY) {
+				error(intrinsic, "first argument of arrayGet must be an array");
+			}
+			const Type* element_type = static_cast<const ArrayType*>(array_type)->get_element_type();
+			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
+				error(intrinsic, "second argument of arrayGet must be a number");
+			}
+			new_intrinsic->set_type(element_type);
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
 			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::ARRAY});
@@ -335,9 +349,11 @@ public:
 			if (new_intrinsic->get_arguments().size() < 3) {
 				error(intrinsic, "arraySplice takes at least 3 arguments");
 			}
-			if (new_intrinsic->get_arguments()[0]->get_type_id() != TypeId::ARRAY) {
+			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
+			if (array_type->get_id() != TypeId::ARRAY) {
 				error(intrinsic, "first argument of arraySplice must be an array");
 			}
+			const Type* element_type = static_cast<const ArrayType*>(array_type)->get_element_type();
 			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
 				error(intrinsic, "second argument of arraySplice must be a number");
 			}
@@ -345,18 +361,18 @@ public:
 				error(intrinsic, "third argument of arraySplice must be a number");
 			}
 			if (new_intrinsic->get_arguments().size() == 4) {
-				if (!(new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::INT || new_intrinsic->get_arguments()[3]->get_type_id() == TypeId::ARRAY)) {
+				if (!(new_intrinsic->get_arguments()[3]->get_type() == element_type || new_intrinsic->get_arguments()[3]->get_type() == array_type)) {
 					error(intrinsic, "argument 4 of arraySplice must be a number or an array");
 				}
 			}
 			else {
 				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
-					if (new_intrinsic->get_arguments()[i]->get_type_id() != TypeId::INT) {
+					if (new_intrinsic->get_arguments()[i]->get_type() != element_type) {
 						error(intrinsic, format("argument % of arraySplice must be a number", print_number(i + 1)));
 					}
 				}
 			}
-			new_intrinsic->set_type(TypeInterner::get_array_type());
+			new_intrinsic->set_type(array_type);
 		}
 		else if (intrinsic.name_equals("stringGet")) {
 			ensure_argument_types(intrinsic, new_intrinsic, {TypeId::STRING, TypeId::INT});

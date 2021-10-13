@@ -19,6 +19,9 @@ class CodegenJS: public Visitor<Variable> {
 			default: return StringView();
 		}
 	}
+	static bool is_managed(const ::Type* type) {
+		return type->get_id() == TypeId::ARRAY || type->get_id() == TypeId::STRING;
+	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
 	public:
@@ -156,7 +159,12 @@ public:
 		else if (intrinsic.name_equals("arrayGet") || intrinsic.name_equals("stringGet")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
-			printer.println(format("const % = %[%];", result, array, index));
+			if (is_managed(intrinsic.get_type())) {
+				printer.println(format("const % = %[%].slice();", result, array, index));
+			}
+			else {
+				printer.println(format("const % = %[%];", result, array, index));
+			}
 		}
 		else if (intrinsic.name_equals("arrayLength") || intrinsic.name_equals("stringLength")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
