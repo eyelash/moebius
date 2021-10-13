@@ -188,9 +188,6 @@ public:
 				error(struct_instantiation, format("invalid field name \"%\"", name));
 			}
 			const Expression* new_expression = expression_table[struct_instantiation.get_expressions()[i]];
-			if (new_expression->get_type_id() == TypeId::ARRAY) {
-				error(struct_instantiation, "structs containing arrays are not yet supported");
-			}
 			if (new_expression->get_type() != struct_type->get_field_types()[i]) {
 				error(struct_instantiation, format("invalid type for field \"%\"", name));
 			}
@@ -879,7 +876,7 @@ class Pass4: public Visitor<const Expression*> {
 		std::map<const Expression*, std::size_t> levels;
 	};
 	static bool is_managed(const Expression* expression) {
-		return expression->get_type_id() == TypeId::ARRAY || expression->get_type_id() == TypeId::STRING;
+		return expression->get_type_id() == TypeId::TUPLE || expression->get_type_id() == TypeId::ARRAY || expression->get_type_id() == TypeId::STRING;
 	}
 	class UsageAnalysis1: public Visitor<void> {
 		UsageAnalysisTable& table;
@@ -915,6 +912,17 @@ class Pass4: public Visitor<const Expression*> {
 			evaluate(if_.get_else_block());
 			propagate_usages(&if_.get_then_block(), &if_);
 			propagate_usages(&if_.get_else_block(), &if_);
+		}
+		void visit_tuple(const Tuple& tuple) override {
+			for (std::size_t i = 0; i < tuple.get_expressions().size(); ++i) {
+				const Expression* expression = tuple.get_expressions()[i];
+				if (is_managed(expression)) {
+					add_usage(expression, &tuple, i);
+				}
+			}
+		}
+		void visit_tuple_access(const TupleAccess& tuple_access) override {
+			add_usage(tuple_access.get_tuple(), &tuple_access, 0);
 		}
 		void visit_call(const Call& call) override {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
@@ -1061,15 +1069,29 @@ public:
 		return new_if;
 	}
 	const Expression* visit_tuple(const Tuple& tuple) override {
-		Tuple* new_tuple = create<Tuple>(tuple.get_type());
-		for (const Expression* expression: tuple.get_expressions()) {
-			new_tuple->add_expression(expression_table[expression]);
+		Tuple* new_tuple = new Tuple(tuple.get_type());
+		for (std::size_t i = 0; i < tuple.get_expressions().size(); ++i) {
+			const Expression* expression = tuple.get_expressions()[i];
+			if (is_managed(expression) && !is_last_use(expression, &tuple, i)) {
+				new_tuple->add_expression(copy(expression_table[expression]));
+			}
+			else {
+				new_tuple->add_expression(expression_table[expression]);
+			}
+		}
+		destination_block->add_expression(new_tuple);
+		if (is_unused(&tuple)) {
+			free(new_tuple);
 		}
 		return new_tuple;
 	}
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
-		return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+		TupleAccess* new_tuple_access = create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+		if (is_last_use(tuple_access.get_tuple(), &tuple_access, 0)) {
+			free(tuple);
+		}
+		return new_tuple_access;
 	}
 	const Expression* visit_argument(const Argument& argument) override {
 		return create<Argument>(argument.get_index(), argument.get_type());

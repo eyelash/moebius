@@ -36,7 +36,7 @@ class CodegenC: public Visitor<Variable> {
 		return static_cast<const ArrayType*>(type)->get_element_type();
 	}
 	static bool is_managed(const ::Type* type) {
-		return type->get_id() == TypeId::ARRAY || type->get_id() == TypeId::STRING;
+		return type->get_id() == TypeId::TUPLE || type->get_id() == TypeId::ARRAY || type->get_id() == TypeId::STRING;
 	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
@@ -89,6 +89,7 @@ class CodegenC: public Visitor<Variable> {
 					}
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
 					types[type] = index;
+					generate_tuple_functions(type);
 					return index;
 				}
 				case TypeId::ARRAY:
@@ -109,6 +110,35 @@ class CodegenC: public Visitor<Variable> {
 					return 0;
 				}
 			}
+		}
+		void generate_tuple_functions(const ::Type* type) {
+			const Type tuple_type = get_type(type);
+			const std::vector<const ::Type*>& types = static_cast<const TupleType*>(type)->get_types();
+			const Type void_type = get_type(TypeInterner::get_void_type());
+			IndentPrinter& printer = type_declaration_printer;
+
+			// tuple_copy
+			printer.println_increasing(format("static % %_copy(% tuple) {", tuple_type, tuple_type, tuple_type));
+			printer.println(format("% new_tuple;", tuple_type));
+			for (std::size_t i = 0; i < types.size(); ++i) {
+				if (is_managed(types[i])) {
+					printer.println(format("new_tuple.v% = %_copy(tuple.v%);", print_number(i), get_type(types[i]), print_number(i)));
+				}
+				else {
+					printer.println(format("new_tuple.v% = tuple.v%;", print_number(i), print_number(i)));
+				}
+			}
+			printer.println("return new_tuple;");
+			printer.println_decreasing("}");
+
+			// tuple_free
+			printer.println_increasing(format("static % %_free(% tuple) {", void_type, tuple_type, tuple_type));
+			for (std::size_t i = 0; i < types.size(); ++i) {
+				if (is_managed(types[i])) {
+					printer.println(format("%_free(tuple.v%);", get_type(types[i]), print_number(i)));
+				}
+			}
+			printer.println_decreasing("}");
 		}
 		void generate_array_functions(const ::Type* type, bool null_terminated = false) {
 			const Type array_type = get_type(type);
@@ -318,7 +348,12 @@ public:
 		const Variable tuple = expression_table[tuple_access.get_tuple()];
 		const Variable result = next_variable();
 		const Type result_type = function_table.get_type(tuple_access.get_type());
-		printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
+		if (is_managed(tuple_access.get_type())) {
+			printer.println(format("% % = %_copy(%.v%);", result_type, result, result_type, tuple, print_number(tuple_access.get_index())));
+		}
+		else {
+			printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
+		}
 		return result;
 	}
 	Variable visit_argument(const Argument& argument) override {
