@@ -688,16 +688,12 @@ public:
 };
 
 class StructInstantiation: public Expression {
-	const Expression* type_expression;
 	std::vector<std::string> names;
 	std::vector<const Expression*> expressions;
 public:
-	StructInstantiation(const Expression* type_expression, const Type* type = nullptr): Expression(type), type_expression(type_expression) {}
+	StructInstantiation(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_instantiation(*this);
-	}
-	const Expression* get_type_expression() const {
-		return type_expression;
 	}
 	void add_field(const std::string& name, const Expression* expression) {
 		names.push_back(name);

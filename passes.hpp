@@ -169,30 +169,15 @@ public:
 		return create<TupleAccess>(tuple, argument_index, type);
 	}
 	const Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
-		const Expression* type_expression = expression_table[struct_instantiation.get_type_expression()];
-		if (type_expression->get_type_id() != TypeId::TYPE) {
-			error(struct_instantiation, "struct instantiation requires a struct type");
-		}
-		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
-		if (type->get_id() != TypeId::STRUCT) {
-			error(struct_instantiation, "struct instantiation requires a struct type");
-		}
-		const StructType* struct_type = static_cast<const StructType*>(type);
-		if (struct_instantiation.get_expressions().size() != struct_type->get_field_types().size()) {
-			error(struct_instantiation, "invalid number of fields");
-		}
-		StructInstantiation* new_struct_instantiation = create<StructInstantiation>(type_expression, type);
+		StructType type;
+		StructInstantiation* new_struct_instantiation = create<StructInstantiation>();
 		for (std::size_t i = 0; i < struct_instantiation.get_expressions().size(); ++i) {
 			const std::string& name = struct_instantiation.get_names()[i];
-			if (name != struct_type->get_field_names()[i]) {
-				error(struct_instantiation, format("invalid field name \"%\"", name));
-			}
 			const Expression* new_expression = expression_table[struct_instantiation.get_expressions()[i]];
-			if (new_expression->get_type() != struct_type->get_field_types()[i]) {
-				error(struct_instantiation, format("invalid type for field \"%\"", name));
-			}
+			type.add_field(name, new_expression->get_type());
 			new_struct_instantiation->add_field(name, new_expression);
 		}
+		new_struct_instantiation->set_type(TypeInterner::intern(&type));
 		return new_struct_instantiation;
 	}
 	const Expression* visit_struct_access(const StructAccess& struct_access) override {

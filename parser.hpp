@@ -293,10 +293,39 @@ class MoebiusParser: private Parser {
 		const SourcePosition position = cursor.get_position();
 		if (parse("{")) {
 			parse_white_space();
-			const Expression* expression = parse_scope();
-			parse_white_space();
-			expect("}");
-			return expression;
+			if (copy().parse("let", alphanumeric) || copy().parse("func", alphanumeric) || copy().parse("struct", alphanumeric) || copy().parse("return", alphanumeric)) {
+				const Expression* expression = parse_scope();
+				parse_white_space();
+				expect("}");
+				return expression;
+			}
+			else {
+				StructInstantiation* struct_instantiation = new StructInstantiation();
+				struct_instantiation->set_position(position);
+				while (cursor && *cursor != '}') {
+					const StringView field_name = parse_identifier();
+					parse_white_space();
+					if (parse(":")) {
+						parse_white_space();
+						const Expression* field_expression = parse_expression();
+						struct_instantiation->add_field(field_name, field_expression);
+						parse_white_space();
+					}
+					else {
+						const Expression* field_expression = current_scope->look_up(field_name);
+						if (field_expression == nullptr) {
+							error(format("undefined variable \"%\"", field_name));
+						}
+						struct_instantiation->add_field(field_name, field_expression);
+					}
+					if (parse(",")) {
+						parse_white_space();
+					}
+				}
+				expect("}");
+				current_scope->add_expression(struct_instantiation);
+				return struct_instantiation;
+			}
 		}
 		else if (parse("(")) {
 			parse_white_space();
@@ -521,7 +550,7 @@ class MoebiusParser: private Parser {
 				}
 				else if (parse("{")) {
 					parse_white_space();
-					StructInstantiation* struct_instantiation = new StructInstantiation(expression);
+					StructInstantiation* struct_instantiation = new StructInstantiation();
 					struct_instantiation->set_position(position);
 					while (cursor && *cursor != '}') {
 						const StringView field_name = parse_identifier();
@@ -537,6 +566,7 @@ class MoebiusParser: private Parser {
 					}
 					expect("}");
 					current_scope->add_expression(struct_instantiation);
+					current_scope->create<TypeAssert>(struct_instantiation, expression);
 					expression = struct_instantiation;
 					parse_white_space();
 				}
