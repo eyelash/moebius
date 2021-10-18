@@ -13,17 +13,6 @@ public:
 
 // type checking and monomorphization
 class Pass1: public Visitor<const Expression*> {
-	static StringView print_type(const Type* type) {
-		switch (type->get_id()) {
-			case TypeId::INT: return "Int";
-			case TypeId::CLOSURE: return "Function";
-			case TypeId::ARRAY: return "Array";
-			case TypeId::STRING: return "String";
-			case TypeId::VOID: return "Void";
-			case TypeId::TYPE: return "Type";
-			default: return StringView();
-		}
-	}
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
 		print_error(Printer(std::cerr), expression.get_position(), t);
 		std::exit(EXIT_FAILURE);

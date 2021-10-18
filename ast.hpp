@@ -980,3 +980,57 @@ public:
 		return Iterator(nullptr);
 	}
 };
+
+class PrintType {
+	const Type* type;
+public:
+	PrintType(const Type* type): type(type) {}
+	void print(const Printer& p) const {
+		switch (type->get_id()) {
+			case TypeId::INT: {
+				p.print("Int");
+				break;
+			}
+			case TypeId::CLOSURE: {
+				p.print("Function");
+				break;
+			}
+			case TypeId::STRUCT: {
+				const StructType* struct_type = static_cast<const StructType*>(type);
+				p.print("Struct({");
+				for (std::size_t i = 0; i < struct_type->get_field_types().size(); ++i) {
+					const std::string& field_name = struct_type->get_field_names()[i];
+					const Type* field_type = struct_type->get_field_types()[i];
+					if (i > 0) p.print(",");
+					p.print(format("%:%", field_name, PrintType(field_type)));
+				}
+				p.print("})");
+				break;
+			}
+			case TypeId::ARRAY: {
+				const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
+				p.print(format("Array(%)", PrintType(element_type)));
+				break;
+			}
+			case TypeId::STRING: {
+				p.print("String");
+				break;
+			}
+			case TypeId::VOID: {
+				p.print("Void");
+				break;
+			}
+			case TypeId::TYPE: {
+				const Type* type_type = static_cast<const TypeType*>(type)->get_type();
+				p.print(format("Type(%)", PrintType(type_type)));
+				break;
+			}
+			default: {
+				break;
+			}
+		}
+	}
+};
+inline PrintType print_type(const Type* type) {
+	return PrintType(type);
+}
