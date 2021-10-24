@@ -543,6 +543,9 @@ public:
 		first = nullptr;
 		last = nullptr;
 	}
+	const Expression* get_last() const {
+		return last;
+	}
 	const Expression* get_result() const {
 		return static_cast<Return*>(last)->get_expression();
 	}

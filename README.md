@@ -31,7 +31,7 @@ examples/HelloWorld.moeb.exe
   - [x] JavaScript
 - optimizations
   - [x] monomorphization
-  - [ ] dead code elimination
+  - [x] dead code elimination
   - [x] inlining
   - [x] constant propagation
   - [x] tail call optimization

@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
 	}
 	std::unique_ptr<Program> program = MoebiusParser::parse_program(arguments.source_path);
 	program = Pass1::run(*program);
+	program = GarbageCollect::run(*program);
 	program = Pass2::run(*program);
 	program = Pass1::run(*program);
 	program = Pass3::run(*program);
