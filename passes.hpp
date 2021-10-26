@@ -11,6 +11,18 @@ public:
 	}
 };
 
+class GetTupleElement: public Visitor<const Expression*> {
+	std::size_t index;
+public:
+	GetTupleElement(std::size_t index): index(index) {}
+	const Expression* visit_tuple(const Tuple& tuple) override {
+		return tuple.get_expressions()[index];
+	}
+	const Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
+		return struct_instantiation.get_expressions()[index];
+	}
+};
+
 // type checking and monomorphization
 class Pass1: public Visitor<const Expression*> {
 	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
@@ -150,6 +162,10 @@ public:
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const std::size_t argument_index = tuple_access.get_index();
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
+		GetTupleElement get_tuple_element(argument_index);
+		if (const Expression* element = visit(get_tuple_element, tuple)) {
+			return element;
+		}
 		const TupleType* tuple_type = static_cast<const TupleType*>(tuple->get_type());
 		const Type* type = tuple_type->get_types()[argument_index];
 		return create<TupleAccess>(tuple, argument_index, type);
@@ -176,6 +192,10 @@ public:
 			error(struct_access, "struct has no such field");
 		}
 		const std::size_t index = struct_type->get_index(struct_access.get_name());
+		GetTupleElement get_tuple_element(index);
+		if (const Expression* element = visit(get_tuple_element, struct_)) {
+			return element;
+		}
 		const Type* type = struct_type->get_field_types()[index];
 		return create<StructAccess>(struct_, struct_access.get_name(), type);
 	}
@@ -855,14 +875,6 @@ public:
 
 // remove empty tuples
 class Pass3: public Visitor<const Expression*> {
-	class GetTupleElement: public Visitor<const Expression*> {
-		std::size_t index;
-	public:
-		GetTupleElement(std::size_t index): index(index) {}
-		const Expression* visit_tuple(const Tuple& tuple) override {
-			return tuple.get_expressions()[index];
-		}
-	};
 	Program* program;
 	using FunctionTable = std::map<const Function*, Function*>;
 	FunctionTable& function_table;
@@ -949,10 +961,6 @@ public:
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		if (is_empty_tuple(&tuple_access)) {
 			return nullptr;
-		}
-		GetTupleElement gte(tuple_access.get_index());
-		if (const Expression* expression = visit(gte, tuple_access.get_tuple())) {
-			return expression_table[expression];
 		}
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
 		const std::vector<const Type*>& tuple_types = static_cast<const TupleType*>(tuple->get_type())->get_types();
