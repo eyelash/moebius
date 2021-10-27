@@ -39,13 +39,15 @@ examples/HelloWorld.moeb.exe
   - [ ] graph coloring register allocation
 - types
   - [x] integers
+  - [ ] floating-point numbers
   - [x] closures
-  - [x] structs
+  - [x] structs (product types)
+  - [ ] enums (sum types)
   - [x] arrays
   - [x] strings
-  - [ ] sum types
   - [ ] interfaces
-  - [ ] floating point
+  - [ ] recursive types
+  - [x] first-class types
 - operators
   - [x] arithmetic (`+`, `-`, `*`, `/`, and `%`)
   - [x] relational (`==`, `!=`, `<`, `<=`, `>`, and `>=`)

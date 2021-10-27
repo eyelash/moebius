@@ -12,8 +12,8 @@ class CodegenX86: public Visitor<std::uint32_t> {
 				return 4;
 			case TypeId::TUPLE: {
 				std::uint32_t size = 0;
-				for (const Type* type: static_cast<const TupleType*>(type)->get_types()) {
-					size += get_type_size(type);
+				for (const Type* element_type: static_cast<const TupleType*>(type)->get_element_types()) {
+					size += get_type_size(element_type);
 				}
 				return size;
 			}
@@ -164,7 +164,7 @@ public:
 	}
 	std::uint32_t visit_tuple(const Tuple& tuple) override {
 		const std::uint32_t size = get_type_size(tuple.get_type());
-		const std::vector<const Expression*>& expressions = tuple.get_expressions();
+		const std::vector<const Expression*>& expressions = tuple.get_elements();
 		if (expressions.size() == 1) {
 			return expression_table[expressions[0]];
 		}
@@ -181,7 +181,7 @@ public:
 	}
 	std::uint32_t visit_tuple_access(const TupleAccess& tuple_access) override {
 		const std::uint32_t tuple = expression_table[tuple_access.get_tuple()];
-		const std::vector<const Type*>& types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_types();
+		const std::vector<const Type*>& types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_element_types();
 		std::uint32_t before = 0;
 		for (std::size_t i = 0; i < tuple_access.get_index(); ++i) {
 			before += get_type_size(types[i]);

@@ -73,7 +73,7 @@ class CodegenC: public Visitor<Variable> {
 				}
 				case TypeId::TUPLE: {
 					std::vector<Type> element_types;
-					for (const ::Type* element_type: static_cast<const TupleType*>(type)->get_types()) {
+					for (const ::Type* element_type: static_cast<const TupleType*>(type)->get_element_types()) {
 						element_types.push_back(get_type(element_type));
 					}
 					const std::size_t index = types.size();
@@ -113,7 +113,7 @@ class CodegenC: public Visitor<Variable> {
 		}
 		void generate_tuple_functions(const ::Type* type) {
 			const Type tuple_type = get_type(type);
-			const std::vector<const ::Type*>& types = static_cast<const TupleType*>(type)->get_types();
+			const std::vector<const ::Type*>& types = static_cast<const TupleType*>(type)->get_element_types();
 			const Type void_type = get_type(TypeInterner::get_void_type());
 			IndentPrinter& printer = type_declaration_printer;
 
@@ -341,9 +341,9 @@ public:
 		printer.println(print_functor([&](auto& printer) {
 			const Type type = function_table.get_type(tuple.get_type());
 			printer.print(format("% % = {", type, result));
-			for (std::size_t i = 0; i < tuple.get_expressions().size(); ++i) {
+			for (std::size_t i = 0; i < tuple.get_elements().size(); ++i) {
 				if (i > 0) printer.print(", ");
-				printer.print(expression_table[tuple.get_expressions()[i]]);
+				printer.print(expression_table[tuple.get_elements()[i]]);
 			}
 			printer.print("};");
 		}));

@@ -138,18 +138,19 @@ template <class... T> constexpr Format<T...> format(const char* s, const T&... t
 	return Format<T...>(s, t...);
 }
 
-template <class T> auto bold(const T& t) {
-	return print_tuple("\e[1m", t, "\e[m");
-}
-template <class T> auto red(const T& t) {
-	return print_tuple("\e[31m", t, "\e[m");
-}
-template <class T> auto green(const T& t) {
-	return print_tuple("\e[32m", t, "\e[m");
-}
-template <class T> auto yellow(const T& t) {
-	return print_tuple("\e[33m", t, "\e[m");
-}
+class GraphicsPrinter {
+	const char* parameter;
+public:
+	constexpr GraphicsPrinter(const char* parameter): parameter(parameter) {}
+	template <class T> constexpr auto operator ()(const T& t) const {
+		return print_tuple("\x1B[", parameter, "m", t, "\x1B[m");
+	}
+};
+
+constexpr GraphicsPrinter bold = GraphicsPrinter("1");
+constexpr GraphicsPrinter red = GraphicsPrinter("31");
+constexpr GraphicsPrinter green = GraphicsPrinter("32");
+constexpr GraphicsPrinter yellow = GraphicsPrinter("33");
 
 class PrintNumber {
 	unsigned int n;
@@ -220,15 +221,15 @@ public:
 	}
 };
 
-template <class T> void print_error(const Printer& printer, const T& t) {
-	printer.print(bold(red("error: ")));
+template <class T> void print_message(const Printer& printer, const GraphicsPrinter& color, const char* severity, const T& t) {
+	printer.print(bold(color(format("%: ", severity))));
 	printer.print(t);
 	printer.print('\n');
 }
-template <class T> void print_error(const Printer& printer, const SourcePosition& source_position, const T& t) {
+template <class T> void print_message(const Printer& printer, const SourcePosition& source_position, const GraphicsPrinter& color, const char* severity, const T& t) {
 	const char* file_name = source_position.get_file_name();
 	if (file_name == nullptr) {
-		print_error(printer, t);
+		print_message(printer, color, severity, t);
 	}
 	else {
 		SourceFile file(file_name);
@@ -250,7 +251,7 @@ template <class T> void print_error(const Printer& printer, const SourcePosition
 		const unsigned int column = 1 + (c - line_start);
 
 		printer.print(bold(format("%:%:%: ", file_name, print_number(line_number), print_number(column))));
-		print_error(printer, t);
+		print_message(printer, color, severity, t);
 
 		c = line_start;
 		while (c < end && *c != '\n') {
@@ -264,9 +265,15 @@ template <class T> void print_error(const Printer& printer, const SourcePosition
 			printer.print(*c == '\t' ? '\t' : ' ');
 			++c;
 		}
-		printer.print(bold(red('^')));
+		printer.print(bold(color('^')));
 		printer.print('\n');
 	}
+}
+template <class T> void print_error(const Printer& printer, const T& t) {
+	print_message(printer, red, "error", t);
+}
+template <class T> void print_error(const Printer& printer, const SourcePosition& source_position, const T& t) {
+	print_message(printer, source_position, red, "error", t);
 }
 
 class Variable {

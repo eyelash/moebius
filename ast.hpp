@@ -85,9 +85,9 @@ public:
 	TypeId get_id() const override {
 		return TypeId::STRUCT;
 	}
-	void add_field(const std::string& name, const Type* type) {
-		field_names.push_back(name);
-		field_types.push_back(type);
+	void add_field(const std::string& field_name, const Type* field_type) {
+		field_names.push_back(field_name);
+		field_types.push_back(field_type);
 	}
 	const std::vector<std::string>& get_field_names() const {
 		return field_names;
@@ -95,17 +95,17 @@ public:
 	const std::vector<const Type*>& get_field_types() const {
 		return field_types;
 	}
-	bool has_field(const std::string& name) const {
+	bool has_field(const std::string& field_name) const {
 		for (std::size_t i = 0; i < field_names.size(); ++i) {
-			if (field_names[i] == name) {
+			if (field_names[i] == field_name) {
 				return true;
 			}
 		}
 		return false;
 	}
-	std::size_t get_index(const std::string& name) const {
+	std::size_t get_index(const std::string& field_name) const {
 		for (std::size_t i = 0; i < field_names.size(); ++i) {
-			if (field_names[i] == name) {
+			if (field_names[i] == field_name) {
 				return i;
 			}
 		}
@@ -114,16 +114,16 @@ public:
 };
 
 class TupleType: public Type {
-	std::vector<const Type*> types;
+	std::vector<const Type*> element_types;
 public:
 	TypeId get_id() const override {
 		return TypeId::TUPLE;
 	}
-	void add_type(const Type* type) {
-		types.push_back(type);
+	void add_element_type(const Type* type) {
+		element_types.push_back(type);
 	}
-	const std::vector<const Type*>& get_types() const {
-		return types;
+	const std::vector<const Type*>& get_element_types() const {
+		return element_types;
 	}
 };
 
@@ -198,7 +198,7 @@ public:
 		if (id1 == TypeId::TUPLE) {
 			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
 			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
-			return compare(tuple_type1->get_types(), tuple_type2->get_types());
+			return compare(tuple_type1->get_element_types(), tuple_type2->get_element_types());
 		}
 		if (id1 == TypeId::ARRAY) {
 			const ArrayType* array_type1 = static_cast<const ArrayType*>(type1);
@@ -277,9 +277,9 @@ public:
 			case TypeId::TUPLE: {
 				const TupleType* tuple_type = static_cast<const TupleType*>(type);
 				TupleType* new_tuple_type = new TupleType();
-				for (const Type* type: tuple_type->get_types()) {
+				for (const Type* element_type: tuple_type->get_element_types()) {
 					// TODO: maybe intern the type
-					new_tuple_type->add_type(type);
+					new_tuple_type->add_element_type(element_type);
 				}
 				return new_tuple_type;
 			}
@@ -660,17 +660,17 @@ public:
 };
 
 class Tuple: public Expression {
-	std::vector<const Expression*> expressions;
+	std::vector<const Expression*> elements;
 public:
 	Tuple(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_tuple(*this);
 	}
-	void add_expression(const Expression* expression) {
-		expressions.push_back(expression);
+	void add_element(const Expression* element) {
+		elements.push_back(element);
 	}
-	const std::vector<const Expression*>& get_expressions() const {
-		return expressions;
+	const std::vector<const Expression*>& get_elements() const {
+		return elements;
 	}
 };
 
@@ -691,43 +691,43 @@ public:
 };
 
 class StructInstantiation: public Expression {
-	std::vector<std::string> names;
-	std::vector<const Expression*> expressions;
+	std::vector<std::string> field_names;
+	std::vector<const Expression*> fields;
 public:
 	StructInstantiation(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_instantiation(*this);
 	}
-	void add_field(const std::string& name, const Expression* expression) {
-		names.push_back(name);
-		expressions.push_back(expression);
+	void add_field(const std::string& field_name, const Expression* field) {
+		field_names.push_back(field_name);
+		fields.push_back(field);
 	}
-	void add_field(const StringView& name, const Expression* expression) {
-		names.emplace_back(name.begin(), name.end());
-		expressions.push_back(expression);
+	void add_field(const StringView& field_name, const Expression* field) {
+		field_names.emplace_back(field_name.begin(), field_name.end());
+		fields.push_back(field);
 	}
-	const std::vector<std::string>& get_names() const {
-		return names;
+	const std::vector<std::string>& get_field_names() const {
+		return field_names;
 	}
-	const std::vector<const Expression*>& get_expressions() const {
-		return expressions;
+	const std::vector<const Expression*>& get_fields() const {
+		return fields;
 	}
 };
 
 class StructAccess: public Expression {
 	const Expression* struct_;
-	std::string name;
+	std::string field_name;
 public:
-	StructAccess(const Expression* struct_, const std::string& name, const Type* type = nullptr): Expression(type), struct_(struct_), name(name) {}
-	StructAccess(const Expression* struct_, const StringView& name, const Type* type = nullptr): Expression(type), struct_(struct_), name(name.begin(), name.end()) {}
+	StructAccess(const Expression* struct_, const std::string& field_name, const Type* type = nullptr): Expression(type), struct_(struct_), field_name(field_name) {}
+	StructAccess(const Expression* struct_, const StringView& field_name, const Type* type = nullptr): Expression(type), struct_(struct_), field_name(field_name.begin(), field_name.end()) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_access(*this);
 	}
 	const Expression* get_struct() const {
 		return struct_;
 	}
-	const std::string& get_name() const {
-		return name;
+	const std::string& get_field_name() const {
+		return field_name;
 	}
 };
 
@@ -887,25 +887,25 @@ public:
 };
 
 class StructDefinition: public Expression {
-	std::vector<std::string> names;
-	std::vector<const Expression*> type_expressions;
+	std::vector<std::string> field_names;
+	std::vector<const Expression*> field_types;
 public:
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_definition(*this);
 	}
-	void add_field(const std::string& name, const Expression* type_expression) {
-		names.push_back(name);
-		type_expressions.push_back(type_expression);
+	void add_field(const std::string& field_name, const Expression* field_type) {
+		field_names.push_back(field_name);
+		field_types.push_back(field_type);
 	}
-	void add_field(const StringView& name, const Expression* type_expression) {
-		names.emplace_back(name.begin(), name.end());
-		type_expressions.push_back(type_expression);
+	void add_field(const StringView& field_name, const Expression* field_type) {
+		field_names.emplace_back(field_name.begin(), field_name.end());
+		field_types.push_back(field_type);
 	}
-	const std::vector<std::string>& get_names() const {
-		return names;
+	const std::vector<std::string>& get_field_names() const {
+		return field_names;
 	}
-	const std::vector<const Expression*>& get_type_expressions() const {
-		return type_expressions;
+	const std::vector<const Expression*>& get_field_types() const {
+		return field_types;
 	}
 };
 
@@ -981,6 +981,27 @@ public:
 	}
 	constexpr Iterator end() const {
 		return Iterator(nullptr);
+	}
+};
+
+class GetInt: public Visitor<bool> {
+public:
+	std::int32_t value;
+	bool visit_int_literal(const IntLiteral& int_literal) override {
+		value = int_literal.get_value();
+		return true;
+	}
+};
+
+class GetTupleElement: public Visitor<const Expression*> {
+	std::size_t index;
+public:
+	GetTupleElement(std::size_t index): index(index) {}
+	const Expression* visit_tuple(const Tuple& tuple) override {
+		return tuple.get_elements()[index];
+	}
+	const Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
+		return struct_instantiation.get_fields()[index];
 	}
 };
 
