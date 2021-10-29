@@ -48,7 +48,8 @@ constexpr const char* intrinsics[] = {
 	"arrayLength",
 	"arraySplice",
 	"typeOf",
-	"arrayType"
+	"arrayType",
+	"structType"
 };
 
 class Scope {

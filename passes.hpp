@@ -287,6 +287,24 @@ public:
 			const Type* element_type = static_cast<const TypeType*>(element_type_expression->get_type())->get_type();
 			return create<TypeLiteral>(TypeInterner::get_array_type(element_type));
 		}
+		else if (intrinsic.name_equals("structType")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* struct_type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (struct_type_expression->get_type_id() != TypeId::STRUCT) {
+				error(intrinsic, "argument of structType must be a struct");
+			}
+			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
+			StructType new_struct_type;
+			for (std::size_t i = 0; i < struct_type->get_field_types().size(); ++i) {
+				const Type* field_type = struct_type->get_field_types()[i];
+				if (field_type->get_id() != TypeId::TYPE) {
+					error(intrinsic, "struct fields must be types");
+				}
+				const std::string& field_name = struct_type->get_field_names()[i];
+				new_struct_type.add_field(field_name, static_cast<const TypeType*>(field_type)->get_type());
+			}
+			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
+		}
 		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name());
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(expression_table[argument]);
