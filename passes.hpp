@@ -278,6 +278,15 @@ public:
 			const Expression* expression = expression_table[intrinsic.get_arguments()[0]];
 			return create<TypeLiteral>(expression->get_type());
 		}
+		else if (intrinsic.name_equals("arrayType")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* element_type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (element_type_expression->get_type_id() != TypeId::TYPE) {
+				error(intrinsic, "argument of arrayType must be a type");
+			}
+			const Type* element_type = static_cast<const TypeType*>(element_type_expression->get_type())->get_type();
+			return create<TypeLiteral>(TypeInterner::get_array_type(element_type));
+		}
 		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name());
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(expression_table[argument]);
