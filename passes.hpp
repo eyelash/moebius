@@ -970,6 +970,22 @@ class Pass3: public Visitor<const Expression*> {
 		}
 		return new_index;
 	}
+	static const Type* transform_type(const Type* type) {
+		if (type->get_id() == TypeId::TUPLE) {
+			TupleType new_type;
+			for (const Type* element_type: static_cast<const TupleType*>(type)->get_element_types()) {
+				if (!is_empty_tuple(element_type)) {
+					new_type.add_element_type(transform_type(element_type));
+				}
+			}
+			return TypeInterner::intern(&new_type);
+		}
+		if (type->get_id() == TypeId::ARRAY) {
+			const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
+			return TypeInterner::get_array_type(transform_type(element_type));
+		}
+		return type;
+	}
 public:
 	Pass3(FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block): function_table(function_table), function(function),  expression_table(expression_table), destination_block(destination_block) {}
 	static void evaluate(FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
@@ -1000,13 +1016,13 @@ public:
 	}
 	const Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];
-		If* new_if = create<If>(condition, if_.get_type());
+		If* new_if = create<If>(condition, transform_type(if_.get_type()));
 		evaluate(new_if->get_then_block(), if_.get_then_block());
 		evaluate(new_if->get_else_block(), if_.get_else_block());
 		return new_if;
 	}
 	const Expression* visit_tuple(const Tuple& tuple) override {
-		Tuple* new_tuple = create<Tuple>(tuple.get_type());
+		Tuple* new_tuple = create<Tuple>(transform_type(tuple.get_type()));
 		for (const Expression* element: tuple.get_elements()) {
 			if (!is_empty_tuple(element)) {
 				new_tuple->add_element(expression_table[element]);
@@ -1018,14 +1034,14 @@ public:
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
 		const std::vector<const Type*>& element_types = static_cast<const TupleType*>(tuple->get_type())->get_element_types();
 		const std::size_t index = adjust_index(element_types, tuple_access.get_index());
-		return create<TupleAccess>(tuple, index, tuple_access.get_type());
+		return create<TupleAccess>(tuple, index, transform_type(tuple_access.get_type()));
 	}
 	Expression* visit_argument(const Argument& argument) override {
 		const std::size_t index = adjust_index(function->get_argument_types(), argument.get_index());
-		return create<Argument>(index, argument.get_type());
+		return create<Argument>(index, transform_type(argument.get_type()));
 	}
 	const Expression* visit_call(const Call& call) override {
-		Call* new_call = create<Call>(call.get_type());
+		Call* new_call = create<Call>(transform_type(call.get_type()));
 		for (const Expression* argument: call.get_arguments()) {
 			if (!is_empty_tuple(argument)) {
 				new_call->add_argument(expression_table[argument]);
@@ -1035,7 +1051,7 @@ public:
 		return new_call;
 	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
-		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), intrinsic.get_type());
+		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), transform_type(intrinsic.get_type()));
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(expression_table[argument]);
 		}
@@ -1060,10 +1076,10 @@ public:
 			std::vector<const Type*> argument_types;
 			for (const Type* type: function->get_argument_types()) {
 				if (!is_empty_tuple(type)) {
-					argument_types.push_back(type);
+					argument_types.push_back(transform_type(type));
 				}
 			}
-			Function* new_function = new Function(argument_types, function->get_return_type());
+			Function* new_function = new Function(argument_types, transform_type(function->get_return_type()));
 			new_program->add_function(new_function);
 			function_table[function] = new_function;
 		}
