@@ -1059,7 +1059,7 @@ public:
 	}
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
-		const std::vector<const Type*>& element_types = static_cast<const TupleType*>(tuple->get_type())->get_element_types();
+		const std::vector<const Type*>& element_types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_element_types();
 		const std::size_t index = adjust_index(element_types, tuple_access.get_index());
 		return create<TupleAccess>(tuple, index, transform_type(tuple_access.get_type()));
 	}

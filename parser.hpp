@@ -57,6 +57,7 @@ class Scope {
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
 	Closure* closure;
+	const Expression* self = nullptr;
 	Block* block;
 public:
 	Scope(Scope*& current_scope, Closure* closure, Block* block): current_scope(current_scope), closure(closure), block(block) {
@@ -68,6 +69,9 @@ public:
 	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr) {}
 	~Scope() {
 		current_scope = parent;
+	}
+	void set_self(const Expression* self) {
+		this->self = self;
 	}
 	void add_variable(const StringView& name, const Expression* value) {
 		variables[name] = value;
@@ -81,7 +85,7 @@ public:
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
 					const std::size_t index = closure->add_environment_expression(expression);
-					const Expression* argument = create<ClosureAccess>(create<Argument>(0), index);
+					const Expression* argument = create<ClosureAccess>(self, index);
 					add_variable(name, argument);
 					return argument;
 				}
@@ -369,6 +373,7 @@ class MoebiusParser: private Parser {
 			closure->set_position(position);
 			{
 				Scope scope(current_scope, closure, function->get_block());
+				current_scope->set_self(current_scope->create<Argument>(0));
 				while (cursor && *cursor != ')') {
 					const StringView argument_name = parse_identifier();
 					const std::size_t index = function->add_argument();
@@ -620,7 +625,9 @@ class MoebiusParser: private Parser {
 				closure->set_position(position);
 				{
 					Scope scope(current_scope, closure, function->get_block());
-					current_scope->add_variable(name, current_scope->create<Argument>(0));
+					const Expression* self = current_scope->create<Argument>(0);
+					current_scope->set_self(self);
+					current_scope->add_variable(name, self);
 					while (cursor && *cursor != ')') {
 						const StringView argument_name = parse_identifier();
 						const std::size_t index = function->add_argument();
