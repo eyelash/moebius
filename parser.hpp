@@ -321,9 +321,10 @@ class MoebiusParser: private Parser {
 						}
 						struct_instantiation->add_field(field_name, field_expression);
 					}
-					if (parse(",")) {
-						parse_white_space();
+					if (!parse(",")) {
+						break;
 					}
+					parse_white_space();
 				}
 				expect("}");
 				current_scope->add_expression(struct_instantiation);
@@ -379,9 +380,10 @@ class MoebiusParser: private Parser {
 					const std::size_t index = function->add_argument();
 					current_scope->add_variable(argument_name, current_scope->create<Argument>(index));
 					parse_white_space();
-					if (parse(",")) {
-						parse_white_space();
+					if (!parse(",")) {
+						break;
 					}
+					parse_white_space();
 				}
 				expect(")");
 				parse_white_space();
@@ -417,9 +419,10 @@ class MoebiusParser: private Parser {
 			while (cursor && *cursor != ']') {
 				intrinsic->add_argument(parse_expression());
 				parse_white_space();
-				if (parse(",")) {
-					parse_white_space();
+				if (!parse(",")) {
+					break;
 				}
+				parse_white_space();
 			}
 			expect("]");
 			current_scope->add_expression(intrinsic);
@@ -479,9 +482,10 @@ class MoebiusParser: private Parser {
 			while (cursor && *cursor != ')') {
 				intrinsic->add_argument(parse_expression());
 				parse_white_space();
-				if (parse(",")) {
-					parse_white_space();
+				if (!parse(",")) {
+					break;
 				}
+				parse_white_space();
 			}
 			expect(")");
 			current_scope->add_expression(intrinsic);
@@ -505,9 +509,10 @@ class MoebiusParser: private Parser {
 					while (cursor && *cursor != ')') {
 						call->add_argument(parse_expression());
 						parse_white_space();
-						if (parse(",")) {
-							parse_white_space();
+						if (!parse(",")) {
+							break;
 						}
+						parse_white_space();
 					}
 					expect(")");
 					current_scope->add_expression(call);
@@ -532,9 +537,10 @@ class MoebiusParser: private Parser {
 						while (cursor && *cursor != ')') {
 							call->add_argument(parse_expression());
 							parse_white_space();
-							if (parse(",")) {
-								parse_white_space();
+							if (!parse(",")) {
+								break;
 							}
+							parse_white_space();
 						}
 						expect(")");
 						current_scope->add_expression(call);
@@ -559,9 +565,10 @@ class MoebiusParser: private Parser {
 						const Expression* field_expression = parse_expression();
 						struct_instantiation->add_field(field_name, field_expression);
 						parse_white_space();
-						if (parse(",")) {
-							parse_white_space();
+						if (!parse(",")) {
+							break;
 						}
+						parse_white_space();
 					}
 					expect("}");
 					current_scope->add_expression(struct_instantiation);
@@ -641,9 +648,10 @@ class MoebiusParser: private Parser {
 							current_scope->create<TypeAssert>(argument, argument_type);
 							parse_white_space();
 						}
-						if (parse(",")) {
-							parse_white_space();
+						if (!parse(",")) {
+							break;
 						}
+						parse_white_space();
 					}
 					expect(")");
 					parse_white_space();
@@ -679,9 +687,10 @@ class MoebiusParser: private Parser {
 						const Expression* field_type = parse_expression();
 						struct_definition->add_field(field_name, field_type);
 						parse_white_space();
-						if (parse(",")) {
-							parse_white_space();
+						if (!parse(",")) {
+							break;
 						}
+						parse_white_space();
 					}
 					expect("}");
 					parse_white_space();
