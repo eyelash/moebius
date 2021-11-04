@@ -12,7 +12,7 @@ class StringLiteral;
 class If;
 class Tuple;
 class TupleAccess;
-class StructInstantiation;
+class StructLiteral;
 class StructAccess;
 class Function;
 class Closure;
@@ -278,7 +278,6 @@ public:
 				const TupleType* tuple_type = static_cast<const TupleType*>(type);
 				TupleType* new_tuple_type = new TupleType();
 				for (const Type* element_type: tuple_type->get_element_types()) {
-					// TODO: maybe intern the type
 					new_tuple_type->add_element_type(element_type);
 				}
 				return new_tuple_type;
@@ -367,7 +366,7 @@ public:
 	virtual T visit_tuple_access(const TupleAccess& tuple_access) {
 		return T();
 	}
-	virtual T visit_struct_instantiation(const StructInstantiation& struct_instantiation) {
+	virtual T visit_struct_literal(const StructLiteral& struct_literal) {
 		return T();
 	}
 	virtual T visit_struct_access(const StructAccess& struct_access) {
@@ -457,8 +456,8 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			result = visitor.visit_tuple_access(tuple_access);
 		}
-		void visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
-			result = visitor.visit_struct_instantiation(struct_instantiation);
+		void visit_struct_literal(const StructLiteral& struct_literal) override {
+			result = visitor.visit_struct_literal(struct_literal);
 		}
 		void visit_struct_access(const StructAccess& struct_access) override {
 			result = visitor.visit_struct_access(struct_access);
@@ -690,13 +689,13 @@ public:
 	}
 };
 
-class StructInstantiation: public Expression {
+class StructLiteral: public Expression {
 	std::vector<std::string> field_names;
 	std::vector<const Expression*> fields;
 public:
-	StructInstantiation(const Type* type = nullptr): Expression(type) {}
+	StructLiteral(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_struct_instantiation(*this);
+		visitor.visit_struct_literal(*this);
 	}
 	void add_field(const std::string& field_name, const Expression* field) {
 		field_names.push_back(field_name);
@@ -1000,8 +999,8 @@ public:
 	const Expression* visit_tuple(const Tuple& tuple) override {
 		return tuple.get_elements()[index];
 	}
-	const Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
-		return struct_instantiation.get_fields()[index];
+	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
+		return struct_literal.get_fields()[index];
 	}
 };
 

@@ -64,7 +64,6 @@ public:
 		parent = current_scope;
 		current_scope = this;
 	}
-	Scope(Scope*& current_scope, Closure* closure): Scope(current_scope, closure, nullptr) {}
 	Scope(Scope*& current_scope, Block* block): Scope(current_scope, nullptr, block) {}
 	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr) {}
 	~Scope() {
@@ -303,23 +302,23 @@ class MoebiusParser: private Parser {
 				return expression;
 			}
 			else {
-				StructInstantiation* struct_instantiation = new StructInstantiation();
-				struct_instantiation->set_position(position);
+				StructLiteral* struct_literal = new StructLiteral();
+				struct_literal->set_position(position);
 				while (cursor && *cursor != '}') {
 					const StringView field_name = parse_identifier();
 					parse_white_space();
 					if (parse(":")) {
 						parse_white_space();
-						const Expression* field_expression = parse_expression();
-						struct_instantiation->add_field(field_name, field_expression);
+						const Expression* field = parse_expression();
+						struct_literal->add_field(field_name, field);
 						parse_white_space();
 					}
 					else {
-						const Expression* field_expression = current_scope->look_up(field_name);
-						if (field_expression == nullptr) {
+						const Expression* field = current_scope->look_up(field_name);
+						if (field == nullptr) {
 							error(format("undefined variable \"%\"", field_name));
 						}
-						struct_instantiation->add_field(field_name, field_expression);
+						struct_literal->add_field(field_name, field);
 					}
 					if (!parse(",")) {
 						break;
@@ -327,8 +326,8 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 				}
 				expect("}");
-				current_scope->add_expression(struct_instantiation);
-				return struct_instantiation;
+				current_scope->add_expression(struct_literal);
+				return struct_literal;
 			}
 		}
 		else if (parse("(")) {
@@ -555,15 +554,15 @@ class MoebiusParser: private Parser {
 				}
 				else if (parse("{")) {
 					parse_white_space();
-					StructInstantiation* struct_instantiation = new StructInstantiation();
-					struct_instantiation->set_position(position);
+					StructLiteral* struct_literal = new StructLiteral();
+					struct_literal->set_position(position);
 					while (cursor && *cursor != '}') {
 						const StringView field_name = parse_identifier();
 						parse_white_space();
 						expect(":");
 						parse_white_space();
-						const Expression* field_expression = parse_expression();
-						struct_instantiation->add_field(field_name, field_expression);
+						const Expression* field = parse_expression();
+						struct_literal->add_field(field_name, field);
 						parse_white_space();
 						if (!parse(",")) {
 							break;
@@ -571,9 +570,10 @@ class MoebiusParser: private Parser {
 						parse_white_space();
 					}
 					expect("}");
-					current_scope->add_expression(struct_instantiation);
-					current_scope->create<TypeAssert>(struct_instantiation, expression);
-					expression = struct_instantiation;
+					current_scope->add_expression(struct_literal);
+					TypeAssert* type_assert = current_scope->create<TypeAssert>(struct_literal, expression);
+					type_assert->set_position(position);
+					expression = struct_literal;
 					parse_white_space();
 				}
 				else {
@@ -606,6 +606,7 @@ class MoebiusParser: private Parser {
 				const StringView name = parse_identifier();
 				parse_white_space();
 				const Expression* type = nullptr;
+				const SourcePosition type_assert_position = cursor.get_position();
 				if (parse(":")) {
 					parse_white_space();
 					type = parse_expression();
@@ -615,7 +616,8 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				const Expression* expression = parse_expression();
 				if (type) {
-					current_scope->create<TypeAssert>(expression, type);
+					TypeAssert* type_assert = current_scope->create<TypeAssert>(expression, type);
+					type_assert->set_position(type_assert_position);
 				}
 				current_scope->add_variable(name, expression);
 				parse_white_space();
@@ -641,11 +643,12 @@ class MoebiusParser: private Parser {
 						const Expression* argument = current_scope->create<Argument>(index);
 						current_scope->add_variable(argument_name, argument);
 						parse_white_space();
+						const SourcePosition type_assert_position = cursor.get_position();
 						if (parse(":")) {
 							parse_white_space();
 							const Expression* argument_type = parse_expression();
-							// TODO: set_position
-							current_scope->create<TypeAssert>(argument, argument_type);
+							TypeAssert* type_assert = current_scope->create<TypeAssert>(argument, argument_type);
+							type_assert->set_position(type_assert_position);
 							parse_white_space();
 						}
 						if (!parse(",")) {
@@ -655,11 +658,12 @@ class MoebiusParser: private Parser {
 					}
 					expect(")");
 					parse_white_space();
+					const SourcePosition return_type_position = cursor.get_position();
 					if (parse(":")) {
 						parse_white_space();
-						const Expression* return_type = parse_expression();
-						// TODO: set_position
-						current_scope->create<ReturnType>(return_type);
+						const Expression* type = parse_expression();
+						ReturnType* return_type = current_scope->create<ReturnType>(type);
+						return_type->set_position(return_type_position);
 						parse_white_space();
 					}
 					expect("=");

@@ -338,8 +338,8 @@ public:
 	}
 	Variable visit_tuple(const Tuple& tuple) override {
 		const Variable result = next_variable();
+		const Type type = function_table.get_type(tuple.get_type());
 		printer.println(print_functor([&](auto& printer) {
-			const Type type = function_table.get_type(tuple.get_type());
 			printer.print(format("% % = {", type, result));
 			for (std::size_t i = 0; i < tuple.get_elements().size(); ++i) {
 				if (i > 0) printer.print(", ");
@@ -457,6 +457,16 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_arguments()[0]->get_type());
 			printer.println(format("%_free(%);", type, array));
+		}
+		else {
+			printer.println(print_functor([&](auto& printer) {
+				printer.print(format("// %(", intrinsic.get_name()));
+				for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
+					if (i > 0) printer.print(", ");
+					printer.print(expression_table[intrinsic.get_arguments()[i]]);
+				}
+				printer.print(")");
+			}));
 		}
 		return result;
 	}

@@ -149,17 +149,17 @@ public:
 		const Type* type = tuple_type->get_element_types()[index];
 		return create<TupleAccess>(tuple, index, type);
 	}
-	const Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
+	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
 		StructType type;
-		StructInstantiation* new_struct_instantiation = create<StructInstantiation>();
-		for (std::size_t i = 0; i < struct_instantiation.get_fields().size(); ++i) {
-			const std::string& field_name = struct_instantiation.get_field_names()[i];
-			const Expression* new_field = expression_table[struct_instantiation.get_fields()[i]];
+		StructLiteral* new_struct_literal = create<StructLiteral>();
+		for (std::size_t i = 0; i < struct_literal.get_fields().size(); ++i) {
+			const std::string& field_name = struct_literal.get_field_names()[i];
+			const Expression* new_field = expression_table[struct_literal.get_fields()[i]];
 			type.add_field(field_name, new_field->get_type());
-			new_struct_instantiation->add_field(field_name, new_field);
+			new_struct_literal->add_field(field_name, new_field);
 		}
-		new_struct_instantiation->set_type(TypeInterner::intern(&type));
-		return new_struct_instantiation;
+		new_struct_literal->set_type(TypeInterner::intern(&type));
+		return new_struct_literal;
 	}
 	const Expression* visit_struct_access(const StructAccess& struct_access) override {
 		const Expression* struct_ = expression_table[struct_access.get_struct()];
@@ -183,9 +183,6 @@ public:
 		Closure* new_closure = create<Closure>(nullptr);
 		for (const Expression* expression: closure.get_environment_expressions()) {
 			const Expression* new_expression = expression_table[expression];
-			if (new_expression->get_type_id() == TypeId::TYPE) {
-				error(closure, "closures capturing types are not yet supported");
-			}
 			type.add_environment_type(new_expression->get_type());
 			new_closure->add_environment_expression(new_expression);
 		}
@@ -380,6 +377,9 @@ public:
 		else if (intrinsic.name_equals("free")) {
 			new_intrinsic->set_type(TypeInterner::get_void_type());
 		}
+		else {
+			new_intrinsic->set_type(TypeInterner::get_void_type());
+		}
 		return new_intrinsic;
 	}
 	const Expression* visit_bind(const Bind& bind) override {
@@ -420,18 +420,18 @@ public:
 		const Expression* expression = expression_table[type_assert.get_expression()];
 		const Expression* type_expression = expression_table[type_assert.get_type()];
 		if (type_expression->get_type_id() != TypeId::TYPE) {
-			error(*type_assert.get_type(), "expression is not a type");
+			error(type_assert, "expression is not a type");
 		}
 		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 		if (expression->get_type() != type) {
-			error(*type_assert.get_type(), format("expression does not have the declared type %", print_type(type)));
+			error(type_assert, format("expression does not have the declared type %", print_type(type)));
 		}
 		return nullptr;
 	}
 	const Expression* visit_return_type(const ReturnType& return_type) override {
 		const Expression* type_expression = expression_table[return_type.get_type()];
 		if (type_expression->get_type_id() != TypeId::TYPE) {
-			error(*return_type.get_type(), "return type must be a type");
+			error(return_type, "return type must be a type");
 		}
 		const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 		function_table[key]->set_return_type(type);
@@ -518,7 +518,7 @@ public:
 		return new_if;
 	}
 	const Expression* visit_tuple(const Tuple& tuple) override {
-		Tuple* new_tuple = create<Tuple>(tuple.get_type());
+		Tuple* new_tuple = create<Tuple>(transform_type(tuple.get_type()));
 		for (const Expression* element: tuple.get_elements()) {
 			new_tuple->add_element(expression_table[element]);
 		}
@@ -528,9 +528,9 @@ public:
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
 		return create<TupleAccess>(tuple, tuple_access.get_index(), transform_type(tuple_access.get_type()));
 	}
-	const Expression* visit_struct_instantiation(const StructInstantiation& struct_instantiation) override {
-		Tuple* tuple = create<Tuple>(transform_type(struct_instantiation.get_type()));
-		for (const Expression* field: struct_instantiation.get_fields()) {
+	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
+		Tuple* tuple = create<Tuple>(transform_type(struct_literal.get_type()));
+		for (const Expression* field: struct_literal.get_fields()) {
 			tuple->add_element(expression_table[field]);
 		}
 		return tuple;
@@ -608,10 +608,17 @@ class GarbageCollect {
 	using FunctionTable = std::map<const Function*, Function*>;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
 	using UsageTable = std::map<const Expression*, bool>;
+	// TODO: remove unused arguments
+	class IsArgument: public Visitor<bool> {
+	public:
+		bool visit_argument(const Argument& argument) override {
+			return true;
+		}
+	};
 	class Mark: public Visitor<void> {
 		UsageTable& usage_table;
 		void mark(const Expression* expression) {
-			if (usage_table.count(expression) != 0) {
+			if (usage_table.count(expression) > 0) {
 				return;
 			}
 			usage_table[expression] = true;
@@ -671,9 +678,10 @@ class GarbageCollect {
 	public:
 		Sweep(FunctionTable& function_table, const UsageTable& usage_table, ExpressionTable& expression_table, Block* destination_block): function_table(function_table), usage_table(usage_table), expression_table(expression_table), destination_block(destination_block) {}
 		static void evaluate(FunctionTable& function_table, const UsageTable& usage_table, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
+			IsArgument is_argument;
 			Sweep sweep(function_table, usage_table, expression_table, destination_block);
 			for (const Expression* expression: source_block) {
-				if (usage_table.count(expression) != 0) {
+				if (usage_table.count(expression) > 0 || visit(is_argument, expression)) {
 					expression_table[expression] = visit(sweep, expression);
 				}
 			}
@@ -1123,8 +1131,7 @@ public:
 
 // memory management
 class Pass4: public Visitor<const Expression*> {
-	class UsageTable {
-	public:
+	struct UsageTable {
 		std::map<const Block*, std::map<const Expression*, std::pair<const Expression*, std::size_t>>> usages;
 		std::map<const Block*, std::vector<const Expression*>> frees;
 		std::map<const Expression*, std::size_t> levels;
@@ -1224,7 +1231,7 @@ class Pass4: public Visitor<const Expression*> {
 		void ensure_frees(const Block* source_block, const Block* target_block) {
 			for (auto& entry: usage_table.usages[source_block]) {
 				const Expression* resource = entry.first;
-				if (usage_table.usages[target_block].find(resource) == usage_table.usages[target_block].end() && usage_table.levels[resource] < level + 1) {
+				if (usage_table.usages[target_block].count(resource) == 0 && usage_table.levels[resource] < level + 1) {
 					// if a resource from the source block has no usage in the target block, add it to the free list
 					usage_table.frees[target_block].push_back(resource);
 				}
@@ -1262,6 +1269,9 @@ class Pass4: public Visitor<const Expression*> {
 	}
 	bool is_last_use(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
 		return usage_table.usages[source_block][resource] == std::make_pair(consumer, argument_index);
+	}
+	bool is_unused(const Expression* resource) {
+		return usage_table.usages[source_block].count(resource) == 0;
 	}
 	bool is_borrowed(const Intrinsic& intrinsic, std::size_t i) {
 		return intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || intrinsic.name_equals("putStr");
@@ -1337,7 +1347,11 @@ public:
 		return new_tuple_access;
 	}
 	const Expression* visit_argument(const Argument& argument) override {
-		return create<Argument>(argument.get_index(), argument.get_type());
+		Argument* new_argument = create<Argument>(argument.get_index(), argument.get_type());
+		if (is_managed(&argument) && is_unused(&argument)) {
+			free(new_argument);
+		}
+		return new_argument;
 	}
 	const Expression* visit_call(const Call& call) override {
 		Call* new_call = new Call(call.get_type());
@@ -1416,10 +1430,10 @@ public:
 	std::map<const Expression*, bool> tail_call_expressions;
 	std::map<const Function*, bool> tail_call_functions;
 	bool is_tail_call(const Call& call) const {
-		return tail_call_expressions.find(&call) != tail_call_expressions.end();
+		return tail_call_expressions.count(&call) > 0;
 	}
 	bool has_tail_call(const Function* function) const {
-		return tail_call_functions.find(function) != tail_call_functions.end();
+		return tail_call_functions.count(function) > 0;
 	}
 };
 
