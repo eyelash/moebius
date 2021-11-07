@@ -336,14 +336,14 @@ public:
 		}
 		return result;
 	}
-	Variable visit_tuple(const Tuple& tuple) override {
+	Variable visit_tuple_literal(const TupleLiteral& tuple_literal) override {
 		const Variable result = next_variable();
-		const Type type = function_table.get_type(tuple.get_type());
+		const Type type = function_table.get_type(tuple_literal.get_type());
 		printer.println(print_functor([&](auto& printer) {
 			printer.print(format("% % = {", type, result));
-			for (std::size_t i = 0; i < tuple.get_elements().size(); ++i) {
+			for (std::size_t i = 0; i < tuple_literal.get_elements().size(); ++i) {
 				if (i > 0) printer.print(", ");
-				printer.print(expression_table[tuple.get_elements()[i]]);
+				printer.print(expression_table[tuple_literal.get_elements()[i]]);
 			}
 			printer.print("};");
 		}));

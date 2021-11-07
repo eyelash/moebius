@@ -127,16 +127,16 @@ public:
 			return new_if;
 		}
 	}
-	const Expression* visit_tuple(const Tuple& tuple) override {
+	const Expression* visit_tuple_literal(const TupleLiteral& tuple_literal) override {
 		TupleType type;
-		Tuple* new_tuple = create<Tuple>();
-		for (const Expression* element: tuple.get_elements()) {
+		TupleLiteral* new_tuple_literal = create<TupleLiteral>();
+		for (const Expression* element: tuple_literal.get_elements()) {
 			const Expression* new_element = expression_table[element];
 			type.add_element_type(new_element->get_type());
-			new_tuple->add_element(new_element);
+			new_tuple_literal->add_element(new_element);
 		}
-		new_tuple->set_type(TypeInterner::intern(&type));
-		return new_tuple;
+		new_tuple_literal->set_type(TypeInterner::intern(&type));
+		return new_tuple_literal;
 	}
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const std::size_t index = tuple_access.get_index();
@@ -517,23 +517,23 @@ public:
 		evaluate(new_if->get_else_block(), if_.get_else_block());
 		return new_if;
 	}
-	const Expression* visit_tuple(const Tuple& tuple) override {
-		Tuple* new_tuple = create<Tuple>(transform_type(tuple.get_type()));
-		for (const Expression* element: tuple.get_elements()) {
-			new_tuple->add_element(expression_table[element]);
+	const Expression* visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+		TupleLiteral* new_tuple_literal = create<TupleLiteral>(transform_type(tuple_literal.get_type()));
+		for (const Expression* element: tuple_literal.get_elements()) {
+			new_tuple_literal->add_element(expression_table[element]);
 		}
-		return new_tuple;
+		return new_tuple_literal;
 	}
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
 		return create<TupleAccess>(tuple, tuple_access.get_index(), transform_type(tuple_access.get_type()));
 	}
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
-		Tuple* tuple = create<Tuple>(transform_type(struct_literal.get_type()));
+		TupleLiteral* tuple_literal = create<TupleLiteral>(transform_type(struct_literal.get_type()));
 		for (const Expression* field: struct_literal.get_fields()) {
-			tuple->add_element(expression_table[field]);
+			tuple_literal->add_element(expression_table[field]);
 		}
-		return tuple;
+		return tuple_literal;
 	}
 	const Expression* visit_struct_access(const StructAccess& struct_access) override {
 		const Expression* tuple = expression_table[struct_access.get_struct()];
@@ -542,11 +542,11 @@ public:
 		return create<TupleAccess>(tuple, index, transform_type(struct_access.get_type()));
 	}
 	const Expression* visit_closure(const Closure& closure) override {
-		Tuple* tuple = create<Tuple>(transform_type(closure.get_type()));
+		TupleLiteral* tuple_literal = create<TupleLiteral>(transform_type(closure.get_type()));
 		for (const Expression* expression: closure.get_environment_expressions()) {
-			tuple->add_element(expression_table[expression]);
+			tuple_literal->add_element(expression_table[expression]);
 		}
-		return tuple;
+		return tuple_literal;
 	}
 	const Expression* visit_closure_access(const ClosureAccess& closure_access) override {
 		const Expression* tuple = expression_table[closure_access.get_closure()];
@@ -639,8 +639,8 @@ class GarbageCollect {
 			evaluate(usage_table, if_.get_then_block());
 			evaluate(usage_table, if_.get_else_block());
 		}
-		void visit_tuple(const Tuple& tuple) override {
-			for (const Expression* element: tuple.get_elements()) {
+		void visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+			for (const Expression* element: tuple_literal.get_elements()) {
 				mark(element);
 			}
 		}
@@ -711,12 +711,12 @@ class GarbageCollect {
 			evaluate(new_if->get_else_block(), if_.get_else_block());
 			return new_if;
 		}
-		const Expression* visit_tuple(const Tuple& tuple) override {
-			Tuple* new_tuple = create<Tuple>(tuple.get_type());
-			for (const Expression* element: tuple.get_elements()) {
-				new_tuple->add_element(expression_table[element]);
+		const Expression* visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+			TupleLiteral* new_tuple_literal = create<TupleLiteral>(tuple_literal.get_type());
+			for (const Expression* element: tuple_literal.get_elements()) {
+				new_tuple_literal->add_element(expression_table[element]);
 			}
-			return new_tuple;
+			return new_tuple_literal;
 		}
 		const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 			const Expression* tuple = expression_table[tuple_access.get_tuple()];
@@ -883,12 +883,12 @@ class Pass2 {
 			evaluate(new_if->get_else_block(), if_.get_else_block());
 			return new_if;
 		}
-		const Expression* visit_tuple(const Tuple& tuple) override {
-			Tuple* new_tuple = create<Tuple>(tuple.get_type());
-			for (const Expression* element: tuple.get_elements()) {
-				new_tuple->add_element(expression_table[element]);
+		const Expression* visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+			TupleLiteral* new_tuple_literal = create<TupleLiteral>(tuple_literal.get_type());
+			for (const Expression* element: tuple_literal.get_elements()) {
+				new_tuple_literal->add_element(expression_table[element]);
 			}
-			return new_tuple;
+			return new_tuple_literal;
 		}
 		const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 			const Expression* tuple = expression_table[tuple_access.get_tuple()];
@@ -1056,14 +1056,14 @@ public:
 		evaluate(new_if->get_else_block(), if_.get_else_block());
 		return new_if;
 	}
-	const Expression* visit_tuple(const Tuple& tuple) override {
-		Tuple* new_tuple = create<Tuple>(transform_type(tuple.get_type()));
+	const Expression* visit_tuple_literal(const TupleLiteral& tuple) override {
+		TupleLiteral* new_tuple_literal = create<TupleLiteral>(transform_type(tuple.get_type()));
 		for (const Expression* element: tuple.get_elements()) {
 			if (!is_empty_tuple(element)) {
-				new_tuple->add_element(expression_table[element]);
+				new_tuple_literal->add_element(expression_table[element]);
 			}
 		}
-		return new_tuple;
+		return new_tuple_literal;
 	}
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
@@ -1174,11 +1174,11 @@ class Pass4: public Visitor<const Expression*> {
 			propagate_usages(&if_.get_then_block(), &if_);
 			propagate_usages(&if_.get_else_block(), &if_);
 		}
-		void visit_tuple(const Tuple& tuple) override {
-			for (std::size_t i = 0; i < tuple.get_elements().size(); ++i) {
-				const Expression* element = tuple.get_elements()[i];
+		void visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+			for (std::size_t i = 0; i < tuple_literal.get_elements().size(); ++i) {
+				const Expression* element = tuple_literal.get_elements()[i];
 				if (is_managed(element)) {
-					add_usage(element, &tuple, i);
+					add_usage(element, &tuple_literal, i);
 				}
 			}
 		}
@@ -1321,19 +1321,19 @@ public:
 		evaluate(new_if->get_else_block(), if_.get_else_block());
 		return new_if;
 	}
-	const Expression* visit_tuple(const Tuple& tuple) override {
-		Tuple* new_tuple = new Tuple(tuple.get_type());
-		for (std::size_t i = 0; i < tuple.get_elements().size(); ++i) {
-			const Expression* element = tuple.get_elements()[i];
-			if (is_managed(element) && !is_last_use(element, &tuple, i)) {
-				new_tuple->add_element(copy(expression_table[element]));
+	const Expression* visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+		TupleLiteral* new_tuple_literal = new TupleLiteral(tuple_literal.get_type());
+		for (std::size_t i = 0; i < tuple_literal.get_elements().size(); ++i) {
+			const Expression* element = tuple_literal.get_elements()[i];
+			if (is_managed(element) && !is_last_use(element, &tuple_literal, i)) {
+				new_tuple_literal->add_element(copy(expression_table[element]));
 			}
 			else {
-				new_tuple->add_element(expression_table[element]);
+				new_tuple_literal->add_element(expression_table[element]);
 			}
 		}
-		destination_block->add_expression(new_tuple);
-		return new_tuple;
+		destination_block->add_expression(new_tuple_literal);
+		return new_tuple_literal;
 	}
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];

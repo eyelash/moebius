@@ -162,9 +162,9 @@ public:
 		jump_end.set_target(assembler, assembler.get_position());
 		return result;
 	}
-	std::uint32_t visit_tuple(const Tuple& tuple) override {
-		const std::uint32_t size = get_type_size(tuple.get_type());
-		const std::vector<const Expression*>& expressions = tuple.get_elements();
+	std::uint32_t visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+		const std::uint32_t size = get_type_size(tuple_literal.get_type());
+		const std::vector<const Expression*>& expressions = tuple_literal.get_elements();
 		if (expressions.size() == 1) {
 			return expression_table[expressions[0]];
 		}

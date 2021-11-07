@@ -332,10 +332,27 @@ class MoebiusParser: private Parser {
 		}
 		else if (parse("(")) {
 			parse_white_space();
-			const Expression* expression = parse_expression();
-			parse_white_space();
+			std::vector<const Expression*> elements;
+			while (cursor && *cursor != ')') {
+				elements.push_back(parse_expression());
+				parse_white_space();
+				if (!parse(",")) {
+					break;
+				}
+				parse_white_space();
+			}
 			expect(")");
-			return expression;
+			if (elements.size() == 1) {
+				return elements[0];
+			}
+			else {
+				TupleLiteral* tuple = current_scope->create<TupleLiteral>();
+				tuple->set_position(position);
+				for (const Expression* element: elements) {
+					tuple->add_element(element);
+				}
+				return tuple;
+			}
 		}
 		else if (parse("if", alphanumeric)) {
 			parse_white_space();

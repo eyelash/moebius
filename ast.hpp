@@ -10,7 +10,7 @@ class IntLiteral;
 class BinaryExpression;
 class StringLiteral;
 class If;
-class Tuple;
+class TupleLiteral;
 class TupleAccess;
 class StructLiteral;
 class StructAccess;
@@ -360,7 +360,7 @@ public:
 	virtual T visit_if(const If& if_) {
 		return T();
 	}
-	virtual T visit_tuple(const Tuple& tuple) {
+	virtual T visit_tuple_literal(const TupleLiteral& tuple_literal) {
 		return T();
 	}
 	virtual T visit_tuple_access(const TupleAccess& tuple_access) {
@@ -450,8 +450,8 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_if(const If& if_) override {
 			result = visitor.visit_if(if_);
 		}
-		void visit_tuple(const Tuple& tuple) override {
-			result = visitor.visit_tuple(tuple);
+		void visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+			result = visitor.visit_tuple_literal(tuple_literal);
 		}
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			result = visitor.visit_tuple_access(tuple_access);
@@ -658,12 +658,12 @@ public:
 	}
 };
 
-class Tuple: public Expression {
+class TupleLiteral: public Expression {
 	std::vector<const Expression*> elements;
 public:
-	Tuple(const Type* type = nullptr): Expression(type) {}
+	TupleLiteral(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_tuple(*this);
+		visitor.visit_tuple_literal(*this);
 	}
 	void add_element(const Expression* element) {
 		elements.push_back(element);
@@ -996,8 +996,8 @@ class GetTupleElement: public Visitor<const Expression*> {
 	std::size_t index;
 public:
 	GetTupleElement(std::size_t index): index(index) {}
-	const Expression* visit_tuple(const Tuple& tuple) override {
-		return tuple.get_elements()[index];
+	const Expression* visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+		return tuple_literal.get_elements()[index];
 	}
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
 		return struct_literal.get_fields()[index];
