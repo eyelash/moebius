@@ -60,6 +60,18 @@ public:
 		printer.println(format("const % = (% % %) | 0;", result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
+	Variable visit_array_literal(const ArrayLiteral& array_literal) override {
+		const Variable result = next_variable();
+		printer.println(print_functor([&](auto& printer) {
+			printer.print(format("const % = [", result));
+			for (std::size_t i = 0; i < array_literal.get_elements().size(); ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(expression_table[array_literal.get_elements()[i]]);
+			}
+			printer.print("];");
+		}));
+		return result;
+	}
 	Variable visit_string_literal(const StringLiteral& string_literal) override {
 		const Variable result = next_variable();
 		printer.println(print_functor([&](auto& printer) {
@@ -142,16 +154,6 @@ public:
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			// TODO
-		}
-		else if (intrinsic.name_equals("arrayNew")) {
-			printer.println(print_functor([&](auto& printer) {
-				printer.print(format("const % = [", result));
-				for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
-					if (i > 0) printer.print(", ");
-					printer.print(expression_table[intrinsic.get_arguments()[i]]);
-				}
-				printer.print("];");
-			}));
 		}
 		else if (intrinsic.name_equals("arrayGet")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];

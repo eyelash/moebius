@@ -43,7 +43,6 @@ constexpr const char* intrinsics[] = {
 	"putChar",
 	"putStr",
 	"getChar",
-	"arrayNew",
 	"arrayGet",
 	"arrayLength",
 	"arraySplice",
@@ -430,10 +429,10 @@ class MoebiusParser: private Parser {
 		}
 		else if (parse("[")) {
 			parse_white_space();
-			Intrinsic* intrinsic = new Intrinsic("arrayNew");
-			intrinsic->set_position(position);
+			ArrayLiteral* array_literal = new ArrayLiteral();
+			array_literal->set_position(position);
 			while (cursor && *cursor != ']') {
-				intrinsic->add_argument(parse_expression());
+				array_literal->add_element(parse_expression());
 				parse_white_space();
 				if (!parse(",")) {
 					break;
@@ -441,8 +440,8 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 			}
 			expect("]");
-			current_scope->add_expression(intrinsic);
-			return intrinsic;
+			current_scope->add_expression(array_literal);
+			return array_literal;
 		}
 		else if (parse("false", alphanumeric)) {
 			Expression* expression = current_scope->create<IntLiteral>(0);

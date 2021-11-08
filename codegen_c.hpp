@@ -296,6 +296,21 @@ public:
 		printer.println(format("% % = % % %;", type, result, left, print_operator(binary_expression.get_operation()), right));
 		return result;
 	}
+	Variable visit_array_literal(const ArrayLiteral& array_literal) override {
+		const Variable result = next_variable();
+		const Type type = function_table.get_type(array_literal.get_type());
+		const Type element_type = function_table.get_type(get_element_type(array_literal.get_type()));
+		const std::size_t size = array_literal.get_elements().size();
+		printer.println(print_functor([&](auto& printer) {
+			printer.print(format("% % = %_new((%[]){", type, result, type, element_type));
+			for (std::size_t i = 0; i < size; ++i) {
+				if (i > 0) printer.print(", ");
+				printer.print(expression_table[array_literal.get_elements()[i]]);
+			}
+			printer.print(format("}, %);", print_number(size)));
+		}));
+		return result;
+	}
 	Variable visit_string_literal(const StringLiteral& string_literal) override {
 		const Variable result = next_variable();
 		const Type type = function_table.get_type(string_literal.get_type());
@@ -400,19 +415,6 @@ public:
 		else if (intrinsic.name_equals("getChar")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
 			printer.println(format("% % = getchar();", type, result));
-		}
-		else if (intrinsic.name_equals("arrayNew")) {
-			const Type type = function_table.get_type(intrinsic.get_type());
-			const Type element_type = function_table.get_type(get_element_type(intrinsic.get_type()));
-			const std::size_t size = intrinsic.get_arguments().size();
-			printer.println(print_functor([&](auto& printer) {
-				printer.print(format("% % = %_new((%[]){", type, result, type, element_type));
-				for (std::size_t i = 0; i < size; ++i) {
-					if (i > 0) printer.print(", ");
-					printer.print(expression_table[intrinsic.get_arguments()[i]]);
-				}
-				printer.print(format("}, %);", print_number(size)));
-			}));
 		}
 		else if (intrinsic.name_equals("arrayGet")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];

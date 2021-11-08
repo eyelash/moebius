@@ -8,6 +8,7 @@
 
 class IntLiteral;
 class BinaryExpression;
+class ArrayLiteral;
 class StringLiteral;
 class If;
 class TupleLiteral;
@@ -354,6 +355,9 @@ public:
 	virtual T visit_binary_expression(const BinaryExpression& binary_expression) {
 		return T();
 	}
+	virtual T visit_array_literal(const ArrayLiteral& array_literal) {
+		return T();
+	}
 	virtual T visit_string_literal(const StringLiteral& string_literal) {
 		return T();
 	}
@@ -443,6 +447,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_binary_expression(const BinaryExpression& binary_expression) override {
 			result = visitor.visit_binary_expression(binary_expression);
+		}
+		void visit_array_literal(const ArrayLiteral& array_literal) override {
+			result = visitor.visit_array_literal(array_literal);
 		}
 		void visit_string_literal(const StringLiteral& string_literal) override {
 			result = visitor.visit_string_literal(string_literal);
@@ -617,6 +624,21 @@ public:
 	}
 	template <BinaryOperation operation> static Expression* create(const Expression* left, const Expression* right) {
 		return new BinaryExpression(operation, left, right);
+	}
+};
+
+class ArrayLiteral: public Expression {
+	std::vector<const Expression*> elements;
+public:
+	ArrayLiteral(const Type* type = nullptr): Expression(type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_array_literal(*this);
+	}
+	void add_element(const Expression* element) {
+		elements.push_back(element);
+	}
+	const std::vector<const Expression*>& get_elements() const {
+		return elements;
 	}
 };
 

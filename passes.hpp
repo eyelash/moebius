@@ -99,6 +99,21 @@ public:
 			error(binary_expression, format("binary expression of types % and %", print_type(left->get_type()), print_type(right->get_type())));
 		}
 	}
+	const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
+		if (array_literal.get_elements().size() == 0) {
+			error(array_literal, "emtpy arrays are not yet supported");
+		}
+		const Type* element_type = expression_table[array_literal.get_elements()[0]]->get_type();
+		ArrayLiteral* new_array_literal = create<ArrayLiteral>(TypeInterner::get_array_type(element_type));
+		for (const Expression* element: array_literal.get_elements()) {
+			const Expression* new_element = expression_table[element];
+			if (new_element->get_type() != element_type) {
+				error(array_literal, format("array elements must be of type %", print_type(element_type)));
+			}
+			new_array_literal->add_element(new_element);
+		}
+		return new_array_literal;
+	}
 	const Expression* visit_string_literal(const StringLiteral& string_literal) override {
 		return create<StringLiteral>(string_literal.get_value());
 	}
@@ -318,18 +333,6 @@ public:
 			ensure_argument_types(intrinsic, {});
 			new_intrinsic->set_type(TypeInterner::get_int_type());
 		}
-		else if (intrinsic.name_equals("arrayNew")) {
-			if (new_intrinsic->get_arguments().size() == 0) {
-				error(intrinsic, "emtpy arrays are not yet supported");
-			}
-			const Type* element_type = new_intrinsic->get_arguments()[0]->get_type();
-			for (const Expression* argument: new_intrinsic->get_arguments()) {
-				if (argument->get_type() != element_type) {
-					error(intrinsic, format("array elements must be of type %", print_type(element_type)));
-				}
-			}
-			new_intrinsic->set_type(TypeInterner::get_array_type(element_type));
-		}
 		else if (intrinsic.name_equals("arrayGet")) {
 			ensure_argument_count(intrinsic, 2);
 			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
@@ -507,6 +510,13 @@ public:
 		const Expression* right = expression_table[binary_expression.get_right()];
 		return create<BinaryExpression>(binary_expression.get_operation(), left, right);
 	}
+	const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
+		ArrayLiteral* new_array_literal = create<ArrayLiteral>(transform_type(array_literal.get_type()));
+		for (const Expression* element: array_literal.get_elements()) {
+			new_array_literal->add_element(expression_table[element]);
+		}
+		return new_array_literal;
+	}
 	const Expression* visit_string_literal(const StringLiteral& string_literal) override {
 		return create<StringLiteral>(string_literal.get_value());
 	}
@@ -634,6 +644,11 @@ class GarbageCollect {
 			mark(binary_expression.get_left());
 			mark(binary_expression.get_right());
 		}
+		void visit_array_literal(const ArrayLiteral& array_literal) override {
+			for (const Expression* element: array_literal.get_elements()) {
+				mark(element);
+			}
+		}
 		void visit_if(const If& if_) override {
 			mark(if_.get_condition());
 			evaluate(usage_table, if_.get_then_block());
@@ -700,6 +715,13 @@ class GarbageCollect {
 			const Expression* left = expression_table[binary_expression.get_left()];
 			const Expression* right = expression_table[binary_expression.get_right()];
 			return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+		}
+		const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
+			ArrayLiteral* new_array_literal = create<ArrayLiteral>(array_literal.get_type());
+			for (const Expression* element: array_literal.get_elements()) {
+				new_array_literal->add_element(expression_table[element]);
+			}
+			return new_array_literal;
 		}
 		const Expression* visit_string_literal(const StringLiteral& string_literal) override {
 			return create<StringLiteral>(string_literal.get_value());
@@ -872,6 +894,13 @@ class Pass2 {
 			const Expression* left = expression_table[binary_expression.get_left()];
 			const Expression* right = expression_table[binary_expression.get_right()];
 			return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+		}
+		const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
+			ArrayLiteral* new_array_literal = create<ArrayLiteral>(array_literal.get_type());
+			for (const Expression* element: array_literal.get_elements()) {
+				new_array_literal->add_element(expression_table[element]);
+			}
+			return new_array_literal;
 		}
 		const Expression* visit_string_literal(const StringLiteral& string_literal) override {
 			return create<StringLiteral>(string_literal.get_value());
@@ -1046,6 +1075,13 @@ public:
 		const Expression* right = expression_table[binary_expression.get_right()];
 		return create<BinaryExpression>(binary_expression.get_operation(), left, right);
 	}
+	const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
+		ArrayLiteral* new_array_literal = create<ArrayLiteral>(transform_type(array_literal.get_type()));
+		for (const Expression* element: array_literal.get_elements()) {
+			new_array_literal->add_element(expression_table[element]);
+		}
+		return new_array_literal;
+	}
 	const Expression* visit_string_literal(const StringLiteral& string_literal) override {
 		return create<StringLiteral>(string_literal.get_value());
 	}
@@ -1167,6 +1203,14 @@ class Pass4: public Visitor<const Expression*> {
 		}
 		void evaluate(const Block& block) {
 			evaluate(usage_table, block, level + 1);
+		}
+		void visit_array_literal(const ArrayLiteral& array_literal) override {
+			for (std::size_t i = 0; i < array_literal.get_elements().size(); ++i) {
+				const Expression* element = array_literal.get_elements()[i];
+				if (is_managed(element)) {
+					add_usage(element, &array_literal, i);
+				}
+			}
 		}
 		void visit_if(const If& if_) override {
 			evaluate(if_.get_then_block());
@@ -1310,6 +1354,20 @@ public:
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
 		return create<BinaryExpression>(binary_expression.get_operation(), left, right);
+	}
+	const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
+		ArrayLiteral* new_array_literal = new ArrayLiteral(array_literal.get_type());
+		for (std::size_t i = 0; i < array_literal.get_elements().size(); ++i) {
+			const Expression* element = array_literal.get_elements()[i];
+			if (is_managed(element) && !is_last_use(element, &array_literal, i)) {
+				new_array_literal->add_element(copy(expression_table[element]));
+			}
+			else {
+				new_array_literal->add_element(expression_table[element]);
+			}
+		}
+		destination_block->add_expression(new_array_literal);
+		return new_array_literal;
 	}
 	const Expression* visit_string_literal(const StringLiteral& string_literal) override {
 		return create<StringLiteral>(string_literal.get_value());
