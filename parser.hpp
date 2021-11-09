@@ -39,6 +39,15 @@ constexpr std::initializer_list<OperatorLevel> operators = {
 	}
 };
 
+struct UnaryOperator {
+	const char* string;
+	using Create = Expression* (*)(const Expression* expression);
+	Create create;
+	constexpr UnaryOperator(const char* string, Create create): string(string), create(create) {}
+};
+
+constexpr std::initializer_list<UnaryOperator> unary_operators = {};
+
 constexpr const char* intrinsics[] = {
 	"putChar",
 	"putStr",
@@ -282,6 +291,14 @@ class MoebiusParser: private Parser {
 		}
 		return nullptr;
 	}
+	const UnaryOperator* parse_unary_operator() {
+		for (const UnaryOperator& op: unary_operators) {
+			if (parse(op.string, operator_char)) {
+				return &op;
+			}
+		}
+		return nullptr;
+	}
 	const char* parse_intrinsic_name() {
 		StringView name = parse_identifier();
 		for (const char* intrinsic_name: intrinsics) {
@@ -513,6 +530,14 @@ class MoebiusParser: private Parser {
 	}
 	const Expression* parse_expression(const OperatorLevel* level = operators.begin()) {
 		if (level == operators.end()) {
+			SourcePosition position = cursor.get_position();
+			if (const UnaryOperator* op = parse_unary_operator()) {
+				parse_white_space();
+				Expression* expression = op->create(parse_expression(level));
+				expression->set_position(position);
+				current_scope->add_expression(expression);
+				return expression;
+			}
 			const Expression* expression = parse_expression_last();
 			parse_white_space();
 			while (true) {
