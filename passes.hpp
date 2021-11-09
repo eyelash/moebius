@@ -317,6 +317,16 @@ public:
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
 		}
+		else if (intrinsic.name_equals("tupleType")) {
+			TupleType tuple_type;
+			for (const Expression* argument: intrinsic.get_arguments()) {
+				if (argument->get_type_id() != TypeId::TYPE) {
+					error(intrinsic, "arguments of tupleType must be types");
+				}
+				tuple_type.add_element_type(static_cast<const TypeType*>(argument->get_type())->get_type());
+			}
+			return create<TypeLiteral>(TypeInterner::intern(&tuple_type));
+		}
 		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name());
 		for (const Expression* argument: intrinsic.get_arguments()) {
 			new_intrinsic->add_argument(expression_table[argument]);
