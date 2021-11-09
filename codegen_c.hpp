@@ -264,18 +264,27 @@ class CodegenC: public Visitor<Variable> {
 	};
 	FunctionTable& function_table;
 	IndentPrinter& printer;
-	std::size_t variable = 1;
-	std::map<const Expression*, Variable> expression_table;
+	using ExpressionTable = std::map<const Expression*, Variable>;
+	ExpressionTable& expression_table;
+	std::size_t variable;
+	Variable result;
 	const TailCallData& tail_call_data;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	CodegenC(FunctionTable& function_table, IndentPrinter& printer, const TailCallData& tail_call_data): function_table(function_table), printer(printer), tail_call_data(tail_call_data) {}
-	Variable evaluate(const Block& block) {
+	CodegenC(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable result, const TailCallData& tail_call_data): function_table(function_table), printer(printer), expression_table(expression_table), variable(variable), result(result), tail_call_data(tail_call_data) {}
+	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
+		CodegenC codegen(function_table, printer, expression_table, variable, result, tail_call_data);
 		for (const Expression* expression: block) {
-			expression_table[expression] = visit(*this, expression);
+			expression_table[expression] = visit(codegen, expression);
 		}
-		return expression_table[block.get_result()];
+	}
+	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, std::size_t variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
+		ExpressionTable expression_table;
+		evaluate(function_table, printer, expression_table, variable, result, tail_call_data, block);
+	}
+	void evaluate(Variable result, const Block& block) {
+		evaluate(function_table, printer, expression_table, variable, result, tail_call_data, block);
 	}
 	static const char* getenv(const char* variable, const char* default_value) {
 		const char* result = std::getenv(variable);
@@ -329,26 +338,16 @@ public:
 	Variable visit_if(const If& if_) override {
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();
-		if (if_.get_type_id() == TypeId::VOID) {
-			printer.println_increasing(format("if (%) {", condition));
-			evaluate(if_.get_then_block());
-			printer.println_decreasing("}");
-			printer.println_increasing("else {");
-			evaluate(if_.get_else_block());
-			printer.println_decreasing("}");
-		}
-		else {
+		if (if_.get_type_id() != TypeId::VOID) {
 			const Type result_type = function_table.get_type(if_.get_type());
 			printer.println(format("% %;", result_type, result));
-			printer.println_increasing(format("if (%) {", condition));
-			const Variable then_result = evaluate(if_.get_then_block());
-			printer.println(format("% = %;", result, then_result));
-			printer.println_decreasing("}");
-			printer.println_increasing("else {");
-			const Variable else_result = evaluate(if_.get_else_block());
-			printer.println(format("% = %;", result, else_result));
-			printer.println_decreasing("}");
 		}
+		printer.println_increasing(format("if (%) {", condition));
+		evaluate(result, if_.get_then_block());
+		printer.println_decreasing("}");
+		printer.println_increasing("else {");
+		evaluate(result, if_.get_else_block());
+		printer.println_decreasing("}");
 		return result;
 	}
 	Variable visit_tuple_literal(const TupleLiteral& tuple_literal) override {
@@ -377,19 +376,15 @@ public:
 	Variable visit_call(const Call& call) override {
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
-		if (tail_call_data.is_tail_call(call)) {
+		if (tail_call_data.is_tail_call(&call)) {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 				const Variable argument = expression_table[call.get_arguments()[i]];
 				printer.println(format("% = %;", Variable(i), argument));
 			}
 			printer.println("continue;");
-			if (call.get_function()->get_return_type()->get_id() != TypeId::VOID) {
-				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
-				printer.println(format("% %;", result_type, result));
-			}
 		}
 		else printer.println(print_functor([&](auto& printer) {
-			if (call.get_function()->get_return_type()->get_id() != TypeId::VOID) {
+			if (call.get_type_id() != TypeId::VOID) {
 				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
 				printer.print(format("% % = ", result_type, result));
 			}
@@ -476,6 +471,10 @@ public:
 		return next_variable();
 	}
 	Variable visit_return(const Return& return_) override {
+		const Expression* expression = return_.get_expression();
+		if (expression->get_type_id() != TypeId::VOID && !tail_call_data.is_tail_call(expression)) {
+			printer.println(format("% = %;", result, expression_table[expression]));
+		}
 		return next_variable();
 	}
 	static void codegen(const Program& program, const char* source_path, const TailCallData& tail_call_data) {
@@ -521,9 +520,12 @@ public:
 			if (tail_call_data.has_tail_call(function)) {
 				printer.println_increasing("while (1) {");
 			}
-			CodegenC codegen(function_table, printer, tail_call_data);
-			codegen.variable = arguments;
-			const Variable result = codegen.evaluate(function->get_block());
+			const Variable result = Variable(arguments);
+			if (function->get_return_type()->get_id() != TypeId::VOID) {
+				const Type result_type = function_table.get_type(function->get_return_type());
+				printer.println(format("% %;", result_type, result));
+			}
+			CodegenC::evaluate(function_table, printer, arguments + 1, result, tail_call_data, function->get_block());
 			if (function->get_return_type()->get_id() != TypeId::VOID) {
 				printer.println(format("return %;", result));
 			}

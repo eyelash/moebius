@@ -31,17 +31,6 @@ class CodegenX86: public Visitor<std::uint32_t> {
 	static std::uint32_t get_output_size(const Function* function) {
 		return get_type_size(function->get_return_type());
 	}
-	static std::uint32_t get_argument_location(const Function* function, std::size_t index) {
-		const std::vector<const Type*>& argument_types = function->get_argument_types();
-		std::uint32_t location = std::max(get_input_size(function), get_output_size(function));
-		for (std::size_t i = 0; i < argument_types.size(); ++i) {
-			location -= get_type_size(argument_types[i]);
-			if (i == index) {
-				return location;
-			}
-		}
-		return location;
-	}
 	struct DeferredCall {
 		Jump jump;
 		const Function* function;
@@ -50,14 +39,23 @@ class CodegenX86: public Visitor<std::uint32_t> {
 	std::vector<DeferredCall>& deferred_calls;
 	const Function* function;
 	A& assembler;
+	using ExpressionTable = std::map<const Expression*,std::uint32_t>;
+	ExpressionTable& expression_table;
 	std::uint32_t variable = 0;
-	std::map<const Expression*,std::uint32_t> expression_table;
-	CodegenX86(std::vector<DeferredCall>& deferred_calls, const Function* function, A& assembler): deferred_calls(deferred_calls), function(function), assembler(assembler) {}
-	std::uint32_t evaluate(const Block& block) {
+	std::uint32_t result;
+	CodegenX86(std::vector<DeferredCall>& deferred_calls, const Function* function, A& assembler, ExpressionTable& expression_table, std::uint32_t result): deferred_calls(deferred_calls), function(function), assembler(assembler), expression_table(expression_table), result(result) {}
+	static void evaluate(std::vector<DeferredCall>& deferred_calls, const Function* function, A& assembler, ExpressionTable& expression_table, std::uint32_t result, const Block& block) {
+		CodegenX86 codegen(deferred_calls, function, assembler, expression_table, result);
 		for (const Expression* expression: block) {
-			expression_table[expression] = visit(*this, expression);
+			expression_table[expression] = visit(codegen, expression);
 		}
-		return expression_table[block.get_result()];
+	}
+	static void evaluate(std::vector<DeferredCall>& deferred_calls, const Function* function, A& assembler, std::uint32_t result, const Block& block) {
+		ExpressionTable expression_table;
+		evaluate(deferred_calls, function, assembler, expression_table, result, block);
+	}
+	void evaluate(std::uint32_t result, const Block& block) {
+		evaluate(deferred_calls, function, assembler, expression_table, result, block);
 	}
 	std::uint32_t allocate(std::uint32_t size) {
 		variable -= size;
@@ -151,67 +149,63 @@ public:
 		const std::uint32_t result = allocate(size);
 		const Jump jump_else = assembler.JE();
 		assembler.comment("if");
-		const std::uint32_t then_result = evaluate(if_.get_then_block());
-		memcopy(result, then_result, size);
+		evaluate(result, if_.get_then_block());
 		const Jump jump_end = assembler.JMP();
 		assembler.comment("else");
 		jump_else.set_target(assembler, assembler.get_position());
-		const std::uint32_t else_result = evaluate(if_.get_else_block());
-		memcopy(result, else_result, size);
+		evaluate(result, if_.get_else_block());
 		assembler.comment("end");
 		jump_end.set_target(assembler, assembler.get_position());
 		return result;
 	}
 	std::uint32_t visit_tuple_literal(const TupleLiteral& tuple_literal) override {
-		const std::uint32_t size = get_type_size(tuple_literal.get_type());
-		const std::vector<const Expression*>& expressions = tuple_literal.get_elements();
-		if (expressions.size() == 1) {
-			return expression_table[expressions[0]];
+		const std::vector<const Expression*>& elements = tuple_literal.get_elements();
+		if (elements.size() == 1) {
+			return expression_table[elements[0]];
 		}
-		else if (expressions.size() > 1) {
-			std::uint32_t destination = allocate(size);
-			const std::uint32_t result = destination;
-			for (const Expression* expression: expressions) {
-				const std::uint32_t element_size = get_type_size(expression->get_type());
-				memcopy(destination, expression_table[expression], element_size);
-				destination += element_size;
+		else {
+			for (const Expression* element: elements) {
+				const std::uint32_t element_size = get_type_size(element->get_type());
+				const std::uint32_t element_destination = allocate(element_size);
+				memcopy(element_destination, expression_table[element], element_size);
 			}
-			return result;
+			return variable;
 		}
 	}
 	std::uint32_t visit_tuple_access(const TupleAccess& tuple_access) override {
 		const std::uint32_t tuple = expression_table[tuple_access.get_tuple()];
-		const std::vector<const Type*>& types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_element_types();
-		std::uint32_t before = 0;
-		for (std::size_t i = 0; i < tuple_access.get_index(); ++i) {
-			before += get_type_size(types[i]);
+		const std::vector<const Type*>& element_types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_element_types();
+		std::uint32_t location = tuple + get_type_size(tuple_access.get_tuple()->get_type());
+		for (std::size_t i = 0; i <= tuple_access.get_index(); ++i) {
+			location -= get_type_size(element_types[i]);
 		}
-		return tuple + before;
+		return location;
 	}
 	std::uint32_t visit_argument(const Argument& argument) override {
-		const std::uint32_t location = get_argument_location(function, argument.get_index());
-		return 8 + location;
+		const std::vector<const Type*>& argument_types = function->get_argument_types();
+		std::uint32_t location = 8 + std::max(get_input_size(function), get_output_size(function));
+		for (std::size_t i = 0; i <= argument.get_index(); ++i) {
+			location -= get_type_size(argument_types[i]);
+		}
+		return location;
 	}
 	std::uint32_t visit_call(const Call& call) override {
 		const std::uint32_t input_size = get_input_size(call.get_function());
 		const std::uint32_t output_size = get_output_size(call.get_function());
-		std::uint32_t destination = variable;
 		for (const Expression* argument: call.get_arguments()) {
 			const std::uint32_t argument_size = get_type_size(argument->get_type());
-			destination -= argument_size;
-			memcopy(destination, expression_table[argument], argument_size);
+			const std::uint32_t argument_destination = allocate(argument_size);
+			memcopy(argument_destination, expression_table[argument], argument_size);
 		}
-		assembler.LEA(ESP, PTR(EBP, destination));
 		if (output_size > input_size) {
-			// negative in order to grow the stack
-			assembler.ADD(ESP, input_size - output_size);
+			variable -= output_size - input_size;
 		}
+		assembler.LEA(ESP, PTR(EBP, variable));
 		Jump jump = assembler.CALL();
 		deferred_calls.emplace_back(jump, call.get_function());
 		if (output_size < input_size) {
-			assembler.ADD(ESP, input_size - output_size);
+			variable += input_size - output_size;
 		}
-		variable -= output_size;
 		return variable;
 	}
 	std::uint32_t visit_intrinsic(const Intrinsic& intrinsic) override {
@@ -249,6 +243,9 @@ public:
 		return allocate(0);
 	}
 	std::uint32_t visit_return(const Return& return_) override {
+		assembler.comment("return");
+		const std::uint32_t size = get_type_size(return_.get_expression()->get_type());
+		memcopy(result, expression_table[return_.get_expression()], size);
 		return allocate(0);
 	}
 	static void codegen(const Program& program, const char* source_path, const TailCallData& tail_call_data) {
@@ -271,18 +268,10 @@ public:
 			assembler.PUSH(EBP);
 			assembler.MOV(EBP, ESP);
 			assembler.comment("--");
-			CodegenX86 codegen(deferred_calls, function, assembler);
-			const std::uint32_t result = codegen.evaluate(function->get_block());
-			assembler.comment("--");
-			assembler.MOV(ESP, EBP);
-			assembler.ADD(ESP, result);
 			const std::uint32_t output_size = get_output_size(function);
 			const std::uint32_t size = std::max(get_input_size(function), output_size);
-			for (std::uint32_t i = 0; i < output_size; i += 4) {
-				assembler.POP(EAX);
-				assembler.MOV(PTR(EBP, 8 + size - output_size + i), EAX);
-			}
-			//assembler.ADD(ESP, output_size);
+			CodegenX86::evaluate(deferred_calls, function, assembler, 8 + size - output_size, function->get_block());
+			assembler.comment("--");
 			assembler.MOV(ESP, EBP);
 			assembler.POP(EBP);
 			assembler.RET();

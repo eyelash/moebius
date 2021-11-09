@@ -44,6 +44,7 @@ class Pass1: public Visitor<const Expression*> {
 	ExpressionTable& expression_table;
 	Block* destination_block;
 	bool omit_return;
+	const Expression* result = nullptr;
 	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
 		Pass1 pass1(program, function_table, key, expression_table, destination_block, omit_return);
@@ -53,7 +54,7 @@ class Pass1: public Visitor<const Expression*> {
 				expression_table[expression] = new_expression;
 			}
 		}
-		return expression_table[source_block.get_result()];
+		return pass1.result;
 	}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
@@ -404,12 +405,12 @@ public:
 		return create<Bind>(left, right);
 	}
 	const Expression* visit_return(const Return& return_) override {
-		const Expression* expression = expression_table[return_.get_expression()];
+		result = expression_table[return_.get_expression()];
 		if (omit_return) {
-			return expression;
+			return result;
 		}
 		else {
-			return create<Return>(expression);
+			return create<Return>(result);
 		}
 	}
 	const Expression* visit_type_literal(const TypeLiteral& type_literal) override {
@@ -624,7 +625,7 @@ public:
 };
 
 // dead expression elimination
-class GarbageCollect {
+class DeadCodeElimination {
 	using FunctionTable = std::map<const Function*, Function*>;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
 	using UsageTable = std::map<const Expression*, bool>;
@@ -859,6 +860,7 @@ class Pass2 {
 		ExpressionTable& expression_table;
 		Block* destination_block;
 		bool omit_return;
+		const Expression* result = nullptr;
 		template <class T, class... A> T* create(A&&... arguments) {
 			T* expression = new T(std::forward<A>(arguments)...);
 			destination_block->add_expression(expression);
@@ -874,7 +876,7 @@ class Pass2 {
 					expression_table[expression] = new_expression;
 				}
 			}
-			return expression_table[source_block.get_result()];
+			return replace.result;
 		}
 		// main function
 		static const Expression* evaluate(Program* program, FunctionTable& function_table, const Function* function, Block* destination_block, const Block& source_block) {
@@ -977,12 +979,12 @@ class Pass2 {
 			return create<Bind>(left, right);
 		}
 		const Expression* visit_return(const Return& return_) override {
-			const Expression* expression = expression_table[return_.get_expression()];
+			result = expression_table[return_.get_expression()];
 			if (omit_return) {
-				return expression;
+				return result;
 			}
 			else {
-				return create<Return>(expression);
+				return create<Return>(result);
 			}
 		}
 		const Expression* visit_type_literal(const TypeLiteral& type_literal) override {
@@ -1102,9 +1104,9 @@ public:
 		evaluate(new_if->get_else_block(), if_.get_else_block());
 		return new_if;
 	}
-	const Expression* visit_tuple_literal(const TupleLiteral& tuple) override {
-		TupleLiteral* new_tuple_literal = create<TupleLiteral>(transform_type(tuple.get_type()));
-		for (const Expression* element: tuple.get_elements()) {
+	const Expression* visit_tuple_literal(const TupleLiteral& tuple_literal) override {
+		TupleLiteral* new_tuple_literal = create<TupleLiteral>(transform_type(tuple_literal.get_type()));
+		for (const Expression* element: tuple_literal.get_elements()) {
 			if (!is_empty_tuple(element)) {
 				new_tuple_literal->add_element(expression_table[element]);
 			}
@@ -1449,7 +1451,7 @@ public:
 		}
 		destination_block->add_expression(new_intrinsic);
 		const Expression* result = new_intrinsic;
-		if (is_managed(&intrinsic) && (intrinsic.name_equals("arrayGet") || intrinsic.name_equals("stringGet"))) {
+		if (is_managed(&intrinsic) && intrinsic.name_equals("arrayGet")) {
 			result = copy(result);
 		}
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
@@ -1497,8 +1499,8 @@ class TailCallData {
 public:
 	std::map<const Expression*, bool> tail_call_expressions;
 	std::map<const Function*, bool> tail_call_functions;
-	bool is_tail_call(const Call& call) const {
-		return tail_call_expressions.count(&call) > 0;
+	bool is_tail_call(const Expression* expression) const {
+		return tail_call_expressions.count(expression) > 0;
 	}
 	bool has_tail_call(const Function* function) const {
 		return tail_call_functions.count(function) > 0;
@@ -1512,7 +1514,7 @@ class Pass5: public Visitor<void> {
 public:
 	Pass5(const Function* function, TailCallData& data): function(function), data(data) {}
 	void evaluate(const Block& block) {
-		visit(*this, block.get_result());
+		visit(*this, block.get_last());
 	}
 	void visit_if(const If& if_) override {
 		evaluate(if_.get_then_block());
@@ -1522,6 +1524,12 @@ public:
 		if (call.get_function() == function) {
 			data.tail_call_expressions[&call] = true;
 			data.tail_call_functions[function] = true;
+		}
+	}
+	void visit_return(const Return& return_) override {
+		const Expression* expression = return_.get_expression();
+		if (expression->next_expression == &return_) {
+			visit(*this, expression);
 		}
 	}
 	static void run(const Program& program, TailCallData& data) {

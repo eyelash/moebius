@@ -1,6 +1,6 @@
-examples/*.c
-examples/*.exe
-examples/*.html
+*.moeb.c
+*.moeb.exe
+*.moeb.html
 
 CMakeCache.txt
 CMakeFiles/

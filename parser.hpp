@@ -283,7 +283,7 @@ class MoebiusParser: private Parser {
 		parse_all(alphanumeric);
 		return cursor - start;
 	}
-	const BinaryOperator* parse_operator(const OperatorLevel* level) {
+	const BinaryOperator* parse_binary_operator(const OperatorLevel* level) {
 		for (const BinaryOperator& op: *level) {
 			if (parse(op.string, operator_char)) {
 				return &op;
@@ -627,7 +627,7 @@ class MoebiusParser: private Parser {
 		const Expression* left = parse_expression(level + 1);
 		parse_white_space();
 		SourcePosition position = cursor.get_position();
-		while (const BinaryOperator* op = parse_operator(level)) {
+		while (const BinaryOperator* op = parse_binary_operator(level)) {
 			parse_white_space();
 			const Expression* right = parse_expression(level + 1);
 			Expression* expression = op->create(left, right);
