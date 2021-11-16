@@ -217,10 +217,7 @@ public:
 	static void codegen(const Program& program, const char* source_path, const TailCallData& tail_call_data) {
 		FunctionTable function_table;
 		std::string path = std::string(source_path) + ".html";
-		std::ofstream file(path);
-		IndentPrinter printer(file);
-		printer.println("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><script>");
-		printer.println("window.addEventListener('load', main);");
+		IndentPrinter printer(std::cout);
 		{
 			printer.println_increasing("function main() {");
 			const std::size_t index = function_table.look_up(program.get_main_function());
@@ -263,7 +260,7 @@ public:
 			printer.println_increasing("function flushStdout() {");
 			printer.println("const textDecoder = new TextDecoder();");
 			printer.println("const s = textDecoder.decode(new Int8Array(stdoutBuffer));");
-			printer.println("document.body.appendChild(document.createTextNode(s));");
+			printer.println("document.getElementById('output').appendChild(document.createTextNode(s));");
 			printer.println("stdoutBuffer.splice(0);");
 			printer.println_decreasing("}");
 		}
@@ -271,7 +268,7 @@ public:
 			printer.println_increasing("function putChar(c) {");
 			printer.println_increasing("if (c === 0x0A) {");
 			printer.println("flushStdout();");
-			printer.println("document.body.appendChild(document.createElement('br'));");
+			printer.println("document.getElementById('output').appendChild(document.createElement('br'));");
 			printer.println_decreasing("}");
 			printer.println_increasing("else {");
 			printer.println("stdoutBuffer.push(c);");
@@ -283,7 +280,7 @@ public:
 			printer.println("s.forEach(putChar);");
 			printer.println_decreasing("}");
 		}
-		printer.println("</script></head><body></body></html>");
+		printer.println("main();");
 		Printer status_printer(std::cerr);
 		status_printer.print(bold(path));
 		status_printer.print(bold(green(" successfully generated")));

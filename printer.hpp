@@ -143,14 +143,14 @@ class GraphicsPrinter {
 public:
 	constexpr GraphicsPrinter(const char* parameter): parameter(parameter) {}
 	template <class T> constexpr auto operator ()(const T& t) const {
-		return print_tuple("\x1B[", parameter, "m", t, "\x1B[m");
+		return print_tuple("<span style=\"", parameter, "\">", t, "</span>");
 	}
 };
 
-constexpr GraphicsPrinter bold = GraphicsPrinter("1");
-constexpr GraphicsPrinter red = GraphicsPrinter("31");
-constexpr GraphicsPrinter green = GraphicsPrinter("32");
-constexpr GraphicsPrinter yellow = GraphicsPrinter("33");
+constexpr GraphicsPrinter bold = GraphicsPrinter("font-weight:bold");
+constexpr GraphicsPrinter red = GraphicsPrinter("color:red");
+constexpr GraphicsPrinter green = GraphicsPrinter("color:green");
+constexpr GraphicsPrinter yellow = GraphicsPrinter("color:yellow");
 
 class PrintNumber {
 	unsigned int n;
