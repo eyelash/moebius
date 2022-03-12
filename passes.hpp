@@ -157,11 +157,17 @@ public:
 	const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 		const std::size_t index = tuple_access.get_index();
 		const Expression* tuple = expression_table[tuple_access.get_tuple()];
+		if (tuple->get_type_id() != TypeId::TUPLE) {
+			error(tuple_access, "tuple access to non-tuple");
+		}
+		const TupleType* tuple_type = static_cast<const TupleType*>(tuple->get_type());
+		if (index >= tuple_type->get_element_types().size()) {
+			error(tuple_access, "tuple index out of bounds");
+		}
 		GetTupleElement get_tuple_element(index);
 		if (const Expression* element = visit(get_tuple_element, tuple)) {
 			return element;
 		}
-		const TupleType* tuple_type = static_cast<const TupleType*>(tuple->get_type());
 		const Type* type = tuple_type->get_element_types()[index];
 		return create<TupleAccess>(tuple, index, type);
 	}

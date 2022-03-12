@@ -639,29 +639,63 @@ class MoebiusParser: private Parser {
 		}
 		return left;
 	}
+	std::tuple<StringView, SourcePosition, const Expression*> parse_name() {
+		const StringView name = parse_identifier();
+		parse_white_space();
+		const SourcePosition type_assert_position = cursor.get_position();
+		if (parse(":")) {
+			parse_white_space();
+			const Expression* type = parse_expression();
+			return std::make_tuple(name, type_assert_position, type);
+		}
+		else {
+			return std::make_tuple(name, type_assert_position, nullptr);
+		}
+	}
 	const Expression* parse_scope() {
 		Scope scope(current_scope);
 		while (true) {
 			const SourcePosition position = cursor.get_position();
 			if (parse("let", alphanumeric)) {
 				parse_white_space();
-				const StringView name = parse_identifier();
-				parse_white_space();
-				const Expression* type = nullptr;
-				const SourcePosition type_assert_position = cursor.get_position();
-				if (parse(":")) {
+				std::vector<std::tuple<StringView, SourcePosition, const Expression*>> element_names;
+				if (parse("(")) {
 					parse_white_space();
-					type = parse_expression();
-					parse_white_space();
+					while (cursor && *cursor != ')') {
+						element_names.push_back(parse_name());
+						parse_white_space();
+						if (!parse(",")) {
+							break;
+						}
+						parse_white_space();
+					}
+					expect(")");
 				}
+				else {
+					element_names.push_back(parse_name());
+				}
+				parse_white_space();
 				expect("=");
 				parse_white_space();
 				const Expression* expression = parse_expression();
-				if (type) {
-					TypeAssert* type_assert = current_scope->create<TypeAssert>(expression, type);
-					type_assert->set_position(type_assert_position);
+				if (element_names.size() == 1) {
+					auto [name, type_assert_position, type] = element_names[0];
+					if (type) {
+						TypeAssert* type_assert = current_scope->create<TypeAssert>(expression, type);
+						type_assert->set_position(type_assert_position);
+					}
+					current_scope->add_variable(name, expression);
 				}
-				current_scope->add_variable(name, expression);
+				else for (std::size_t i = 0; i < element_names.size(); ++i) {
+					auto [name, type_assert_position, type] = element_names[i];
+					TupleAccess* tuple_access = current_scope->create<TupleAccess>(expression, i);
+					tuple_access->set_position(position);
+					if (type) {
+						TypeAssert* type_assert = current_scope->create<TypeAssert>(tuple_access, type);
+						type_assert->set_position(type_assert_position);
+					}
+					current_scope->add_variable(name, tuple_access);
+				}
 				parse_white_space();
 			}
 			else if (parse("func", alphanumeric)) {
@@ -680,19 +714,15 @@ class MoebiusParser: private Parser {
 					current_scope->set_self(self);
 					current_scope->add_variable(name, self);
 					while (cursor && *cursor != ')') {
-						const StringView argument_name = parse_identifier();
+						auto [argument_name, type_assert_position, argument_type] = parse_name();
 						const std::size_t index = function->add_argument();
 						const Expression* argument = current_scope->create<Argument>(index);
 						current_scope->add_variable(argument_name, argument);
-						parse_white_space();
-						const SourcePosition type_assert_position = cursor.get_position();
-						if (parse(":")) {
-							parse_white_space();
-							const Expression* argument_type = parse_expression();
+						if (argument_type) {
 							TypeAssert* type_assert = current_scope->create<TypeAssert>(argument, argument_type);
 							type_assert->set_position(type_assert_position);
-							parse_white_space();
 						}
+						parse_white_space();
 						if (!parse(",")) {
 							break;
 						}
