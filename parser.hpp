@@ -206,6 +206,18 @@ public:
 	bool parse(const char* s) {
 		return parse(StringView(s));
 	}
+	template <class F> bool parse_not(F f) {
+		Cursor copy = cursor;
+		if (parse(f)) {
+			cursor = copy;
+			return false;
+		}
+		if (cursor) {
+			++cursor;
+			return true;
+		}
+		return false;
+	}
 	template <class F> void parse_all(F f) {
 		while (parse(f)) {}
 	}
@@ -243,9 +255,7 @@ class MoebiusParser: private Parser {
 			return true;
 		}
 		if (parse("/*")) {
-			while (cursor && !copy().parse("*/")) {
-				++cursor;
-			}
+			while (parse_not("*/")) {}
 			expect("*/");
 			return true;
 		}
@@ -321,7 +331,7 @@ class MoebiusParser: private Parser {
 			else {
 				StructLiteral* struct_literal = new StructLiteral();
 				struct_literal->set_position(position);
-				while (cursor && *cursor != '}') {
+				while (copy().parse_not("}")) {
 					const StringView field_name = parse_identifier();
 					parse_white_space();
 					if (parse(":")) {
@@ -350,7 +360,7 @@ class MoebiusParser: private Parser {
 		else if (parse("(")) {
 			parse_white_space();
 			std::vector<const Expression*> elements;
-			while (cursor && *cursor != ')') {
+			while (copy().parse_not(")")) {
 				elements.push_back(parse_expression());
 				parse_white_space();
 				if (!parse(",")) {
@@ -408,7 +418,7 @@ class MoebiusParser: private Parser {
 			{
 				Scope scope(current_scope, closure, function->get_block());
 				current_scope->set_self(current_scope->create<Argument>(0));
-				while (cursor && *cursor != ')') {
+				while (copy().parse_not(")")) {
 					const StringView argument_name = parse_identifier();
 					const std::size_t index = function->add_argument();
 					current_scope->add_variable(argument_name, current_scope->create<Argument>(index));
@@ -428,7 +438,7 @@ class MoebiusParser: private Parser {
 		}
 		else if (parse("\"")) {
 			std::string string;
-			while (cursor && *cursor != '"') {
+			while (copy().parse_not("\"")) {
 				string.push_back(parse_character());
 			}
 			StringLiteral* string_literal = current_scope->create<StringLiteral>(string);
@@ -449,7 +459,7 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			ArrayLiteral* array_literal = new ArrayLiteral();
 			array_literal->set_position(position);
-			while (cursor && *cursor != ']') {
+			while (copy().parse_not("]")) {
 				array_literal->add_element(parse_expression());
 				parse_white_space();
 				if (!parse(",")) {
@@ -512,7 +522,7 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			Intrinsic* intrinsic = new Intrinsic(name);
 			intrinsic->set_position(position);
-			while (cursor && *cursor != ')') {
+			while (copy().parse_not(")")) {
 				intrinsic->add_argument(parse_expression());
 				parse_white_space();
 				if (!parse(",")) {
@@ -547,7 +557,7 @@ class MoebiusParser: private Parser {
 					Call* call = new Call();
 					call->set_position(position);
 					call->add_argument(expression);
-					while (cursor && *cursor != ')') {
+					while (copy().parse_not(")")) {
 						call->add_argument(parse_expression());
 						parse_white_space();
 						if (!parse(",")) {
@@ -575,7 +585,7 @@ class MoebiusParser: private Parser {
 						call->set_position(position);
 						call->add_argument(function);
 						call->add_argument(expression);
-						while (cursor && *cursor != ')') {
+						while (copy().parse_not(")")) {
 							call->add_argument(parse_expression());
 							parse_white_space();
 							if (!parse(",")) {
@@ -598,7 +608,7 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					StructLiteral* struct_literal = new StructLiteral();
 					struct_literal->set_position(position);
-					while (cursor && *cursor != '}') {
+					while (copy().parse_not("}")) {
 						const StringView field_name = parse_identifier();
 						parse_white_space();
 						expect(":");
@@ -661,7 +671,7 @@ class MoebiusParser: private Parser {
 				std::vector<std::tuple<StringView, SourcePosition, const Expression*>> element_names;
 				if (parse("(")) {
 					parse_white_space();
-					while (cursor && *cursor != ')') {
+					while (copy().parse_not(")")) {
 						element_names.push_back(parse_name());
 						parse_white_space();
 						if (!parse(",")) {
@@ -713,7 +723,7 @@ class MoebiusParser: private Parser {
 					const Expression* self = current_scope->create<Argument>(0);
 					current_scope->set_self(self);
 					current_scope->add_variable(name, self);
-					while (cursor && *cursor != ')') {
+					while (copy().parse_not(")")) {
 						auto [argument_name, type_assert_position, argument_type] = parse_name();
 						const std::size_t index = function->add_argument();
 						const Expression* argument = current_scope->create<Argument>(index);
@@ -755,7 +765,7 @@ class MoebiusParser: private Parser {
 				struct_definition->set_position(position);
 				if (parse("{")) {
 					parse_white_space();
-					while (cursor && *cursor != '}') {
+					while (copy().parse_not("}")) {
 						const StringView field_name = parse_identifier();
 						parse_white_space();
 						expect(":");
