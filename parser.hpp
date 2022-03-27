@@ -149,6 +149,9 @@ public:
 class Parser {
 public:
 	Cursor cursor;
+	static constexpr bool any_char(char c) {
+		return true;
+	}
 	static constexpr bool white_space(char c) {
 		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 	}
@@ -213,18 +216,22 @@ public:
 			return false;
 		}
 		if (cursor) {
-			++cursor;
 			return true;
 		}
 		return false;
 	}
-	template <class F> void parse_all(F f) {
+	template <class F> StringView parse_all(F f) {
+		const Cursor start = cursor;
 		while (parse(f)) {}
+		return cursor - start;
 	}
 	Parser(const SourceFile* file): cursor(file) {}
 	Parser(const Cursor& cursor): cursor(cursor) {}
 	Parser copy() const {
 		return Parser(cursor);
+	}
+	SourcePosition get_position() const {
+		return cursor.get_position();
 	}
 };
 
@@ -236,7 +243,7 @@ class MoebiusParser: private Parser {
 		std::exit(EXIT_FAILURE);
 	}
 	template <class T> [[noreturn]] void error(const T& t) {
-		error(cursor.get_position(), t);
+		error(get_position(), t);
 	}
 	template <class F> void expect(const StringView& s, F f) {
 		if (!parse(s, f)) {
@@ -255,7 +262,9 @@ class MoebiusParser: private Parser {
 			return true;
 		}
 		if (parse("/*")) {
-			while (parse_not("*/")) {}
+			while (parse_not("*/")) {
+				parse(any_char);
+			}
 			expect("*/");
 			return true;
 		}
@@ -289,9 +298,7 @@ class MoebiusParser: private Parser {
 		if (!copy().parse(alphabetic)) {
 			error("expected alphabetic character");
 		}
-		const Cursor start = cursor;
-		parse_all(alphanumeric);
-		return cursor - start;
+		return parse_all(alphanumeric);
 	}
 	const BinaryOperator* parse_binary_operator(const OperatorLevel* level) {
 		for (const BinaryOperator& op: *level) {
@@ -319,7 +326,7 @@ class MoebiusParser: private Parser {
 		error(format("unknown intrinsic \"%\"", name));
 	}
 	const Expression* parse_expression_last() {
-		const SourcePosition position = cursor.get_position();
+		const SourcePosition position = get_position();
 		if (parse("{")) {
 			parse_white_space();
 			if (copy().parse("let", alphanumeric) || copy().parse("func", alphanumeric) || copy().parse("struct", alphanumeric) || copy().parse("return", alphanumeric)) {
@@ -331,7 +338,7 @@ class MoebiusParser: private Parser {
 			else {
 				StructLiteral* struct_literal = new StructLiteral();
 				struct_literal->set_position(position);
-				while (copy().parse_not("}")) {
+				while (parse_not("}")) {
 					const StringView field_name = parse_identifier();
 					parse_white_space();
 					if (parse(":")) {
@@ -360,7 +367,7 @@ class MoebiusParser: private Parser {
 		else if (parse("(")) {
 			parse_white_space();
 			std::vector<const Expression*> elements;
-			while (copy().parse_not(")")) {
+			while (parse_not(")")) {
 				elements.push_back(parse_expression());
 				parse_white_space();
 				if (!parse(",")) {
@@ -418,7 +425,7 @@ class MoebiusParser: private Parser {
 			{
 				Scope scope(current_scope, closure, function->get_block());
 				current_scope->set_self(current_scope->create<Argument>(0));
-				while (copy().parse_not(")")) {
+				while (parse_not(")")) {
 					const StringView argument_name = parse_identifier();
 					const std::size_t index = function->add_argument();
 					current_scope->add_variable(argument_name, current_scope->create<Argument>(index));
@@ -438,7 +445,7 @@ class MoebiusParser: private Parser {
 		}
 		else if (parse("\"")) {
 			std::string string;
-			while (copy().parse_not("\"")) {
+			while (parse_not("\"")) {
 				string.push_back(parse_character());
 			}
 			StringLiteral* string_literal = current_scope->create<StringLiteral>(string);
@@ -447,7 +454,7 @@ class MoebiusParser: private Parser {
 			return string_literal;
 		}
 		else if (parse("'")) {
-			if (!cursor) {
+			if (!copy().parse(any_char)) {
 				error("unexpected end");
 			}
 			IntLiteral* int_literal = current_scope->create<IntLiteral>(parse_character());
@@ -459,7 +466,7 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			ArrayLiteral* array_literal = new ArrayLiteral();
 			array_literal->set_position(position);
-			while (copy().parse_not("]")) {
+			while (parse_not("]")) {
 				array_literal->add_element(parse_expression());
 				parse_white_space();
 				if (!parse(",")) {
@@ -498,10 +505,9 @@ class MoebiusParser: private Parser {
 		}
 		else if (copy().parse(numeric)) {
 			std::int32_t number = 0;
-			while (copy().parse(numeric)) {
+			for (char c: parse_all(numeric)) {
 				number *= 10;
-				number += *cursor - '0';
-				++cursor;
+				number += c - '0';
 			}
 			Expression* expression = current_scope->create<IntLiteral>(number);
 			expression->set_position(position);
@@ -522,7 +528,7 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			Intrinsic* intrinsic = new Intrinsic(name);
 			intrinsic->set_position(position);
-			while (copy().parse_not(")")) {
+			while (parse_not(")")) {
 				intrinsic->add_argument(parse_expression());
 				parse_white_space();
 				if (!parse(",")) {
@@ -540,7 +546,7 @@ class MoebiusParser: private Parser {
 	}
 	const Expression* parse_expression(const OperatorLevel* level = operators.begin()) {
 		if (level == operators.end()) {
-			SourcePosition position = cursor.get_position();
+			const SourcePosition position = get_position();
 			if (const UnaryOperator* op = parse_unary_operator()) {
 				parse_white_space();
 				Expression* expression = op->create(parse_expression(level));
@@ -551,13 +557,13 @@ class MoebiusParser: private Parser {
 			const Expression* expression = parse_expression_last();
 			parse_white_space();
 			while (true) {
-				SourcePosition position = cursor.get_position();
+				const SourcePosition position = get_position();
 				if (parse("(")) {
 					parse_white_space();
 					Call* call = new Call();
 					call->set_position(position);
 					call->add_argument(expression);
-					while (copy().parse_not(")")) {
+					while (parse_not(")")) {
 						call->add_argument(parse_expression());
 						parse_white_space();
 						if (!parse(",")) {
@@ -585,7 +591,7 @@ class MoebiusParser: private Parser {
 						call->set_position(position);
 						call->add_argument(function);
 						call->add_argument(expression);
-						while (copy().parse_not(")")) {
+						while (parse_not(")")) {
 							call->add_argument(parse_expression());
 							parse_white_space();
 							if (!parse(",")) {
@@ -608,7 +614,7 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					StructLiteral* struct_literal = new StructLiteral();
 					struct_literal->set_position(position);
-					while (copy().parse_not("}")) {
+					while (parse_not("}")) {
 						const StringView field_name = parse_identifier();
 						parse_white_space();
 						expect(":");
@@ -636,7 +642,7 @@ class MoebiusParser: private Parser {
 		}
 		const Expression* left = parse_expression(level + 1);
 		parse_white_space();
-		SourcePosition position = cursor.get_position();
+		SourcePosition position = get_position();
 		while (const BinaryOperator* op = parse_binary_operator(level)) {
 			parse_white_space();
 			const Expression* right = parse_expression(level + 1);
@@ -645,14 +651,14 @@ class MoebiusParser: private Parser {
 			current_scope->add_expression(expression);
 			left = expression;
 			parse_white_space();
-			position = cursor.get_position();
+			position = get_position();
 		}
 		return left;
 	}
 	std::tuple<StringView, SourcePosition, const Expression*> parse_name() {
 		const StringView name = parse_identifier();
 		parse_white_space();
-		const SourcePosition type_assert_position = cursor.get_position();
+		const SourcePosition type_assert_position = get_position();
 		if (parse(":")) {
 			parse_white_space();
 			const Expression* type = parse_expression();
@@ -665,13 +671,13 @@ class MoebiusParser: private Parser {
 	const Expression* parse_scope() {
 		Scope scope(current_scope);
 		while (true) {
-			const SourcePosition position = cursor.get_position();
+			const SourcePosition position = get_position();
 			if (parse("let", alphanumeric)) {
 				parse_white_space();
 				std::vector<std::tuple<StringView, SourcePosition, const Expression*>> element_names;
 				if (parse("(")) {
 					parse_white_space();
-					while (copy().parse_not(")")) {
+					while (parse_not(")")) {
 						element_names.push_back(parse_name());
 						parse_white_space();
 						if (!parse(",")) {
@@ -723,7 +729,7 @@ class MoebiusParser: private Parser {
 					const Expression* self = current_scope->create<Argument>(0);
 					current_scope->set_self(self);
 					current_scope->add_variable(name, self);
-					while (copy().parse_not(")")) {
+					while (parse_not(")")) {
 						auto [argument_name, type_assert_position, argument_type] = parse_name();
 						const std::size_t index = function->add_argument();
 						const Expression* argument = current_scope->create<Argument>(index);
@@ -740,7 +746,7 @@ class MoebiusParser: private Parser {
 					}
 					expect(")");
 					parse_white_space();
-					const SourcePosition return_type_position = cursor.get_position();
+					const SourcePosition return_type_position = get_position();
 					if (parse(":")) {
 						parse_white_space();
 						const Expression* type = parse_expression();
@@ -765,7 +771,7 @@ class MoebiusParser: private Parser {
 				struct_definition->set_position(position);
 				if (parse("{")) {
 					parse_white_space();
-					while (copy().parse_not("}")) {
+					while (parse_not("}")) {
 						const StringView field_name = parse_identifier();
 						parse_white_space();
 						expect(":");
@@ -802,7 +808,7 @@ public:
 		const Expression* expression = parse_scope();
 		current_scope->create<Return>(expression);
 		parse_white_space();
-		if (cursor) {
+		if (parse(any_char)) {
 			error("unexpected character at end of program");
 		}
 		return main_function;
