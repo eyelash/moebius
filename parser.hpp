@@ -767,8 +767,8 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				const StringView name = parse_identifier();
 				parse_white_space();
-				StructDefinition* struct_definition = new StructDefinition();
-				struct_definition->set_position(position);
+				StructLiteral* struct_literal = new StructLiteral();
+				struct_literal->set_position(position);
 				if (parse("{")) {
 					parse_white_space();
 					while (parse_not("}")) {
@@ -777,7 +777,7 @@ class MoebiusParser: private Parser {
 						expect(":");
 						parse_white_space();
 						const Expression* field_type = parse_expression();
-						struct_definition->add_field(field_name, field_type);
+						struct_literal->add_field(field_name, field_type);
 						parse_white_space();
 						if (!parse(",")) {
 							break;
@@ -787,8 +787,11 @@ class MoebiusParser: private Parser {
 					expect("}");
 					parse_white_space();
 				}
-				current_scope->add_expression(struct_definition);
-				current_scope->add_variable(name, struct_definition);
+				current_scope->add_expression(struct_literal);
+				Intrinsic* intrinsic = current_scope->create<Intrinsic>("structType");
+				intrinsic->set_position(position);
+				intrinsic->add_argument(struct_literal);
+				current_scope->add_variable(name, intrinsic);
 			}
 			else {
 				break;

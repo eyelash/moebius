@@ -24,7 +24,6 @@ class Intrinsic;
 class Bind;
 class Return;
 class TypeLiteral;
-class StructDefinition;
 class TypeAssert;
 class ReturnType;
 
@@ -400,9 +399,6 @@ public:
 	virtual T visit_type_literal(const TypeLiteral& type_literal) {
 		return T();
 	}
-	virtual T visit_struct_definition(const StructDefinition& struct_definition) {
-		return T();
-	}
 	virtual T visit_type_assert(const TypeAssert& type_assert) {
 		return T();
 	}
@@ -492,9 +488,6 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_type_literal(const TypeLiteral& type_literal) override {
 			result = visitor.visit_type_literal(type_literal);
-		}
-		void visit_struct_definition(const StructDefinition& struct_definition) override {
-			result = visitor.visit_struct_definition(struct_definition);
 		}
 		void visit_type_assert(const TypeAssert& type_assert) override {
 			result = visitor.visit_type_assert(type_assert);
@@ -901,29 +894,6 @@ public:
 	TypeLiteral(const Type* type): Expression(TypeInterner::get_type_type(type)) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_type_literal(*this);
-	}
-};
-
-class StructDefinition: public Expression {
-	std::vector<std::string> field_names;
-	std::vector<const Expression*> field_types;
-public:
-	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_struct_definition(*this);
-	}
-	void add_field(const std::string& field_name, const Expression* field_type) {
-		field_names.push_back(field_name);
-		field_types.push_back(field_type);
-	}
-	void add_field(const StringView& field_name, const Expression* field_type) {
-		field_names.emplace_back(field_name.begin(), field_name.end());
-		field_types.push_back(field_type);
-	}
-	const std::vector<std::string>& get_field_names() const {
-		return field_names;
-	}
-	const std::vector<const Expression*>& get_field_types() const {
-		return field_types;
 	}
 };
 

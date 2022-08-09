@@ -423,19 +423,6 @@ public:
 		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
 		return create<TypeLiteral>(type);
 	}
-	const Expression* visit_struct_definition(const StructDefinition& struct_definition) override {
-		StructType struct_type;
-		for (std::size_t i = 0; i < struct_definition.get_field_types().size(); ++i) {
-			const std::string& field_name = struct_definition.get_field_names()[i];
-			const Expression* type_expression = expression_table[struct_definition.get_field_types()[i]];
-			if (type_expression->get_type_id() != TypeId::TYPE) {
-				error(struct_definition, "fields must be types");
-			}
-			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
-			struct_type.add_field(field_name, type);
-		}
-		return create<TypeLiteral>(TypeInterner::intern(&struct_type));
-	}
 	const Expression* visit_type_assert(const TypeAssert& type_assert) override {
 		const Expression* expression = expression_table[type_assert.get_expression()];
 		const Expression* type_expression = expression_table[type_assert.get_type()];
