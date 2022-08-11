@@ -67,6 +67,9 @@ public:
 	TypeId get_id() const override {
 		return TypeId::CLOSURE;
 	}
+	bool operator <(const ClosureType& rhs) const {
+		return std::make_pair(function, std::ref(environment_types)) < std::make_pair(rhs.function, std::ref(rhs.environment_types));
+	}
 	void add_environment_type(const Type* type) {
 		environment_types.push_back(type);
 	}
@@ -79,33 +82,31 @@ public:
 };
 
 class StructType: public Type {
-	std::vector<std::string> field_names;
-	std::vector<const Type*> field_types;
+	std::vector<std::pair<std::string, const Type*>> fields;
 public:
 	TypeId get_id() const override {
 		return TypeId::STRUCT;
 	}
+	bool operator <(const StructType& rhs) const {
+		return fields < rhs.fields;
+	}
 	void add_field(const std::string& field_name, const Type* field_type) {
-		field_names.push_back(field_name);
-		field_types.push_back(field_type);
+		fields.emplace_back(field_name, field_type);
 	}
-	const std::vector<std::string>& get_field_names() const {
-		return field_names;
-	}
-	const std::vector<const Type*>& get_field_types() const {
-		return field_types;
+	const std::vector<std::pair<std::string, const Type*>>& get_fields() const {
+		return fields;
 	}
 	bool has_field(const std::string& field_name) const {
-		for (std::size_t i = 0; i < field_names.size(); ++i) {
-			if (field_names[i] == field_name) {
+		for (std::size_t i = 0; i < fields.size(); ++i) {
+			if (fields[i].first == field_name) {
 				return true;
 			}
 		}
 		return false;
 	}
 	std::size_t get_index(const std::string& field_name) const {
-		for (std::size_t i = 0; i < field_names.size(); ++i) {
-			if (field_names[i] == field_name) {
+		for (std::size_t i = 0; i < fields.size(); ++i) {
+			if (fields[i].first == field_name) {
 				return i;
 			}
 		}
@@ -118,6 +119,9 @@ class TupleType: public Type {
 public:
 	TypeId get_id() const override {
 		return TypeId::TUPLE;
+	}
+	bool operator <(const TupleType& rhs) const {
+		return element_types < rhs.element_types;
 	}
 	void add_element_type(const Type* type) {
 		element_types.push_back(type);
@@ -133,6 +137,9 @@ public:
 	ArrayType(const Type* element_type): element_type(element_type) {}
 	TypeId get_id() const override {
 		return TypeId::ARRAY;
+	}
+	bool operator <(const ArrayType& rhs) const {
+		return element_type < rhs.element_type;
 	}
 	const Type* get_element_type() const {
 		return element_type;
@@ -160,189 +167,87 @@ public:
 	TypeId get_id() const override {
 		return TypeId::TYPE;
 	}
+	bool operator <(const TypeType& rhs) const {
+		return type < rhs.type;
+	}
 	const Type* get_type() const {
 		return type;
 	}
 };
 
-class TypeCompare {
-	template <class T> static constexpr int compare_(const T& t1, const T& t2) {
-		return std::less<T>()(t2, t1) - std::less<T>()(t1, t2);
-	}
+template <class T> class TypeCompare {
 public:
-	static int compare(const Type* type1, const Type* type2) {
-		if (type1 == type2) {
-			return 0;
-		}
-		const TypeId id1 = type1->get_id();
-		const TypeId id2 = type2->get_id();
-		if (id1 != id2) {
-			return compare_(id1, id2);
-		}
-		if (id1 == TypeId::CLOSURE) {
-			const ClosureType* closure_type1 = static_cast<const ClosureType*>(type1);
-			const ClosureType* closure_type2 = static_cast<const ClosureType*>(type2);
-			if (closure_type1->get_function() != closure_type2->get_function()) {
-				return compare_(closure_type1->get_function(), closure_type2->get_function());
-			}
-			return compare(closure_type1->get_environment_types(), closure_type2->get_environment_types());
-		}
-		if (id1 == TypeId::STRUCT) {
-			const StructType* struct_type1 = static_cast<const StructType*>(type1);
-			const StructType* struct_type2 = static_cast<const StructType*>(type2);
-			if (int diff = compare(struct_type1->get_field_names(), struct_type2->get_field_names())) {
-				return diff;
-			}
-			return compare(struct_type1->get_field_types(), struct_type2->get_field_types());
-		}
-		if (id1 == TypeId::TUPLE) {
-			const TupleType* tuple_type1 = static_cast<const TupleType*>(type1);
-			const TupleType* tuple_type2 = static_cast<const TupleType*>(type2);
-			return compare(tuple_type1->get_element_types(), tuple_type2->get_element_types());
-		}
-		if (id1 == TypeId::ARRAY) {
-			const ArrayType* array_type1 = static_cast<const ArrayType*>(type1);
-			const ArrayType* array_type2 = static_cast<const ArrayType*>(type2);
-			return compare(array_type1->get_element_type(), array_type2->get_element_type());
-		}
-		if (id1 == TypeId::TYPE) {
-			const TypeType* type_type1 = static_cast<const TypeType*>(type1);
-			const TypeType* type_type2 = static_cast<const TypeType*>(type2);
-			return compare(type_type1->get_type(), type_type2->get_type());
-		}
-		return 0;
+	bool operator ()(const T* type1, const T* type2) const {
+		return *type1 < *type2;
 	}
-	static int compare(const std::vector<const Type*>& types1, const std::vector<const Type*>& types2) {
-		if (types1.size() != types2.size()) {
-			return compare_(types1.size(), types2.size());
-		}
-		for (std::size_t i = 0; i < types1.size(); ++i) {
-			if (int diff = compare(types1[i], types2[i])) {
-				return diff;
-			}
-		}
-		return 0;
+	bool operator ()(const T* type1, const std::unique_ptr<T>& type2) const {
+		return *type1 < *type2;
 	}
-	static int compare(const std::vector<std::string>& strings1, const std::vector<std::string>& strings2) {
-		if (strings1.size() != strings2.size()) {
-			return compare_(strings1.size(), strings2.size());
-		}
-		for (std::size_t i = 0; i < strings1.size(); ++i) {
-			if (int diff = strings1[i].compare(strings2[i])) {
-				return diff;
-			}
-		}
-		return 0;
+	bool operator ()(const std::unique_ptr<T>& type1, const T* type2) const {
+		return *type1 < *type2;
 	}
-	bool operator ()(const Type* type1, const Type* type2) const {
-		return compare(type1, type2) < 0;
-	}
-	bool operator ()(const Type* type1, const std::unique_ptr<Type>& type2) const {
-		return compare(type1, type2.get()) < 0;
-	}
-	bool operator ()(const std::unique_ptr<Type>& type1, const Type* type2) const {
-		return compare(type1.get(), type2) < 0;
-	}
-	bool operator ()(const std::unique_ptr<Type>& type1, const std::unique_ptr<Type>& type2) const {
-		return compare(type1.get(), type2.get()) < 0;
+	bool operator ()(const std::unique_ptr<T>& type1, const std::unique_ptr<T>& type2) const {
+		return *type1 < *type2;
 	}
 	using is_transparent = std::true_type;
 };
 
 class TypeInterner {
-	static inline std::set<std::unique_ptr<Type>, TypeCompare> types;
-public:
-	static Type* copy(const Type* type) {
-		switch (type->get_id()) {
-			case TypeId::INT: return new IntType();
-			case TypeId::CHAR: return new CharType();
-			case TypeId::CLOSURE: {
-				const ClosureType* closure_type = static_cast<const ClosureType*>(type);
-				ClosureType* new_closure_type = new ClosureType(closure_type->get_function());
-				for (const Type* environment_type: closure_type->get_environment_types()) {
-					new_closure_type->add_environment_type(environment_type);
-				}
-				return new_closure_type;
-			}
-			case TypeId::STRUCT: {
-				const StructType* struct_type = static_cast<const StructType*>(type);
-				StructType* new_struct_type = new StructType();
-				for (std::size_t i = 0; i < struct_type->get_field_types().size(); ++i) {
-					const std::string& name = struct_type->get_field_names()[i];
-					const Type* type = struct_type->get_field_types()[i];
-					new_struct_type->add_field(name, type);
-				}
-				return new_struct_type;
-			}
-			case TypeId::TUPLE: {
-				const TupleType* tuple_type = static_cast<const TupleType*>(type);
-				TupleType* new_tuple_type = new TupleType();
-				for (const Type* element_type: tuple_type->get_element_types()) {
-					new_tuple_type->add_element_type(element_type);
-				}
-				return new_tuple_type;
-			}
-			case TypeId::ARRAY: {
-				const ArrayType* array_type = static_cast<const ArrayType*>(type);
-				return new ArrayType(array_type->get_element_type());
-			}
-			case TypeId::STRING: return new StringType();
-			case TypeId::VOID: return new VoidType();
-			case TypeId::TYPE: {
-				const TypeType* type_type = static_cast<const TypeType*>(type);
-				return new TypeType(type_type->get_type());
-			}
-			default: return nullptr;
+	static inline std::unique_ptr<IntType> int_type;
+	static inline std::unique_ptr<CharType> char_type;
+	static inline std::set<std::unique_ptr<ClosureType>, TypeCompare<ClosureType>> closure_types;
+	static inline std::set<std::unique_ptr<StructType>, TypeCompare<StructType>> struct_types;
+	static inline std::set<std::unique_ptr<TupleType>, TypeCompare<TupleType>> tuple_types;
+	static inline std::set<std::unique_ptr<ArrayType>, TypeCompare<ArrayType>> array_types;
+	static inline std::unique_ptr<StringType> string_type;
+	static inline std::unique_ptr<VoidType> void_type;
+	static inline std::set<std::unique_ptr<TypeType>, TypeCompare<TypeType>> type_types;
+	template <class T> static T* get_or_set(std::unique_ptr<T>& type) {
+		if (type) {
+			return type.get();
 		}
+		T* interned_type = new T();
+		type = std::unique_ptr<T>(interned_type);
+		return interned_type;
 	}
-	static const Type* intern(const Type* type) {
+	template <class T> static T* get_or_insert(std::set<std::unique_ptr<T>, TypeCompare<T>>& types, const T* type) {
 		auto iterator = types.find(type);
 		if (iterator != types.end()) {
 			return iterator->get();
 		}
-		Type* interned_type = copy(type);
+		T* interned_type = new T(*type);
 		types.emplace(interned_type);
 		return interned_type;
 	}
+public:
 	static const Type* get_int_type() {
-		static const Type* int_type = nullptr;
-		if (int_type == nullptr) {
-			IntType type;
-			int_type = intern(&type);
-		}
-		return int_type;
+		return get_or_set(int_type);
 	}
 	static const Type* get_char_type() {
-		static const Type* char_type = nullptr;
-		if (char_type == nullptr) {
-			CharType type;
-			char_type = intern(&type);
-		}
-		return char_type;
+		return get_or_set(char_type);
+	}
+	static const Type* intern(const ClosureType* closure_type) {
+		return get_or_insert(closure_types, closure_type);
+	}
+	static const Type* intern(const StructType* struct_type) {
+		return get_or_insert(struct_types, struct_type);
+	}
+	static const Type* intern(const TupleType* tuple_type) {
+		return get_or_insert(tuple_types, tuple_type);
 	}
 	static const Type* get_array_type(const Type* element_type) {
-		ArrayType type(element_type);
-		return intern(&type);
+		ArrayType array_type(element_type);
+		return get_or_insert(array_types, &array_type);
 	}
 	static const Type* get_string_type() {
-		static const Type* string_type = nullptr;
-		if (string_type == nullptr) {
-			StringType type;
-			string_type = intern(&type);
-		}
-		return string_type;
+		return get_or_set(string_type);
 	}
 	static const Type* get_void_type() {
-		static const Type* void_type = nullptr;
-		if (void_type == nullptr) {
-			VoidType type;
-			void_type = intern(&type);
-		}
-		return void_type;
+		return get_or_set(void_type);
 	}
 	static const Type* get_type_type(const Type* type) {
 		TypeType type_type(type);
-		return intern(&type_type);
+		return get_or_insert(type_types, &type_type);
 	}
 };
 
@@ -702,25 +607,19 @@ public:
 };
 
 class StructLiteral: public Expression {
-	std::vector<std::string> field_names;
-	std::vector<const Expression*> fields;
+	std::vector<std::pair<std::string, const Expression*>> fields;
 public:
 	StructLiteral(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_literal(*this);
 	}
 	void add_field(const std::string& field_name, const Expression* field) {
-		field_names.push_back(field_name);
-		fields.push_back(field);
+		fields.emplace_back(field_name, field);
 	}
 	void add_field(const StringView& field_name, const Expression* field) {
-		field_names.emplace_back(field_name.begin(), field_name.end());
-		fields.push_back(field);
+		fields.emplace_back(std::string(field_name.begin(), field_name.end()), field);
 	}
-	const std::vector<std::string>& get_field_names() const {
-		return field_names;
-	}
-	const std::vector<const Expression*>& get_fields() const {
+	const std::vector<std::pair<std::string, const Expression*>>& get_fields() const {
 		return fields;
 	}
 };
@@ -989,7 +888,7 @@ public:
 		return tuple_literal.get_elements()[index];
 	}
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
-		return struct_literal.get_fields()[index];
+		return struct_literal.get_fields()[index].second;
 	}
 };
 
@@ -1010,9 +909,9 @@ public:
 			case TypeId::STRUCT: {
 				const StructType* struct_type = static_cast<const StructType*>(type);
 				p.print("Struct({");
-				for (std::size_t i = 0; i < struct_type->get_field_types().size(); ++i) {
-					const std::string& field_name = struct_type->get_field_names()[i];
-					const Type* field_type = struct_type->get_field_types()[i];
+				for (std::size_t i = 0; i < struct_type->get_fields().size(); ++i) {
+					const std::string& field_name = struct_type->get_fields()[i].first;
+					const Type* field_type = struct_type->get_fields()[i].second;
 					if (i > 0) p.print(",");
 					p.print(format("%:%", field_name, PrintType(field_type)));
 				}

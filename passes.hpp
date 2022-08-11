@@ -30,10 +30,7 @@ class Pass1: public Visitor<const Expression*> {
 		FunctionTableKey(const Function* old_function): old_function(old_function) {}
 		FunctionTableKey() {}
 		bool operator <(const FunctionTableKey& rhs) const {
-			if (old_function != rhs.old_function) {
-				return old_function < rhs.old_function;
-			}
-			return TypeCompare::compare(argument_types, rhs.argument_types) < 0;
+			return std::make_pair(old_function, std::ref(argument_types)) < std::make_pair(rhs.old_function, std::ref(rhs.argument_types));
 		}
 	};
 	using FunctionTable = std::map<FunctionTableKey, Function*>;
@@ -174,9 +171,9 @@ public:
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
 		StructType type;
 		StructLiteral* new_struct_literal = create<StructLiteral>();
-		for (std::size_t i = 0; i < struct_literal.get_fields().size(); ++i) {
-			const std::string& field_name = struct_literal.get_field_names()[i];
-			const Expression* new_field = expression_table[struct_literal.get_fields()[i]];
+		for (const auto& field: struct_literal.get_fields()) {
+			const std::string& field_name = field.first;
+			const Expression* new_field = expression_table[field.second];
 			type.add_field(field_name, new_field->get_type());
 			new_struct_literal->add_field(field_name, new_field);
 		}
@@ -197,7 +194,7 @@ public:
 		if (const Expression* element = visit(get_tuple_element, struct_)) {
 			return element;
 		}
-		const Type* type = struct_type->get_field_types()[index];
+		const Type* type = struct_type->get_fields()[index].second;
 		return create<StructAccess>(struct_, struct_access.get_field_name(), type);
 	}
 	const Expression* visit_closure(const Closure& closure) override {
@@ -314,12 +311,12 @@ public:
 			}
 			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
 			StructType new_struct_type;
-			for (std::size_t i = 0; i < struct_type->get_field_types().size(); ++i) {
-				const Type* field_type = struct_type->get_field_types()[i];
+			for (const auto& field: struct_type->get_fields()) {
+				const Type* field_type = field.second;
 				if (field_type->get_id() != TypeId::TYPE) {
 					error(intrinsic, "struct fields must be types");
 				}
-				const std::string& field_name = struct_type->get_field_names()[i];
+				const std::string& field_name = field.first;
 				new_struct_type.add_field(field_name, static_cast<const TypeType*>(field_type)->get_type());
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
@@ -477,8 +474,8 @@ class Lowering: public Visitor<const Expression*> {
 		}
 		if (type->get_id() == TypeId::STRUCT) {
 			TupleType tuple_type;
-			for (const Type* field_type: static_cast<const StructType*>(type)->get_field_types()) {
-				tuple_type.add_element_type(transform_type(field_type));
+			for (const auto& field: static_cast<const StructType*>(type)->get_fields()) {
+				tuple_type.add_element_type(transform_type(field.second));
 			}
 			return TypeInterner::intern(&tuple_type);
 		}
@@ -544,8 +541,8 @@ public:
 	}
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
 		TupleLiteral* tuple_literal = create<TupleLiteral>(transform_type(struct_literal.get_type()));
-		for (const Expression* field: struct_literal.get_fields()) {
-			tuple_literal->add_element(expression_table[field]);
+		for (const auto& field: struct_literal.get_fields()) {
+			tuple_literal->add_element(expression_table[field.second]);
 		}
 		return tuple_literal;
 	}
