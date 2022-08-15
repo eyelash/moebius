@@ -173,6 +173,9 @@ public:
 		StructLiteral* new_struct_literal = create<StructLiteral>();
 		for (const auto& field: struct_literal.get_fields()) {
 			const std::string& field_name = field.first;
+			if (type.has_field(field_name)) {
+				error(struct_literal, format("duplicate field \"%\"", field_name));
+			}
 			const Expression* new_field = expression_table[field.second];
 			type.add_field(field_name, new_field->get_type());
 			new_struct_literal->add_field(field_name, new_field);
