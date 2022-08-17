@@ -294,6 +294,57 @@ class MoebiusParser: private Parser {
 		}
 		return c;
 	}
+	const Expression* parse_string_segment() {
+		const SourcePosition position = get_position();
+		const auto string_segment_end_char = [](char c) constexpr {
+			return c == '"' || c == '$';
+		};
+		if (parse("$")) {
+			const Expression* expression;
+			if (parse("{")) {
+				parse_white_space();
+				expression = parse_expression();
+				parse_white_space();
+				expect("}");
+			}
+			else {
+				StringView identifier = parse_identifier();
+				expression = current_scope->look_up(identifier);
+				if (expression == nullptr) {
+					error(position, format("undefined variable \"%\"", identifier));
+				}
+			}
+			const Expression* function = current_scope->look_up("toString");
+			if (function == nullptr) {
+				error(position, "function toString not defined");
+			}
+			Call* call = current_scope->create<Call>();
+			call->set_position(position);
+			call->add_argument(function);
+			call->add_argument(expression);
+			return call;
+		}
+		else {
+			std::string string;
+			while (parse_not(string_segment_end_char)) {
+				string.push_back(parse_character());
+			}
+			StringLiteral* string_literal = current_scope->create<StringLiteral>(string);
+			//string_literal->set_position(position);
+			return string_literal;
+		}
+	}
+	const Expression* concat_strings(const Expression* left, const Expression* right) {
+		Intrinsic* string_length = current_scope->create<Intrinsic>("arrayLength");
+		string_length->add_argument(left);
+		IntLiteral* zero = current_scope->create<IntLiteral>(0);
+		Intrinsic* intrinsic = current_scope->create<Intrinsic>("arraySplice");
+		intrinsic->add_argument(left);
+		intrinsic->add_argument(string_length);
+		intrinsic->add_argument(zero);
+		intrinsic->add_argument(right);
+		return intrinsic;
+	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
 			error("expected alphabetic character");
@@ -444,14 +495,13 @@ class MoebiusParser: private Parser {
 			return closure;
 		}
 		else if (parse("\"")) {
-			std::string string;
+			const Expression* left = parse_string_segment();
 			while (parse_not("\"")) {
-				string.push_back(parse_character());
+				const Expression* right = parse_string_segment();
+				left = concat_strings(left, right);
 			}
-			StringLiteral* string_literal = current_scope->create<StringLiteral>(string);
-			string_literal->set_position(position);
 			expect("\"");
-			return string_literal;
+			return left;
 		}
 		else if (parse("'")) {
 			if (!copy().parse(any_char)) {
