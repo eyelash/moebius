@@ -138,19 +138,18 @@ template <class... T> constexpr Format<T...> format(const char* s, const T&... t
 	return Format<T...>(s, t...);
 }
 
-class GraphicsPrinter {
-	const char* parameter;
-public:
-	constexpr GraphicsPrinter(const char* parameter): parameter(parameter) {}
-	template <class T> constexpr auto operator ()(const T& t) const {
-		return print_tuple("\x1B[", parameter, "m", t, "\x1B[m");
-	}
+constexpr auto bold = [](const auto& t) {
+	return print_tuple("\x1B[1m", t, "\x1B[22m");
 };
-
-constexpr GraphicsPrinter bold = GraphicsPrinter("1");
-constexpr GraphicsPrinter red = GraphicsPrinter("31");
-constexpr GraphicsPrinter green = GraphicsPrinter("32");
-constexpr GraphicsPrinter yellow = GraphicsPrinter("33");
+constexpr auto red = [](const auto& t) {
+	return print_tuple("\x1B[31m", t, "\x1B[39m");
+};
+constexpr auto green = [](const auto& t) {
+	return print_tuple("\x1B[32m", t, "\x1B[39m");
+};
+constexpr auto yellow = [](const auto& t) {
+	return print_tuple("\x1B[33m", t, "\x1B[39m");
+};
 
 class PrintNumber {
 	unsigned int n;
@@ -221,12 +220,12 @@ public:
 	}
 };
 
-template <class T> void print_message(const Printer& printer, const GraphicsPrinter& color, const char* severity, const T& t) {
+template <class T, class C> void print_message(const Printer& printer, const C& color, const char* severity, const T& t) {
 	printer.print(bold(color(format("%: ", severity))));
 	printer.print(t);
 	printer.print('\n');
 }
-template <class T> void print_message(const Printer& printer, const SourcePosition& source_position, const GraphicsPrinter& color, const char* severity, const T& t) {
+template <class T, class C> void print_message(const Printer& printer, const SourcePosition& source_position, const C& color, const char* severity, const T& t) {
 	const char* file_name = source_position.get_file_name();
 	if (file_name == nullptr) {
 		print_message(printer, color, severity, t);

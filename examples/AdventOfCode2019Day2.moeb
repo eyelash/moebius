@@ -54,9 +54,9 @@ func findInputs(p) = {
 		if (noun < 99)
 			if (verb < 99)
 				if (runProgram(p, noun, verb) == 19690720)
-					putStrLn(concat("noun = ", toString(noun))) >>
-					putStrLn(concat("verb = ", toString(verb))) >>
-					putStrLn(concat("100 * noun + verb = ", toString(100 * noun + verb)))
+					putStrLn("noun = $noun") >>
+					putStrLn("verb = $verb") >>
+					putStrLn("100 * noun + verb = ${100 * noun + verb}")
 				else
 					iterate(p, noun, verb + 1)
 			else

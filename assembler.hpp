@@ -34,12 +34,11 @@ constexpr Ptr PTR(Register r, std::uint32_t offset = 0) {
 	return Ptr(r, offset);
 }
 
-using Addr = std::uint32_t;
-static constexpr Addr VADDR = 0x10000;
-static constexpr Addr ELF_HEADER_SIZE = 52;
-static constexpr Addr PROGRAM_HEADER_SIZE = 32;
-
 class Assembler {
+	using Addr = std::uint32_t;
+	static constexpr Addr VADDR = 0x10000;
+	static constexpr Addr ELF_HEADER_SIZE = 52;
+	static constexpr Addr PROGRAM_HEADER_SIZE = 32;
 	std::vector<char> data;
 	template <class T> void write(T t) {
 		for (std::size_t i = 0; i < sizeof(T); ++i) {
@@ -120,14 +119,14 @@ public:
 		write<std::uint16_t>(3); // EM_386
 		write<std::uint32_t>(1);
 		write<Addr>(VADDR + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE + entry_point); // entry point
-		write<Addr>(ELF_HEADER_SIZE); // program header
-		write<Addr>(0); // section header
+		write<Addr>(ELF_HEADER_SIZE); // program header position
+		write<Addr>(0); // section header position
 		write<std::uint32_t>(0); // flags
-		write<std::uint16_t>(ELF_HEADER_SIZE); // ehsize
-		write<std::uint16_t>(PROGRAM_HEADER_SIZE); // program header entry size
-		write<std::uint16_t>(1); // e_phnum
-		write<std::uint16_t>(0);
-		write<std::uint16_t>(0);
+		write<std::uint16_t>(ELF_HEADER_SIZE); // ELF header size
+		write<std::uint16_t>(PROGRAM_HEADER_SIZE); // program header size
+		write<std::uint16_t>(1); // number of program headers
+		write<std::uint16_t>(0); // section header size
+		write<std::uint16_t>(0); // number of section headers
 		write<std::uint16_t>(0);
 	}
 	void write_program_header() {
@@ -144,8 +143,8 @@ public:
 		return data.size();
 	}
 	void write_file(const char* path) {
-		write<std::uint32_t>(68, ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE + data.size()); // filesz
-		write<std::uint32_t>(72, ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE + data.size()); // memsz
+		write<std::uint32_t>(68, data.size()); // filesz
+		write<std::uint32_t>(72, data.size()); // memsz
 		std::ofstream file(path);
 		file.write(data.data(), data.size());
 	}

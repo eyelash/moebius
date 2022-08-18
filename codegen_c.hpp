@@ -338,7 +338,7 @@ public:
 	Variable visit_if(const If& if_) override {
 		const Variable condition = expression_table[if_.get_condition()];
 		const Variable result = next_variable();
-		if (if_.get_type_id() != TypeId::VOID) {
+		if (if_.get_type() != TypeInterner::get_void_type()) {
 			const Type result_type = function_table.get_type(if_.get_type());
 			printer.println(format("% %;", result_type, result));
 		}
@@ -384,7 +384,7 @@ public:
 			printer.println("continue;");
 		}
 		else printer.println(print_functor([&](auto& printer) {
-			if (call.get_type_id() != TypeId::VOID) {
+			if (call.get_type() != TypeInterner::get_void_type()) {
 				const Type result_type = function_table.get_type(call.get_function()->get_return_type());
 				printer.print(format("% % = ", result_type, result));
 			}
@@ -472,7 +472,7 @@ public:
 	}
 	Variable visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();
-		if (expression->get_type_id() != TypeId::VOID && !tail_call_data.is_tail_call(expression)) {
+		if (expression->get_type() != TypeInterner::get_void_type() && !tail_call_data.is_tail_call(expression)) {
 			printer.println(format("% = %;", result, expression_table[expression]));
 		}
 		return next_variable();

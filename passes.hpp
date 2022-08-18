@@ -291,6 +291,13 @@ public:
 			error(intrinsic, format("first argument of % must be an array or a string", intrinsic.get_name()));
 		}
 	}
+	Intrinsic* create_intrinsic(const Intrinsic& intrinsic, const Type* type = nullptr) {
+		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name(), type);
+		for (const Expression* argument: intrinsic.get_arguments()) {
+			new_intrinsic->add_argument(expression_table[argument]);
+		}
+		return new_intrinsic;
+	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 		if (intrinsic.name_equals("typeOf")) {
 			ensure_argument_count(intrinsic, 1);
@@ -334,73 +341,71 @@ public:
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&tuple_type));
 		}
-		Intrinsic* new_intrinsic = create<Intrinsic>(intrinsic.get_name());
-		for (const Expression* argument: intrinsic.get_arguments()) {
-			new_intrinsic->add_argument(expression_table[argument]);
-		}
 		if (intrinsic.name_equals("putChar")) {
 			ensure_argument_types(intrinsic, {TypeInterner::get_int_type()});
-			new_intrinsic->set_type(TypeInterner::get_void_type());
+			return create_intrinsic(intrinsic, TypeInterner::get_void_type());
 		}
 		else if (intrinsic.name_equals("putStr")) {
 			ensure_argument_types(intrinsic, {TypeInterner::get_string_type()});
-			new_intrinsic->set_type(TypeInterner::get_void_type());
+			return create_intrinsic(intrinsic, TypeInterner::get_void_type());
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			ensure_argument_types(intrinsic, {});
-			new_intrinsic->set_type(TypeInterner::get_int_type());
+			return create_intrinsic(intrinsic, TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arrayGet")) {
 			ensure_argument_count(intrinsic, 2);
-			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
+			const Type* array_type = expression_table[intrinsic.get_arguments()[0]]->get_type();
 			const Type* element_type = get_element_type(intrinsic, array_type);
-			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
+			if (expression_table[intrinsic.get_arguments()[1]]->get_type() != TypeInterner::get_int_type()) {
 				error(intrinsic, "second argument of arrayGet must be a number");
 			}
-			new_intrinsic->set_type(element_type);
+			return create_intrinsic(intrinsic, element_type);
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
 			ensure_argument_count(intrinsic, 1);
-			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
+			const Type* array_type = expression_table[intrinsic.get_arguments()[0]]->get_type();
 			get_element_type(intrinsic, array_type);
-			new_intrinsic->set_type(TypeInterner::get_int_type());
+			return create_intrinsic(intrinsic, TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
-			if (new_intrinsic->get_arguments().size() < 3) {
+			if (intrinsic.get_arguments().size() < 3) {
 				error(intrinsic, "arraySplice takes at least 3 arguments");
 			}
-			const Type* array_type = new_intrinsic->get_arguments()[0]->get_type();
+			const Type* array_type = expression_table[intrinsic.get_arguments()[0]]->get_type();
 			const Type* element_type = get_element_type(intrinsic, array_type);
-			if (new_intrinsic->get_arguments()[1]->get_type_id() != TypeId::INT) {
+			if (expression_table[intrinsic.get_arguments()[1]]->get_type() != TypeInterner::get_int_type()) {
 				error(intrinsic, "second argument of arraySplice must be a number");
 			}
-			if (new_intrinsic->get_arguments()[2]->get_type_id() != TypeId::INT) {
+			if (expression_table[intrinsic.get_arguments()[2]]->get_type() != TypeInterner::get_int_type()) {
 				error(intrinsic, "third argument of arraySplice must be a number");
 			}
-			if (new_intrinsic->get_arguments().size() == 4) {
-				if (!(new_intrinsic->get_arguments()[3]->get_type() == element_type || new_intrinsic->get_arguments()[3]->get_type() == array_type)) {
+			if (intrinsic.get_arguments().size() == 4) {
+				const Expression* argument = expression_table[intrinsic.get_arguments()[3]];
+				if (!(argument->get_type() == element_type || argument->get_type() == array_type)) {
 					error(intrinsic, format("argument 4 of arraySplice must be of type % or %", print_type(element_type), print_type(array_type)));
 				}
 			}
 			else {
-				for (std::size_t i = 3; i < new_intrinsic->get_arguments().size(); ++i) {
-					if (new_intrinsic->get_arguments()[i]->get_type() != element_type) {
+				for (std::size_t i = 3; i < intrinsic.get_arguments().size(); ++i) {
+					const Expression* argument = expression_table[intrinsic.get_arguments()[i]];
+					if (argument->get_type() != element_type) {
 						error(intrinsic, format("argument % of arraySplice must be of type %", print_number(i + 1), print_type(element_type)));
 					}
 				}
 			}
-			new_intrinsic->set_type(array_type);
+			return create_intrinsic(intrinsic, array_type);
 		}
 		else if (intrinsic.name_equals("copy")) {
-			new_intrinsic->set_type(new_intrinsic->get_arguments()[0]->get_type());
+			const Type* type = expression_table[intrinsic.get_arguments()[0]]->get_type();
+			return create_intrinsic(intrinsic, type);
 		}
 		else if (intrinsic.name_equals("free")) {
-			new_intrinsic->set_type(TypeInterner::get_void_type());
+			return create_intrinsic(intrinsic, TypeInterner::get_void_type());
 		}
 		else {
-			new_intrinsic->set_type(TypeInterner::get_void_type());
+			return create_intrinsic(intrinsic, TypeInterner::get_void_type());
 		}
-		return new_intrinsic;
 	}
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
@@ -1322,7 +1327,7 @@ class Pass4: public Visitor<const Expression*> {
 	bool is_unused(const Expression* resource) {
 		return usage_table.usages[source_block].count(resource) == 0;
 	}
-	bool is_borrowed(const Intrinsic& intrinsic, std::size_t i) {
+	bool is_borrowed(const Intrinsic& intrinsic) {
 		return intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || intrinsic.name_equals("putStr");
 	}
 	const Expression* copy(const Expression* resource) {
@@ -1435,7 +1440,7 @@ public:
 		Intrinsic* new_intrinsic = new Intrinsic(intrinsic.get_name(), intrinsic.get_type());
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
-			if (is_managed(argument) && !is_borrowed(intrinsic, i) && !is_last_use(argument, &intrinsic, i)) {
+			if (is_managed(argument) && !is_borrowed(intrinsic) && !is_last_use(argument, &intrinsic, i)) {
 				new_intrinsic->add_argument(copy(expression_table[argument]));
 			}
 			else {
@@ -1449,7 +1454,7 @@ public:
 		}
 		for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 			const Expression* argument = intrinsic.get_arguments()[i];
-			if (is_managed(argument) && is_borrowed(intrinsic, i) && is_last_use(argument, &intrinsic, i)) {
+			if (is_managed(argument) && is_borrowed(intrinsic) && is_last_use(argument, &intrinsic, i)) {
 				free(expression_table[argument]);
 			}
 		}

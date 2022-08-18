@@ -289,14 +289,14 @@ class MoebiusParser: private Parser {
 			else if (c == 'r') c = '\r';
 			else if (c == 't') c = '\t';
 			else if (c == 'v') c = '\v';
-			else if (c == '\'' || c == '\"' || c == '\\') c = c;
+			else if (c == '\'' || c == '\"' || c == '\\' || c == '$') c = c;
 			else error("invalid escape");
 		}
 		return c;
 	}
 	const Expression* parse_string_segment() {
 		const SourcePosition position = get_position();
-		const auto string_segment_end_char = [](char c) constexpr {
+		constexpr auto string_segment_end_char = [](char c) constexpr {
 			return c == '"' || c == '$';
 		};
 		if (parse("$")) {
