@@ -373,7 +373,7 @@ public:
 	Variable visit_argument(const Argument& argument) override {
 		return Variable(argument.get_index());
 	}
-	Variable visit_call(const Call& call) override {
+	Variable visit_function_call(const FunctionCall& call) override {
 		const std::size_t new_index = function_table.look_up(call.get_function());
 		const Variable result = next_variable();
 		if (tail_call_data.is_tail_call(&call)) {

@@ -37,14 +37,15 @@ class Pass1: public Visitor<const Expression*> {
 	Program* program;
 	FunctionTable& function_table;
 	const FunctionTableKey& key;
+	const std::vector<const Expression*>& environment_arguments;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
 	ExpressionTable& expression_table;
 	Block* destination_block;
 	bool omit_return;
 	const Expression* result = nullptr;
-	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
-		Pass1 pass1(program, function_table, key, expression_table, destination_block, omit_return);
+	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), environment_arguments(environment_arguments), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+		Pass1 pass1(program, function_table, key, environment_arguments, expression_table, destination_block, omit_return);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(pass1, expression);
 			if (new_expression) {
@@ -53,12 +54,17 @@ class Pass1: public Visitor<const Expression*> {
 		}
 		return pass1.result;
 	}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, expression_table, destination_block, source_block, false);
+		return evaluate(program, function_table, key, environment_arguments, expression_table, destination_block, source_block, false);
+	}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
+		std::vector<const Expression*> environment_arguments;
+		ExpressionTable expression_table;
+		return evaluate(program, function_table, key, environment_arguments, expression_table, destination_block, source_block, false);
 	}
 	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
-		return evaluate(program, function_table, key, expression_table, destination_block, source_block, omit_return);
+		return evaluate(program, function_table, key, environment_arguments, expression_table, destination_block, source_block, omit_return);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -219,36 +225,62 @@ public:
 		return create<ClosureAccess>(closure, argument_index, type);
 	}
 	const Expression* visit_argument(const Argument& argument) override {
-		const std::size_t argument_index = argument.get_index();
-		const Type* type = key.argument_types[argument_index];
-		return create<Argument>(argument_index, type);
+		if (argument.get_argument_type() == ArgumentType::ARGUMENT) {
+			const std::size_t argument_index = environment_arguments.size() + argument.get_index();
+			const Type* type = key.argument_types[argument_index];
+			return create<Argument>(argument_index, type);
+		}
+		else if (argument.get_argument_type() == ArgumentType::ENVIRONMENT) {
+			return environment_arguments[argument.get_index()];
+		}
+		else if (argument.get_argument_type() == ArgumentType::SELF) {
+			ClosureType type(key.old_function);
+			Closure* new_closure = create<Closure>(nullptr);
+			for (const Expression* argument: environment_arguments) {
+				type.add_environment_type(argument->get_type());
+				new_closure->add_environment_expression(argument);
+			}
+			new_closure->set_type(TypeInterner::intern(&type));
+			return new_closure;
+		}
+		return nullptr;
 	}
-	const Expression* visit_call(const Call& call) override {
-		Call* new_call = create<Call>();
+	const Expression* visit_closure_call(const ClosureCall& call) override {
+		FunctionCall* new_call = new FunctionCall();
 		FunctionTableKey new_key;
+		const Expression* closure = expression_table[call.get_closure()];
+		if (closure->get_type_id() != TypeId::CLOSURE) {
+			error(call, "call to a value that is not a function");
+		}
+		const ClosureType* closure_type = static_cast<const ClosureType*>(closure->get_type());
+		for (std::size_t i = 0; i < closure_type->get_environment_types().size(); ++i) {
+			const Type* argument_type = closure_type->get_environment_types()[i];
+			const Expression* new_argument = create<ClosureAccess>(closure, i, argument_type);
+			new_key.argument_types.push_back(argument_type);
+			new_call->add_argument(new_argument);
+		}
 		for (const Expression* argument: call.get_arguments()) {
 			const Expression* new_argument = expression_table[argument];
 			new_key.argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
 		}
-		const Function* old_function = call.get_function();
-		if (old_function == nullptr) {
-			const Expression* object = new_call->get_object();
-			if (object->get_type_id() != TypeId::CLOSURE) {
-				error(call, "call to a value that is not a function");
-			}
-			old_function = static_cast<const ClosureType*>(object->get_type())->get_function();
-		}
-		new_key.old_function = old_function;
-		if (call.get_arguments().size() != old_function->get_arguments()) {
-			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size() - 1), print_number(old_function->get_arguments() - 1)));
+		new_key.old_function = closure_type->get_function();
+		if (call.get_arguments().size() != new_key.old_function->get_arguments()) {
+			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size()), print_number(new_key.old_function->get_arguments())));
 		}
 
 		if (function_table[new_key] == nullptr) {
-			Function* new_function = new Function(new_key.argument_types, old_function->get_return_type());
+			Function* new_function = new Function(new_key.argument_types, nullptr);
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			const Expression* new_expression = evaluate(program, function_table, new_key, new_function->get_block(), old_function->get_block());
+			std::vector<const Expression*> environment_arguments;
+			for (std::size_t i = 0; i < closure_type->get_environment_types().size(); ++i) {
+				const Type* argument_type = closure_type->get_environment_types()[i];
+				Argument* argument = new Argument(i, argument_type);
+				new_function->get_block()->add_expression(argument);
+				environment_arguments.push_back(argument);
+			}
+			const Expression* new_expression = evaluate(program, function_table, new_key, environment_arguments, new_function->get_block(), new_key.old_function->get_block());
 			if (new_function->get_return_type() && new_function->get_return_type() != new_expression->get_type()) {
 				error(call, format("function does not return the declared return type %", print_type(new_function->get_return_type())));
 			}
@@ -259,6 +291,27 @@ public:
 			if (function_table[new_key]->get_return_type() == nullptr) {
 				error(call, "cannot determine return type of recursive call");
 			}
+		}
+		new_call->set_type(function_table[new_key]->get_return_type());
+		new_call->set_function(function_table[new_key]);
+		destination_block->add_expression(new_call);
+		return new_call;
+	}
+	const Expression* visit_function_call(const FunctionCall& call) override {
+		FunctionCall* new_call = create<FunctionCall>();
+		FunctionTableKey new_key;
+		for (const Expression* argument: call.get_arguments()) {
+			const Expression* new_argument = expression_table[argument];
+			new_key.argument_types.push_back(new_argument->get_type());
+			new_call->add_argument(new_argument);
+		}
+		new_key.old_function = call.get_function();
+
+		if (function_table[new_key] == nullptr) {
+			Function* new_function = new Function(new_key.argument_types, new_key.old_function->get_return_type());
+			program->add_function(new_function);
+			function_table[new_key] = new_function;
+			const Expression* new_expression = evaluate(program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 		}
 		new_call->set_type(function_table[new_key]->get_return_type());
 		new_call->set_function(function_table[new_key]);
@@ -574,8 +627,8 @@ public:
 	Expression* visit_argument(const Argument& argument) override {
 		return create<Argument>(argument.get_index(), transform_type(argument.get_type()));
 	}
-	const Expression* visit_call(const Call& call) override {
-		Call* new_call = create<Call>(transform_type(call.get_type()));
+	const Expression* visit_function_call(const FunctionCall& call) override {
+		FunctionCall* new_call = create<FunctionCall>(transform_type(call.get_type()));
 		for (const Expression* argument: call.get_arguments()) {
 			new_call->add_argument(expression_table[argument]);
 		}
@@ -671,7 +724,7 @@ class DeadCodeElimination {
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			mark(tuple_access.get_tuple());
 		}
-		void visit_call(const Call& call) override {
+		void visit_function_call(const FunctionCall& call) override {
 			for (const Expression* argument: call.get_arguments()) {
 				mark(argument);
 			}
@@ -756,8 +809,8 @@ class DeadCodeElimination {
 		const Expression* visit_argument(const Argument& argument) override {
 			return create<Argument>(argument.get_index(), argument.get_type());
 		}
-		const Expression* visit_call(const Call& call) override {
-			Call* new_call = create<Call>(call.get_type());
+		const Expression* visit_function_call(const FunctionCall& call) override {
+			FunctionCall* new_call = create<FunctionCall>(call.get_type());
 			for (const Expression* argument: call.get_arguments()) {
 				new_call->add_argument(expression_table[argument]);
 			}
@@ -833,7 +886,7 @@ class Pass2 {
 			evaluate(if_.get_then_block());
 			evaluate(if_.get_else_block());
 		}
-		void visit_call(const Call& call) override {
+		void visit_function_call(const FunctionCall& call) override {
 			if (function_table[call.get_function()].callers == 0) {
 				function_table[call.get_function()].callers += 1;
 				function_table[call.get_function()].evaluating = true;
@@ -941,7 +994,7 @@ class Pass2 {
 				return create<Argument>(argument.get_index(), argument.get_type());
 			}
 		}
-		const Expression* visit_call(const Call& call) override {
+		const Expression* visit_function_call(const FunctionCall& call) override {
 			if (function_table[call.get_function()].should_inline()) {
 				std::vector<const Expression*> new_arguments;
 				for (const Expression* argument: call.get_arguments()) {
@@ -950,7 +1003,7 @@ class Pass2 {
 				return evaluate(call.get_function(), new_arguments, destination_block, call.get_function()->get_block());
 			}
 			else {
-				Call* new_call = create<Call>(call.get_type());
+				FunctionCall* new_call = create<FunctionCall>(call.get_type());
 				for (const Expression* argument: call.get_arguments()) {
 					new_call->add_argument(expression_table[argument]);
 				}
@@ -1121,8 +1174,8 @@ public:
 		const std::size_t index = adjust_index(function->get_argument_types(), argument.get_index());
 		return create<Argument>(index, transform_type(argument.get_type()));
 	}
-	const Expression* visit_call(const Call& call) override {
-		Call* new_call = create<Call>(transform_type(call.get_type()));
+	const Expression* visit_function_call(const FunctionCall& call) override {
+		FunctionCall* new_call = create<FunctionCall>(transform_type(call.get_type()));
 		for (const Expression* argument: call.get_arguments()) {
 			if (!is_empty_tuple(argument)) {
 				new_call->add_argument(expression_table[argument]);
@@ -1239,7 +1292,7 @@ class Pass4: public Visitor<const Expression*> {
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			add_usage(tuple_access.get_tuple(), &tuple_access, 0);
 		}
-		void visit_call(const Call& call) override {
+		void visit_function_call(const FunctionCall& call) override {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 				const Expression* argument = call.get_arguments()[i];
 				if (is_managed(argument)) {
@@ -1421,8 +1474,8 @@ public:
 		}
 		return new_argument;
 	}
-	const Expression* visit_call(const Call& call) override {
-		Call* new_call = new Call(call.get_type());
+	const Expression* visit_function_call(const FunctionCall& call) override {
+		FunctionCall* new_call = new FunctionCall(call.get_type());
 		for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 			const Expression* argument = call.get_arguments()[i];
 			if (is_managed(argument) && !is_last_use(argument, &call, i)) {
@@ -1518,7 +1571,7 @@ public:
 		evaluate(if_.get_then_block());
 		evaluate(if_.get_else_block());
 	}
-	void visit_call(const Call& call) override {
+	void visit_function_call(const FunctionCall& call) override {
 		if (call.get_function() == function) {
 			data.tail_call_expressions[&call] = true;
 			data.tail_call_functions[function] = true;

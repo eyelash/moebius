@@ -19,7 +19,8 @@ class Function;
 class Closure;
 class ClosureAccess;
 class Argument;
-class Call;
+class ClosureCall;
+class FunctionCall;
 class Intrinsic;
 class Bind;
 class Return;
@@ -289,7 +290,10 @@ public:
 	virtual T visit_argument(const Argument& argument) {
 		return T();
 	}
-	virtual T visit_call(const Call& call) {
+	virtual T visit_closure_call(const ClosureCall& call) {
+		return T();
+	}
+	virtual T visit_function_call(const FunctionCall& call) {
 		return T();
 	}
 	virtual T visit_intrinsic(const Intrinsic& intrinsic) {
@@ -379,8 +383,11 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_argument(const Argument& argument) override {
 			result = visitor.visit_argument(argument);
 		}
-		void visit_call(const Call& call) override {
-			result = visitor.visit_call(call);
+		void visit_closure_call(const ClosureCall& call) override {
+			result = visitor.visit_closure_call(call);
+		}
+		void visit_function_call(const FunctionCall& call) override {
+			result = visitor.visit_function_call(call);
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {
 			result = visitor.visit_intrinsic(intrinsic);
@@ -648,7 +655,7 @@ class Function {
 	const Type* return_type;
 public:
 	const Function* next_function = nullptr;
-	Function(const Type* return_type = nullptr): arguments(1), return_type(return_type) {}
+	Function(const Type* return_type = nullptr): arguments(0), return_type(return_type) {}
 	Function(const std::vector<const Type*>& argument_types, const Type* return_type = nullptr): arguments(argument_types.size()), argument_types(argument_types), return_type(return_type) {}
 	std::size_t add_argument() {
 		return arguments++;
@@ -710,25 +717,55 @@ public:
 	}
 };
 
+enum class ArgumentType {
+	ARGUMENT,
+	ENVIRONMENT,
+	SELF
+};
+
 class Argument: public Expression {
 	std::size_t index;
+	ArgumentType argument_type;
 public:
-	Argument(std::size_t index, const Type* type = nullptr): Expression(type), index(index) {}
+	Argument(std::size_t index, ArgumentType argument_type): Expression(nullptr), index(index), argument_type(argument_type) {}
+	Argument(std::size_t index, const Type* type): Expression(type), index(index), argument_type(ArgumentType::ARGUMENT) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_argument(*this);
 	}
 	std::size_t get_index() const {
 		return index;
 	}
+	ArgumentType get_argument_type() const {
+		return argument_type;
+	}
 };
 
-class Call: public Expression {
+class ClosureCall: public Expression {
+	const Expression* closure;
+	std::vector<const Expression*> arguments;
+public:
+	ClosureCall(const Expression* closure): Expression(nullptr), closure(closure) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_closure_call(*this);
+	}
+	void add_argument(const Expression* expression) {
+		arguments.push_back(expression);
+	}
+	const Expression* get_closure() const {
+		return closure;
+	}
+	const std::vector<const Expression*>& get_arguments() const {
+		return arguments;
+	}
+};
+
+class FunctionCall: public Expression {
 	std::vector<const Expression*> arguments;
 	const Function* function = nullptr;
 public:
-	Call(const Type* type = nullptr): Expression(type) {}
+	FunctionCall(const Type* type = nullptr): Expression(type) {}
 	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_call(*this);
+		visitor.visit_function_call(*this);
 	}
 	void add_argument(const Expression* expression) {
 		arguments.push_back(expression);
@@ -738,9 +775,6 @@ public:
 	}
 	const std::vector<const Expression*>& get_arguments() const {
 		return arguments;
-	}
-	const Expression* get_object() const {
-		return arguments[0];
 	}
 	const Function* get_function() const {
 		return function;

@@ -66,7 +66,6 @@ class Scope {
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
 	Closure* closure;
-	const Expression* self = nullptr;
 	Block* block;
 public:
 	Scope(Scope*& current_scope, Closure* closure, Block* block): current_scope(current_scope), closure(closure), block(block) {
@@ -77,9 +76,6 @@ public:
 	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr) {}
 	~Scope() {
 		current_scope = parent;
-	}
-	void set_self(const Expression* self) {
-		this->self = self;
 	}
 	void add_variable(const StringView& name, const Expression* value) {
 		variables[name] = value;
@@ -93,7 +89,7 @@ public:
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
 					const std::size_t index = closure->add_environment_expression(expression);
-					const Expression* argument = create<ClosureAccess>(self, index);
+					const Expression* argument = create<Argument>(index, ArgumentType::ENVIRONMENT);
 					add_variable(name, argument);
 					return argument;
 				}
@@ -318,9 +314,8 @@ class MoebiusParser: private Parser {
 			if (function == nullptr) {
 				error(position, "function toString not defined");
 			}
-			Call* call = current_scope->create<Call>();
+			ClosureCall* call = current_scope->create<ClosureCall>(function);
 			call->set_position(position);
-			call->add_argument(function);
 			call->add_argument(expression);
 			return call;
 		}
@@ -475,11 +470,10 @@ class MoebiusParser: private Parser {
 			closure->set_position(position);
 			{
 				Scope scope(current_scope, closure, function->get_block());
-				current_scope->set_self(current_scope->create<Argument>(0));
 				while (parse_not(")")) {
 					const StringView argument_name = parse_identifier();
 					const std::size_t index = function->add_argument();
-					current_scope->add_variable(argument_name, current_scope->create<Argument>(index));
+					current_scope->add_variable(argument_name, current_scope->create<Argument>(index, ArgumentType::ARGUMENT));
 					parse_white_space();
 					if (!parse(",")) {
 						break;
@@ -610,9 +604,8 @@ class MoebiusParser: private Parser {
 				const SourcePosition position = get_position();
 				if (parse("(")) {
 					parse_white_space();
-					Call* call = new Call();
+					ClosureCall* call = new ClosureCall(expression);
 					call->set_position(position);
-					call->add_argument(expression);
 					while (parse_not(")")) {
 						call->add_argument(parse_expression());
 						parse_white_space();
@@ -637,9 +630,8 @@ class MoebiusParser: private Parser {
 							error(format("undefined variable \"%\"", name));
 						}
 						parse_white_space();
-						Call* call = new Call();
+						ClosureCall* call = new ClosureCall(function);
 						call->set_position(position);
-						call->add_argument(function);
 						call->add_argument(expression);
 						while (parse_not(")")) {
 							call->add_argument(parse_expression());
@@ -776,13 +768,12 @@ class MoebiusParser: private Parser {
 				closure->set_position(position);
 				{
 					Scope scope(current_scope, closure, function->get_block());
-					const Expression* self = current_scope->create<Argument>(0);
-					current_scope->set_self(self);
+					const Expression* self = current_scope->create<Argument>(0, ArgumentType::SELF);
 					current_scope->add_variable(name, self);
 					while (parse_not(")")) {
 						auto [argument_name, type_assert_position, argument_type] = parse_name();
 						const std::size_t index = function->add_argument();
-						const Expression* argument = current_scope->create<Argument>(index);
+						const Expression* argument = current_scope->create<Argument>(index, ArgumentType::ARGUMENT);
 						current_scope->add_variable(argument_name, argument);
 						if (argument_type) {
 							TypeAssert* type_assert = current_scope->create<TypeAssert>(argument, argument_type);

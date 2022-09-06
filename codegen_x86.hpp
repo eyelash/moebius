@@ -189,7 +189,7 @@ public:
 		}
 		return location;
 	}
-	std::uint32_t visit_call(const Call& call) override {
+	std::uint32_t visit_function_call(const FunctionCall& call) override {
 		const std::uint32_t input_size = get_input_size(call.get_function());
 		const std::uint32_t output_size = get_output_size(call.get_function());
 		for (const Expression* argument: call.get_arguments()) {
