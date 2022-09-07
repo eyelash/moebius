@@ -65,15 +65,16 @@ class Scope {
 	Scope*& current_scope;
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
+	Function* function;
 	Closure* closure;
 	Block* block;
 public:
-	Scope(Scope*& current_scope, Closure* closure, Block* block): current_scope(current_scope), closure(closure), block(block) {
+	Scope(Scope*& current_scope, Function* function, Closure* closure, Block* block): current_scope(current_scope), function(function), closure(closure), block(block) {
 		parent = current_scope;
 		current_scope = this;
 	}
-	Scope(Scope*& current_scope, Block* block): Scope(current_scope, nullptr, block) {}
-	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr) {}
+	Scope(Scope*& current_scope, Block* block): Scope(current_scope, nullptr, nullptr, block) {}
+	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr, nullptr) {}
 	~Scope() {
 		current_scope = parent;
 	}
@@ -88,6 +89,7 @@ public:
 		if (closure) {
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
+					function->add_environment_argument();
 					const std::size_t index = closure->add_environment_expression(expression);
 					const Expression* argument = create<Argument>(index, ArgumentType::ENVIRONMENT);
 					add_variable(name, argument);
@@ -469,7 +471,7 @@ class MoebiusParser: private Parser {
 			Closure* closure = new Closure(function);
 			closure->set_position(position);
 			{
-				Scope scope(current_scope, closure, function->get_block());
+				Scope scope(current_scope, function, closure, function->get_block());
 				while (parse_not(")")) {
 					const StringView argument_name = parse_identifier();
 					const std::size_t index = function->add_argument();
@@ -623,34 +625,10 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					StringView name = parse_identifier();
 					parse_white_space();
-					// method call syntax
 					const Expression* function = current_scope->look_up(name);
-					if (function && parse("(")) {
-						if (function == nullptr) {
-							error(format("undefined variable \"%\"", name));
-						}
-						parse_white_space();
-						ClosureCall* call = new ClosureCall(function);
-						call->set_position(position);
-						call->add_argument(expression);
-						while (parse_not(")")) {
-							call->add_argument(parse_expression());
-							parse_white_space();
-							if (!parse(",")) {
-								break;
-							}
-							parse_white_space();
-						}
-						expect(")");
-						current_scope->add_expression(call);
-						expression = call;
-						parse_white_space();
-					}
-					else {
-						StructAccess* struct_access = current_scope->create<StructAccess>(expression, name);
-						struct_access->set_position(position);
-						expression = struct_access;
-					}
+					StructAccess* struct_access = current_scope->create<StructAccess>(expression, name, function);
+					struct_access->set_position(position);
+					expression = struct_access;
 				}
 				else if (parse("{")) {
 					parse_white_space();
@@ -767,7 +745,7 @@ class MoebiusParser: private Parser {
 				Closure* closure = new Closure(function);
 				closure->set_position(position);
 				{
-					Scope scope(current_scope, closure, function->get_block());
+					Scope scope(current_scope, function, closure, function->get_block());
 					const Expression* self = current_scope->create<Argument>(0, ArgumentType::SELF);
 					current_scope->add_variable(name, self);
 					while (parse_not(")")) {

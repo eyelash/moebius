@@ -191,20 +191,37 @@ public:
 	}
 	const Expression* visit_struct_access(const StructAccess& struct_access) override {
 		const Expression* struct_ = expression_table[struct_access.get_struct()];
-		if (struct_->get_type_id() != TypeId::STRUCT) {
-			error(struct_access, "struct access to non-struct");
+		if (struct_->get_type_id() == TypeId::STRUCT) {
+			const StructType* struct_type = static_cast<const StructType*>(struct_->get_type());
+			if (struct_type->has_field(struct_access.get_field_name())) {
+				const std::size_t index = struct_type->get_index(struct_access.get_field_name());
+				GetTupleElement get_tuple_element(index);
+				if (const Expression* element = visit(get_tuple_element, struct_)) {
+					return element;
+				}
+				const Type* type = struct_type->get_fields()[index].second;
+				return create<StructAccess>(struct_, struct_access.get_field_name(), type);
+			}
 		}
-		const StructType* struct_type = static_cast<const StructType*>(struct_->get_type());
-		if (!struct_type->has_field(struct_access.get_field_name())) {
-			error(struct_access, "struct has no such field");
+		if (struct_access.get_function()) {
+			const Expression* function = expression_table[struct_access.get_function()];
+			if (function->get_type_id() == TypeId::CLOSURE) {
+				const ClosureType* old_closure_type = static_cast<const ClosureType*>(function->get_type());
+				ClosureType new_closure_type(old_closure_type->get_function());
+				Closure* new_closure = new Closure(nullptr);
+				for (std::size_t i = 0; i < old_closure_type->get_environment_types().size(); ++i) {
+					const Type* environment_type = old_closure_type->get_environment_types()[i];
+					new_closure_type.add_environment_type(environment_type);
+					new_closure->add_environment_expression(create<ClosureAccess>(function, i, environment_type));
+				}
+				new_closure_type.add_environment_type(struct_->get_type());
+				new_closure->add_environment_expression(struct_);
+				new_closure->set_type(TypeInterner::intern(&new_closure_type));
+				destination_block->add_expression(new_closure);
+				return new_closure;
+			}
 		}
-		const std::size_t index = struct_type->get_index(struct_access.get_field_name());
-		GetTupleElement get_tuple_element(index);
-		if (const Expression* element = visit(get_tuple_element, struct_)) {
-			return element;
-		}
-		const Type* type = struct_type->get_fields()[index].second;
-		return create<StructAccess>(struct_, struct_access.get_field_name(), type);
+		error(struct_access, "invalid struct access");
 	}
 	const Expression* visit_closure(const Closure& closure) override {
 		ClosureType type(closure.get_function());
@@ -265,8 +282,9 @@ public:
 			new_call->add_argument(new_argument);
 		}
 		new_key.old_function = closure_type->get_function();
-		if (call.get_arguments().size() != new_key.old_function->get_arguments()) {
-			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size()), print_number(new_key.old_function->get_arguments())));
+		if (new_key.argument_types.size() != new_key.old_function->get_total_arguments()) {
+			const std::size_t expected_arguments = new_key.old_function->get_total_arguments() - closure_type->get_environment_types().size();
+			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size()), print_number(expected_arguments)));
 		}
 
 		if (function_table[new_key] == nullptr) {
@@ -274,7 +292,7 @@ public:
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
 			std::vector<const Expression*> environment_arguments;
-			for (std::size_t i = 0; i < closure_type->get_environment_types().size(); ++i) {
+			for (std::size_t i = 0; i < new_key.old_function->get_environment_arguments(); ++i) {
 				const Type* argument_type = closure_type->get_environment_types()[i];
 				Argument* argument = new Argument(i, argument_type);
 				new_function->get_block()->add_expression(argument);
