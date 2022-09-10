@@ -467,6 +467,33 @@ public:
 			}
 			return create_intrinsic(intrinsic, array_type);
 		}
+		else if (intrinsic.name_equals("stringPush")) {
+			ensure_argument_count(intrinsic, 2);
+			if (expression_table[intrinsic.get_arguments()[0]]->get_type() != TypeInterner::get_string_type()) {
+				error(intrinsic, "first argument of stringPush must be a string");
+			}
+			const Type* argument_type = expression_table[intrinsic.get_arguments()[1]]->get_type();
+			if (!(argument_type == TypeInterner::get_int_type() || argument_type == TypeInterner::get_string_type())) {
+				error(intrinsic, "second argument of stringPush must be a number or a string");
+			}
+			return create_intrinsic(intrinsic, TypeInterner::get_string_type());
+		}
+		else if (intrinsic.name_equals("stringIterator")) {
+			ensure_argument_types(intrinsic, {TypeInterner::get_string_type()});
+			return create_intrinsic(intrinsic, TypeInterner::get_string_iterator_type());
+		}
+		else if (intrinsic.name_equals("stringIteratorIsValid")) {
+			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
+			return create_intrinsic(intrinsic, TypeInterner::get_int_type());
+		}
+		else if (intrinsic.name_equals("stringIteratorGet")) {
+			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
+			return create_intrinsic(intrinsic, TypeInterner::get_int_type());
+		}
+		else if (intrinsic.name_equals("stringIteratorNext")) {
+			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
+			return create_intrinsic(intrinsic, TypeInterner::get_string_iterator_type());
+		}
 		else if (intrinsic.name_equals("copy")) {
 			const Type* type = expression_table[intrinsic.get_arguments()[0]]->get_type();
 			return create_intrinsic(intrinsic, type);
@@ -1254,7 +1281,8 @@ class Pass4: public Visitor<const Expression*> {
 		std::map<const Expression*, std::size_t> levels;
 	};
 	static bool is_managed(const Expression* expression) {
-		return expression->get_type_id() == TypeId::TUPLE || expression->get_type_id() == TypeId::ARRAY || expression->get_type_id() == TypeId::STRING;
+		const TypeId type_id = expression->get_type_id();
+		return type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
 	}
 	class UsageAnalysis1: public Visitor<void> {
 		UsageTable& usage_table;
@@ -1399,7 +1427,7 @@ class Pass4: public Visitor<const Expression*> {
 		return usage_table.usages[source_block].count(resource) == 0;
 	}
 	bool is_borrowed(const Intrinsic& intrinsic) {
-		return intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || intrinsic.name_equals("putStr");
+		return intrinsic.name_equals("putStr") || intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || intrinsic.name_equals("stringIteratorIsValid") || intrinsic.name_equals("stringIteratorGet");
 	}
 	const Expression* copy(const Expression* resource) {
 		Intrinsic* copy_intrinsic = create<Intrinsic>("copy", resource->get_type());

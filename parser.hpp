@@ -55,6 +55,11 @@ constexpr const char* intrinsics[] = {
 	"arrayGet",
 	"arrayLength",
 	"arraySplice",
+	"stringPush",
+	"stringIterator",
+	"stringIteratorIsValid",
+	"stringIteratorGet",
+	"stringIteratorNext",
 	"typeOf",
 	"arrayType",
 	"structType",
@@ -331,17 +336,6 @@ class MoebiusParser: private Parser {
 			return string_literal;
 		}
 	}
-	const Expression* concat_strings(const Expression* left, const Expression* right) {
-		Intrinsic* string_length = current_scope->create<Intrinsic>("arrayLength");
-		string_length->add_argument(left);
-		IntLiteral* zero = current_scope->create<IntLiteral>(0);
-		Intrinsic* intrinsic = current_scope->create<Intrinsic>("arraySplice");
-		intrinsic->add_argument(left);
-		intrinsic->add_argument(string_length);
-		intrinsic->add_argument(zero);
-		intrinsic->add_argument(right);
-		return intrinsic;
-	}
 	StringView parse_identifier() {
 		if (!copy().parse(alphabetic)) {
 			error("expected alphabetic character");
@@ -494,7 +488,10 @@ class MoebiusParser: private Parser {
 			const Expression* left = parse_string_segment();
 			while (parse_not("\"")) {
 				const Expression* right = parse_string_segment();
-				left = concat_strings(left, right);
+				Intrinsic* intrinsic = current_scope->create<Intrinsic>("stringPush");
+				intrinsic->add_argument(left);
+				intrinsic->add_argument(right);
+				left = intrinsic;
 			}
 			expect("\"");
 			return left;
@@ -541,6 +538,11 @@ class MoebiusParser: private Parser {
 		}
 		else if (parse("String", alphanumeric)) {
 			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_string_type());
+			expression->set_position(position);
+			return expression;
+		}
+		else if (parse("StringIterator", alphanumeric)) {
+			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_string_iterator_type());
 			expression->set_position(position);
 			return expression;
 		}

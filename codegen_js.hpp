@@ -196,6 +196,41 @@ public:
 				}));
 			}
 		}
+		else if (intrinsic.name_equals("stringPush")) {
+			const Variable string = expression_table[intrinsic.get_arguments()[0]];
+			const Variable argument = expression_table[intrinsic.get_arguments()[1]];
+			printer.println(format("const % = %.slice();", result, string));
+			if (intrinsic.get_arguments()[1]->get_type() == intrinsic.get_type()) {
+				printer.println(format("%.splice(%.length, 0, ...%);", result, result, argument));
+			}
+			else {
+				printer.println(format("%.splice(%.length, 0, %);", result, result, argument));
+			}
+		}
+		else if (intrinsic.name_equals("stringIterator")) {
+			const Variable string = expression_table[intrinsic.get_arguments()[0]];
+			const Variable iterator = next_variable();
+			printer.println(format("const % = %[Symbol.iterator]();", iterator, string));
+			printer.println_increasing(format("const % = {", result));
+			printer.println(format("iterator: %,", iterator));
+			printer.println(format("result: %.next(),", iterator));
+			printer.println_decreasing("};");
+		}
+		else if (intrinsic.name_equals("stringIteratorIsValid")) {
+			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("const % = !%.result.done;", result, iterator));
+		}
+		else if (intrinsic.name_equals("stringIteratorGet")) {
+			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("const % = %.result.value;", result, iterator));
+		}
+		else if (intrinsic.name_equals("stringIteratorNext")) {
+			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
+			printer.println_increasing(format("const % = {", result));
+			printer.println(format("iterator: %.iterator,", iterator));
+			printer.println(format("result: %.iterator.next(),", iterator));
+			printer.println_decreasing("};");
+		}
 		else if (intrinsic.name_equals("copy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			printer.println(format("const % = %;", result, array));

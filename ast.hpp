@@ -36,6 +36,7 @@ enum class TypeId {
 	TUPLE,
 	ARRAY,
 	STRING,
+	STRING_ITERATOR,
 	VOID,
 	TYPE
 };
@@ -154,6 +155,13 @@ public:
 	}
 };
 
+class StringIteratorType: public Type {
+public:
+	TypeId get_id() const override {
+		return TypeId::STRING_ITERATOR;
+	}
+};
+
 class VoidType: public Type {
 public:
 	TypeId get_id() const override {
@@ -201,6 +209,7 @@ class TypeInterner {
 	static inline std::set<std::unique_ptr<TupleType>, TypeCompare<TupleType>> tuple_types;
 	static inline std::set<std::unique_ptr<ArrayType>, TypeCompare<ArrayType>> array_types;
 	static inline std::unique_ptr<StringType> string_type;
+	static inline std::unique_ptr<StringIteratorType> string_iterator_type;
 	static inline std::unique_ptr<VoidType> void_type;
 	static inline std::set<std::unique_ptr<TypeType>, TypeCompare<TypeType>> type_types;
 	template <class T> static T* get_or_set(std::unique_ptr<T>& type) {
@@ -242,6 +251,9 @@ public:
 	}
 	static const Type* get_string_type() {
 		return get_or_set(string_type);
+	}
+	static const Type* get_string_iterator_type() {
+		return get_or_set(string_iterator_type);
 	}
 	static const Type* get_void_type() {
 		return get_or_set(void_type);
@@ -973,6 +985,10 @@ public:
 			}
 			case TypeId::STRING: {
 				p.print("String");
+				break;
+			}
+			case TypeId::STRING_ITERATOR: {
+				p.print("StringIterator");
 				break;
 			}
 			case TypeId::VOID: {

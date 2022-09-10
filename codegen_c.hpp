@@ -36,7 +36,8 @@ class CodegenC: public Visitor<Variable> {
 		return static_cast<const ArrayType*>(type)->get_element_type();
 	}
 	static bool is_managed(const ::Type* type) {
-		return type->get_id() == TypeId::TUPLE || type->get_id() == TypeId::ARRAY || type->get_id() == TypeId::STRING;
+		const TypeId type_id = type->get_id();
+		return type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
 	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
@@ -98,6 +99,16 @@ class CodegenC: public Visitor<Variable> {
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
 					types[type] = index;
 					generate_array_functions(type, type->get_id() == TypeId::STRING);
+					return index;
+				}
+				case TypeId::STRING_ITERATOR: {
+					TupleType tuple_type;
+					tuple_type.add_element_type(TypeInterner::get_string_type());
+					tuple_type.add_element_type(TypeInterner::get_int_type());
+					const ::Type* interned_tuple_type = TypeInterner::intern(&tuple_type);
+					get_type(interned_tuple_type);
+					const std::size_t index = types[interned_tuple_type];
+					types[type] = index;
 					return index;
 				}
 				case TypeId::VOID: {
@@ -444,6 +455,43 @@ public:
 					printer.print(format("}, %);", print_number(insert)));
 				}));
 			}
+		}
+		else if (intrinsic.name_equals("stringPush")) {
+			const Type type = function_table.get_type(intrinsic.get_type());
+			const Type element_type = function_table.get_type(get_element_type(intrinsic.get_type()));
+			const Variable string = expression_table[intrinsic.get_arguments()[0]];
+			const Variable argument = expression_table[intrinsic.get_arguments()[1]];
+			if (intrinsic.get_arguments()[1]->get_type() == intrinsic.get_type()) {
+				printer.println(format("% % = %_splice(%, %.length, 0, %.elements, %.length);", type, result, type, string, string, argument, argument));
+				printer.println(format("free(%.elements);", argument));
+			}
+			else {
+				printer.println(format("% % = %_splice(%, %.length, 0, (%[]){%}, 1);", type, result, type, string, string, element_type, argument));
+			}
+		}
+		else if (intrinsic.name_equals("stringIterator")) {
+			const Variable string = expression_table[intrinsic.get_arguments()[0]];
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% %;", type, result));
+			printer.println(format("%.v0 = %;", result, string));
+			printer.println(format("%.v1 = 0;", result));
+		}
+		else if (intrinsic.name_equals("stringIteratorIsValid")) {
+			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% % = %.v1 < %.v0.length;", type, result, iterator, iterator));
+		}
+		else if (intrinsic.name_equals("stringIteratorGet")) {
+			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% % = %.v0.elements[%.v1];", type, result, iterator, iterator));
+		}
+		else if (intrinsic.name_equals("stringIteratorNext")) {
+			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% %;", type, result));
+			printer.println(format("%.v0 = %.v0;", result, iterator));
+			printer.println(format("%.v1 = %.v1 + 1;", result, iterator));
 		}
 		else if (intrinsic.name_equals("copy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
