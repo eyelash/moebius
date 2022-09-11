@@ -19,6 +19,18 @@ class CodegenJS: public Visitor<Variable> {
 			default: return StringView();
 		}
 	}
+	static const char* escape_character(char c) {
+		switch (c) {
+			case '\n': return "\\n";
+			case '\r': return "\\r";
+			case '\t': return "\\t";
+			case '\v': return "\\v";
+			case '\'': return "\\\'";
+			case '\"': return "\\\"";
+			case '\\': return "\\\\";
+			default: return nullptr;
+		}
+	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
 	public:
@@ -84,12 +96,16 @@ public:
 	Variable visit_string_literal(const StringLiteral& string_literal) override {
 		const Variable result = next_variable();
 		printer.println(print_functor([&](auto& printer) {
-			printer.print(format("const % = [", result));
-			for (std::size_t i = 0; i < string_literal.get_value().size(); ++i) {
-				if (i > 0) printer.print(", ");
-				printer.print(print_number(string_literal.get_value()[i]));
+			printer.print(format("const % = '", result));
+			for (char c: string_literal.get_value()) {
+				if (const char* escaped = escape_character(c)) {
+					printer.print(escaped);
+				}
+				else {
+					printer.print(c);
+				}
 			}
-			printer.print("];");
+			printer.print("';");
 		}));
 		return result;
 	}
@@ -155,7 +171,7 @@ public:
 		const Variable result = next_variable();
 		if (intrinsic.name_equals("putChar")) {
 			const Variable argument = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("putChar(%);", argument));
+			printer.println(format("putChar(String.fromCodePoint(%));", argument));
 			printer.println(format("const % = null;", result));
 		}
 		else if (intrinsic.name_equals("putStr")) {
@@ -199,12 +215,11 @@ public:
 		else if (intrinsic.name_equals("stringPush")) {
 			const Variable string = expression_table[intrinsic.get_arguments()[0]];
 			const Variable argument = expression_table[intrinsic.get_arguments()[1]];
-			printer.println(format("const % = %.slice();", result, string));
 			if (intrinsic.get_arguments()[1]->get_type() == intrinsic.get_type()) {
-				printer.println(format("%.splice(%.length, 0, ...%);", result, result, argument));
+				printer.println(format("const % = % + %;", result, string, argument));
 			}
 			else {
-				printer.println(format("%.splice(%.length, 0, %);", result, result, argument));
+				printer.println(format("const % = % + String.fromCodePoint(%);", result, string, argument));
 			}
 		}
 		else if (intrinsic.name_equals("stringIterator")) {
@@ -222,7 +237,7 @@ public:
 		}
 		else if (intrinsic.name_equals("stringIteratorGet")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("const % = %.result.value;", result, iterator));
+			printer.println(format("const % = %.result.value.codePointAt(0);", result, iterator));
 		}
 		else if (intrinsic.name_equals("stringIteratorNext")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
@@ -293,29 +308,29 @@ public:
 			}
 			printer.println_decreasing("}");
 		}
-		printer.println("const stdoutBuffer = [];");
+		printer.println("let stdoutBuffer = '';");
 		{
 			printer.println_increasing("function flushStdout() {");
-			printer.println("const textDecoder = new TextDecoder();");
-			printer.println("const s = textDecoder.decode(new Int8Array(stdoutBuffer));");
-			printer.println("document.body.appendChild(document.createTextNode(s));");
-			printer.println("stdoutBuffer.splice(0);");
+			printer.println("document.body.appendChild(document.createTextNode(stdoutBuffer));");
+			printer.println("stdoutBuffer = '';");
 			printer.println_decreasing("}");
 		}
 		{
 			printer.println_increasing("function putChar(c) {");
-			printer.println_increasing("if (c === 0x0A) {");
+			printer.println_increasing("if (c === '\\n') {");
 			printer.println("flushStdout();");
 			printer.println("document.body.appendChild(document.createElement('br'));");
 			printer.println_decreasing("}");
 			printer.println_increasing("else {");
-			printer.println("stdoutBuffer.push(c);");
+			printer.println("stdoutBuffer = stdoutBuffer + c;");
 			printer.println_decreasing("}");
 			printer.println_decreasing("}");
 		}
 		{
 			printer.println_increasing("function putStr(s) {");
-			printer.println("s.forEach(putChar);");
+			printer.println_increasing("for (const c of s) {");
+			printer.println("putChar(c);");
+			printer.println_decreasing("}");
 			printer.println_decreasing("}");
 		}
 		printer.println("</script></head><body></body></html>");

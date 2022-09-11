@@ -355,11 +355,8 @@ public:
 		if (array_type->get_id() == TypeId::ARRAY) {
 			return static_cast<const ArrayType*>(array_type)->get_element_type();
 		}
-		else if (array_type->get_id() == TypeId::STRING) {
-			return TypeInterner::get_int_type();
-		}
 		else {
-			error(intrinsic, format("first argument of % must be an array or a string", intrinsic.get_name()));
+			error(intrinsic, format("first argument of % must be an array", intrinsic.get_name()));
 		}
 	}
 	Intrinsic* create_intrinsic(const Intrinsic& intrinsic, const Type* type = nullptr) {
