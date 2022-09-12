@@ -1620,6 +1620,12 @@ public:
 			data.tail_call_functions[function] = true;
 		}
 	}
+	void visit_bind(const Bind& bind) override {
+		const Expression* right = bind.get_right();
+		if (right->next_expression == &bind) {
+			visit(*this, right);
+		}
+	}
 	void visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();
 		if (expression->next_expression == &return_) {
