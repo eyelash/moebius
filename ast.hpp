@@ -20,6 +20,7 @@ class Closure;
 class ClosureAccess;
 class Argument;
 class ClosureCall;
+class MethodCall;
 class FunctionCall;
 class Intrinsic;
 class Bind;
@@ -305,6 +306,9 @@ public:
 	virtual T visit_closure_call(const ClosureCall& call) {
 		return T();
 	}
+	virtual T visit_method_call(const MethodCall& call) {
+		return T();
+	}
 	virtual T visit_function_call(const FunctionCall& call) {
 		return T();
 	}
@@ -397,6 +401,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_closure_call(const ClosureCall& call) override {
 			result = visitor.visit_closure_call(call);
+		}
+		void visit_method_call(const MethodCall& call) override {
+			result = visitor.visit_method_call(call);
 		}
 		void visit_function_call(const FunctionCall& call) override {
 			result = visitor.visit_function_call(call);
@@ -779,6 +786,33 @@ public:
 	}
 	const Expression* get_closure() const {
 		return closure;
+	}
+	const std::vector<const Expression*>& get_arguments() const {
+		return arguments;
+	}
+};
+
+class MethodCall: public Expression {
+	const Expression* object;
+	std::string method_name;
+	const Expression* method;
+	std::vector<const Expression*> arguments;
+public:
+	MethodCall(const Expression* object, const StringView& method_name, const Expression* method): Expression(nullptr), object(object), method_name(method_name.begin(), method_name.end()), method(method) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_method_call(*this);
+	}
+	void add_argument(const Expression* expression) {
+		arguments.push_back(expression);
+	}
+	const Expression* get_object() const {
+		return object;
+	}
+	const std::string& get_method_name() const {
+		return method_name;
+	}
+	const Expression* get_method() const {
+		return method;
 	}
 	const std::vector<const Expression*>& get_arguments() const {
 		return arguments;

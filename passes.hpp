@@ -262,10 +262,9 @@ public:
 		}
 		return nullptr;
 	}
-	const Expression* visit_closure_call(const ClosureCall& call) override {
+	const Expression* visit_call(const Expression& call, const Expression* closure, const Expression* object, const std::vector<const Expression*>& arguments) {
 		FunctionCall* new_call = new FunctionCall();
 		FunctionTableKey new_key;
-		const Expression* closure = expression_table[call.get_closure()];
 		if (closure->get_type_id() != TypeId::CLOSURE) {
 			error(call, "call to a value that is not a function");
 		}
@@ -276,15 +275,23 @@ public:
 			new_key.argument_types.push_back(argument_type);
 			new_call->add_argument(new_argument);
 		}
-		for (const Expression* argument: call.get_arguments()) {
+		if (object) {
+			const Expression* new_argument = expression_table[object];
+			new_key.argument_types.push_back(new_argument->get_type());
+			new_call->add_argument(new_argument);
+		}
+		for (const Expression* argument: arguments) {
 			const Expression* new_argument = expression_table[argument];
 			new_key.argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
 		}
 		new_key.old_function = closure_type->get_function();
 		if (new_key.argument_types.size() != new_key.old_function->get_total_arguments()) {
-			const std::size_t expected_arguments = new_key.old_function->get_total_arguments() - closure_type->get_environment_types().size();
-			error(call, format("call with % arguments to a function that accepts % arguments", print_number(call.get_arguments().size()), print_number(expected_arguments)));
+			std::size_t expected_arguments = new_key.old_function->get_total_arguments() - closure_type->get_environment_types().size();
+			if (object) {
+				expected_arguments -= 1;
+			}
+			error(call, format("call with % arguments to a function that accepts % arguments", print_number(arguments.size()), print_number(expected_arguments)));
 		}
 
 		if (function_table[new_key] == nullptr) {
@@ -314,6 +321,36 @@ public:
 		new_call->set_function(function_table[new_key]);
 		destination_block->add_expression(new_call);
 		return new_call;
+	}
+	const Expression* visit_closure_call(const ClosureCall& call) override {
+		const Expression* closure = expression_table[call.get_closure()];
+		return visit_call(call, closure, nullptr, call.get_arguments());
+	}
+	const Expression* visit_method_call(const MethodCall& call) override {
+		const Expression* object = expression_table[call.get_object()];
+		if (object->get_type_id() == TypeId::STRUCT) {
+			const StructType* struct_type = static_cast<const StructType*>(object->get_type());
+			if (struct_type->has_field(call.get_method_name())) {
+				const Expression* closure;
+				const std::size_t index = struct_type->get_index(call.get_method_name());
+				GetTupleElement get_tuple_element(index);
+				if (const Expression* element = visit(get_tuple_element, object)) {
+					closure = element;
+				}
+				else {
+					const Type* type = struct_type->get_fields()[index].second;
+					closure = create<StructAccess>(object, call.get_method_name(), type);
+				}
+				return visit_call(call, closure, nullptr, call.get_arguments());
+			}
+		}
+		if (call.get_method()) {
+			const Expression* closure = expression_table[call.get_method()];
+			if (closure->get_type_id() == TypeId::CLOSURE) {
+				return visit_call(call, closure, call.get_object(), call.get_arguments());
+			}
+		}
+		error(call, "invalid method call");
 	}
 	const Expression* visit_function_call(const FunctionCall& call) override {
 		FunctionCall* new_call = create<FunctionCall>();

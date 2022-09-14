@@ -627,10 +627,30 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					StringView name = parse_identifier();
 					parse_white_space();
-					const Expression* function = current_scope->look_up(name);
-					StructAccess* struct_access = current_scope->create<StructAccess>(expression, name, function);
-					struct_access->set_position(position);
-					expression = struct_access;
+					if (parse("(")) {
+						parse_white_space();
+						const Expression* method = current_scope->look_up(name);
+						MethodCall* call = new MethodCall(expression, name, method);
+						call->set_position(position);
+						while (parse_not(")")) {
+							call->add_argument(parse_expression());
+							parse_white_space();
+							if (!parse(",")) {
+								break;
+							}
+							parse_white_space();
+						}
+						expect(")");
+						current_scope->add_expression(call);
+						expression = call;
+						parse_white_space();
+					}
+					else {
+						const Expression* function = current_scope->look_up(name);
+						StructAccess* struct_access = current_scope->create<StructAccess>(expression, name, function);
+						struct_access->set_position(position);
+						expression = struct_access;
+					}
 				}
 				else if (parse("{")) {
 					parse_white_space();
