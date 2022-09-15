@@ -6,28 +6,7 @@
 #include <set>
 #include <memory>
 
-class IntLiteral;
-class BinaryExpression;
-class ArrayLiteral;
-class StringLiteral;
-class If;
-class TupleLiteral;
-class TupleAccess;
-class StructLiteral;
-class StructAccess;
 class Function;
-class Closure;
-class ClosureAccess;
-class Argument;
-class ClosureCall;
-class MethodCall;
-class FunctionCall;
-class Intrinsic;
-class Bind;
-class Return;
-class TypeLiteral;
-class TypeAssert;
-class ReturnType;
 
 enum class TypeId {
 	INT,
@@ -264,6 +243,28 @@ public:
 		return get_or_insert(type_types, &type_type);
 	}
 };
+
+class IntLiteral;
+class BinaryExpression;
+class ArrayLiteral;
+class StringLiteral;
+class If;
+class TupleLiteral;
+class TupleAccess;
+class StructLiteral;
+class StructAccess;
+class Closure;
+class ClosureAccess;
+class Argument;
+class ClosureCall;
+class MethodCall;
+class FunctionCall;
+class Intrinsic;
+class Bind;
+class Return;
+class TypeLiteral;
+class TypeAssert;
+class ReturnType;
 
 template <class T> class Visitor {
 public:

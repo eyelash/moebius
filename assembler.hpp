@@ -101,7 +101,7 @@ public:
 			assembler.write<std::uint32_t>(position, target - (position + 4));
 		}
 	};
-	void write_elf_header(std::size_t entry_point = 0) {
+	void write_elf_header() {
 		write<std::uint8_t>(0x7f);
 		write<std::uint8_t>('E');
 		write<std::uint8_t>('L');
@@ -118,7 +118,7 @@ public:
 		write<std::uint16_t>(2); // ET_EXEC
 		write<std::uint16_t>(3); // EM_386
 		write<std::uint32_t>(1);
-		write<Addr>(VADDR + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE + entry_point); // entry point
+		write<Addr>(VADDR + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE); // entry point
 		write<Addr>(ELF_HEADER_SIZE); // program header position
 		write<Addr>(0); // section header position
 		write<std::uint32_t>(0); // flags
@@ -138,6 +138,10 @@ public:
 		write<std::uint32_t>(0); // memsz, will be set later
 		write<std::uint32_t>(5); // flags: PF_R|PF_X
 		write<std::uint32_t>(0); // align
+	}
+	void write_headers() {
+		write_elf_header();
+		write_program_header();
 	}
 	std::size_t get_position() const {
 		return data.size();
@@ -313,8 +317,7 @@ public:
 	public:
 		void set_target(TextAssembler& assembler, std::size_t target) const {}
 	};
-	void write_elf_header(std::size_t entry_point = 0) {}
-	void write_program_header() {}
+	void write_headers() {}
 	std::size_t get_position() const {
 		return 0;
 	}

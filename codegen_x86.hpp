@@ -252,8 +252,7 @@ public:
 		std::vector<DeferredCall> deferred_calls;
 		std::map<const Function*, std::size_t> function_locations;
 		A assembler;
-		assembler.write_elf_header();
-		assembler.write_program_header();
+		assembler.write_headers();
 		{
 			Jump jump = assembler.CALL();
 			deferred_calls.emplace_back(jump, program.get_main_function());

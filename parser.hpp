@@ -627,11 +627,12 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					StringView name = parse_identifier();
 					parse_white_space();
+					const SourcePosition method_call_position = get_position();
 					if (parse("(")) {
 						parse_white_space();
 						const Expression* method = current_scope->look_up(name);
 						MethodCall* call = new MethodCall(expression, name, method);
-						call->set_position(position);
+						call->set_position(method_call_position);
 						while (parse_not(")")) {
 							call->add_argument(parse_expression());
 							parse_white_space();
@@ -808,26 +809,25 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				const StringView name = parse_identifier();
 				parse_white_space();
+				expect("{");
+				parse_white_space();
 				StructLiteral* struct_literal = new StructLiteral();
 				struct_literal->set_position(position);
-				if (parse("{")) {
+				while (parse_not("}")) {
+					const StringView field_name = parse_identifier();
 					parse_white_space();
-					while (parse_not("}")) {
-						const StringView field_name = parse_identifier();
-						parse_white_space();
-						expect(":");
-						parse_white_space();
-						const Expression* field_type = parse_expression();
-						struct_literal->add_field(field_name, field_type);
-						parse_white_space();
-						if (!parse(",")) {
-							break;
-						}
-						parse_white_space();
+					expect(":");
+					parse_white_space();
+					const Expression* field_type = parse_expression();
+					struct_literal->add_field(field_name, field_type);
+					parse_white_space();
+					if (!parse(",")) {
+						break;
 					}
-					expect("}");
 					parse_white_space();
 				}
+				expect("}");
+				parse_white_space();
 				current_scope->add_expression(struct_literal);
 				Intrinsic* intrinsic = current_scope->create<Intrinsic>("structType");
 				intrinsic->set_position(position);

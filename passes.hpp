@@ -272,18 +272,18 @@ public:
 		for (std::size_t i = 0; i < closure_type->get_environment_types().size(); ++i) {
 			const Type* argument_type = closure_type->get_environment_types()[i];
 			const Expression* new_argument = create<ClosureAccess>(closure, i, argument_type);
-			new_key.argument_types.push_back(argument_type);
 			new_call->add_argument(new_argument);
+			new_key.argument_types.push_back(argument_type);
 		}
 		if (object) {
 			const Expression* new_argument = expression_table[object];
-			new_key.argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
+			new_key.argument_types.push_back(new_argument->get_type());
 		}
 		for (const Expression* argument: arguments) {
 			const Expression* new_argument = expression_table[argument];
-			new_key.argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
+			new_key.argument_types.push_back(new_argument->get_type());
 		}
 		new_key.old_function = closure_type->get_function();
 		if (new_key.argument_types.size() != new_key.old_function->get_total_arguments()) {
@@ -357,8 +357,8 @@ public:
 		FunctionTableKey new_key;
 		for (const Expression* argument: call.get_arguments()) {
 			const Expression* new_argument = expression_table[argument];
-			new_key.argument_types.push_back(new_argument->get_type());
 			new_call->add_argument(new_argument);
+			new_key.argument_types.push_back(new_argument->get_type());
 		}
 		new_key.old_function = call.get_function();
 
@@ -366,7 +366,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, new_key.old_function->get_return_type());
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			const Expression* new_expression = evaluate(program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
+			evaluate(program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 		}
 		new_call->set_type(function_table[new_key]->get_return_type());
 		new_call->set_function(function_table[new_key]);
@@ -404,48 +404,6 @@ public:
 		return new_intrinsic;
 	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
-		if (intrinsic.name_equals("typeOf")) {
-			ensure_argument_count(intrinsic, 1);
-			const Expression* expression = expression_table[intrinsic.get_arguments()[0]];
-			return create<TypeLiteral>(expression->get_type());
-		}
-		else if (intrinsic.name_equals("arrayType")) {
-			ensure_argument_count(intrinsic, 1);
-			const Expression* element_type_expression = expression_table[intrinsic.get_arguments()[0]];
-			if (element_type_expression->get_type_id() != TypeId::TYPE) {
-				error(intrinsic, "argument of arrayType must be a type");
-			}
-			const Type* element_type = static_cast<const TypeType*>(element_type_expression->get_type())->get_type();
-			return create<TypeLiteral>(TypeInterner::get_array_type(element_type));
-		}
-		else if (intrinsic.name_equals("structType")) {
-			ensure_argument_count(intrinsic, 1);
-			const Expression* struct_type_expression = expression_table[intrinsic.get_arguments()[0]];
-			if (struct_type_expression->get_type_id() != TypeId::STRUCT) {
-				error(intrinsic, "argument of structType must be a struct");
-			}
-			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
-			StructType new_struct_type;
-			for (const auto& field: struct_type->get_fields()) {
-				const Type* field_type = field.second;
-				if (field_type->get_id() != TypeId::TYPE) {
-					error(intrinsic, "struct fields must be types");
-				}
-				const std::string& field_name = field.first;
-				new_struct_type.add_field(field_name, static_cast<const TypeType*>(field_type)->get_type());
-			}
-			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
-		}
-		else if (intrinsic.name_equals("tupleType")) {
-			TupleType tuple_type;
-			for (const Expression* argument: intrinsic.get_arguments()) {
-				if (argument->get_type_id() != TypeId::TYPE) {
-					error(intrinsic, "arguments of tupleType must be types");
-				}
-				tuple_type.add_element_type(static_cast<const TypeType*>(argument->get_type())->get_type());
-			}
-			return create<TypeLiteral>(TypeInterner::intern(&tuple_type));
-		}
 		if (intrinsic.name_equals("putChar")) {
 			ensure_argument_types(intrinsic, {TypeInterner::get_int_type()});
 			return create_intrinsic(intrinsic, TypeInterner::get_void_type());
@@ -486,15 +444,15 @@ public:
 				error(intrinsic, "third argument of arraySplice must be a number");
 			}
 			if (intrinsic.get_arguments().size() == 4) {
-				const Expression* argument = expression_table[intrinsic.get_arguments()[3]];
-				if (!(argument->get_type() == element_type || argument->get_type() == array_type)) {
+				const Type* argument_type = expression_table[intrinsic.get_arguments()[3]]->get_type();
+				if (!(argument_type == element_type || argument_type == array_type)) {
 					error(intrinsic, format("argument 4 of arraySplice must be of type % or %", print_type(element_type), print_type(array_type)));
 				}
 			}
 			else {
 				for (std::size_t i = 3; i < intrinsic.get_arguments().size(); ++i) {
-					const Expression* argument = expression_table[intrinsic.get_arguments()[i]];
-					if (argument->get_type() != element_type) {
+					const Type* argument_type = expression_table[intrinsic.get_arguments()[i]]->get_type();
+					if (argument_type != element_type) {
 						error(intrinsic, format("argument % of arraySplice must be of type %", print_number(i + 1), print_type(element_type)));
 					}
 				}
@@ -527,6 +485,48 @@ public:
 		else if (intrinsic.name_equals("stringIteratorNext")) {
 			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
 			return create_intrinsic(intrinsic, TypeInterner::get_string_iterator_type());
+		}
+		else if (intrinsic.name_equals("typeOf")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* expression = expression_table[intrinsic.get_arguments()[0]];
+			return create<TypeLiteral>(expression->get_type());
+		}
+		else if (intrinsic.name_equals("arrayType")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* element_type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (element_type_expression->get_type_id() != TypeId::TYPE) {
+				error(intrinsic, "argument of arrayType must be a type");
+			}
+			const Type* element_type = static_cast<const TypeType*>(element_type_expression->get_type())->get_type();
+			return create<TypeLiteral>(TypeInterner::get_array_type(element_type));
+		}
+		else if (intrinsic.name_equals("structType")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* struct_type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (struct_type_expression->get_type_id() != TypeId::STRUCT) {
+				error(intrinsic, "argument of structType must be a struct");
+			}
+			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
+			StructType new_struct_type;
+			for (const auto& field: struct_type->get_fields()) {
+				const Type* field_type = field.second;
+				if (field_type->get_id() != TypeId::TYPE) {
+					error(intrinsic, "struct fields must be types");
+				}
+				const std::string& field_name = field.first;
+				new_struct_type.add_field(field_name, static_cast<const TypeType*>(field_type)->get_type());
+			}
+			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
+		}
+		else if (intrinsic.name_equals("tupleType")) {
+			TupleType tuple_type;
+			for (const Expression* argument: intrinsic.get_arguments()) {
+				if (argument->get_type_id() != TypeId::TYPE) {
+					error(intrinsic, "arguments of tupleType must be types");
+				}
+				tuple_type.add_element_type(static_cast<const TypeType*>(argument->get_type())->get_type());
+			}
+			return create<TypeLiteral>(TypeInterner::intern(&tuple_type));
 		}
 		else if (intrinsic.name_equals("copy")) {
 			const Type* type = expression_table[intrinsic.get_arguments()[0]]->get_type();
