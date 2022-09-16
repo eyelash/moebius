@@ -38,14 +38,15 @@ class Pass1: public Visitor<const Expression*> {
 	FunctionTable& function_table;
 	const FunctionTableKey& key;
 	const std::vector<const Expression*>& environment_arguments;
+	const Type* case_type;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
 	ExpressionTable& expression_table;
 	Block* destination_block;
 	bool omit_return;
 	const Expression* result = nullptr;
-	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), environment_arguments(environment_arguments), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
-		Pass1 pass1(program, function_table, key, environment_arguments, expression_table, destination_block, omit_return);
+	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), environment_arguments(environment_arguments), case_type(case_type), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+		Pass1 pass1(program, function_table, key, environment_arguments, case_type, expression_table, destination_block, omit_return);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(pass1, expression);
 			if (new_expression) {
@@ -56,15 +57,18 @@ class Pass1: public Visitor<const Expression*> {
 	}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, environment_arguments, expression_table, destination_block, source_block, false);
+		return evaluate(program, function_table, key, environment_arguments, nullptr, expression_table, destination_block, source_block, false);
 	}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
 		std::vector<const Expression*> environment_arguments;
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, environment_arguments, expression_table, destination_block, source_block, false);
+		return evaluate(program, function_table, key, environment_arguments, nullptr, expression_table, destination_block, source_block, false);
 	}
 	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
-		return evaluate(program, function_table, key, environment_arguments, expression_table, destination_block, source_block, omit_return);
+		return evaluate(program, function_table, key, environment_arguments, nullptr, expression_table, destination_block, source_block, omit_return);
+	}
+	const Expression* evaluate(const Type* case_type, Block* destination_block, const Block& source_block, bool omit_return) {
+		return evaluate(program, function_table, key, environment_arguments, case_type, expression_table, destination_block, source_block, omit_return);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -223,6 +227,46 @@ public:
 		}
 		error(struct_access, "invalid struct access");
 	}
+	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
+		const Expression* expression = expression_table[enum_literal.get_expression()];
+		return create<EnumLiteral>(expression, enum_literal.get_index(), enum_literal.get_type());
+	}
+	const Expression* visit_switch(const Switch& switch_) override {
+		const Expression* enum_ = expression_table[switch_.get_enum()];
+		Switch* new_switch = create<Switch>(enum_);
+		if (enum_->get_type_id() != TypeId::ENUM) {
+			error(switch_, "switch expression must be an enum");
+		}
+		const EnumType* enum_type = static_cast<const EnumType*>(enum_->get_type());
+		auto iter = switch_.get_cases().begin();
+		for (const auto& case_: enum_type->get_cases()) {
+			const std::string& case_name = case_.first;
+			if (iter == switch_.get_cases().end()) {
+				error(switch_, format("missing case \"%\"", case_name));
+			}
+			if (iter->first != case_name) {
+				error(switch_, format("expected case \"%\" instead of \"%\"", case_name, iter->first));
+			}
+			const Type* case_type = case_.second;
+			const Expression* case_expression = evaluate(case_type, new_switch->add_case(case_name), iter->second, false);
+			if (new_switch->get_type()) {
+				if (case_expression->get_type() != new_switch->get_type()) {
+					error(switch_, "case expressions must have the same type");
+				}
+			}
+			else {
+				new_switch->set_type(case_expression->get_type());
+			}
+			++iter;
+		}
+		if (iter != switch_.get_cases().end()) {
+			error(switch_, format("superfluous case \"%\"", iter->first));
+		}
+		return new_switch;
+	}
+	const Expression* visit_case_variable(const CaseVariable& case_variable) override {
+		return create<CaseVariable>(case_type);
+	}
 	const Expression* visit_closure(const Closure& closure) override {
 		ClosureType type(closure.get_function());
 		Closure* new_closure = create<Closure>(nullptr);
@@ -342,6 +386,23 @@ public:
 					closure = create<StructAccess>(object, call.get_method_name(), type);
 				}
 				return visit_call(call, closure, nullptr, call.get_arguments());
+			}
+		}
+		if (object->get_type_id() == TypeId::TYPE) {
+			const Type* type = static_cast<const TypeType*>(object->get_type())->get_type();
+			if (type->get_id() == TypeId::ENUM) {
+				const EnumType* enum_type = static_cast<const EnumType*>(type);
+				if (enum_type->has_case(call.get_method_name())) {
+					const std::size_t index = enum_type->get_index(call.get_method_name());
+					if (call.get_arguments().size() != 1) {
+						error(call, "enum literals must have exactly one argument");
+					}
+					const Expression* argument = expression_table[call.get_arguments()[0]];
+					if (argument->get_type() != enum_type->get_cases()[index].second) {
+						error(call, "invalid argument type");
+					}
+					return create<EnumLiteral>(argument, index, enum_type);
+				}
 			}
 		}
 		if (call.get_method()) {
@@ -518,6 +579,27 @@ public:
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
 		}
+		else if (intrinsic.name_equals("enumType")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* struct_type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (struct_type_expression->get_type_id() != TypeId::STRUCT) {
+				error(intrinsic, "argument of enumType must be a struct");
+			}
+			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
+			EnumType new_enum_type;
+			for (const auto& field: struct_type->get_fields()) {
+				const std::string& field_name = field.first;
+				if (field.second->get_id() != TypeId::TYPE) {
+					error(intrinsic, "enum cases must be types");
+				}
+				const Type* field_type = static_cast<const TypeType*>(field.second)->get_type();
+				if (field_type->get_id() == TypeId::TYPE) {
+					error(intrinsic, "enum cases must not be types of types");
+				}
+				new_enum_type.add_case(field_name, field_type);
+			}
+			return create<TypeLiteral>(TypeInterner::intern(&new_enum_type));
+		}
 		else if (intrinsic.name_equals("tupleType")) {
 			TupleType tuple_type;
 			for (const Expression* argument: intrinsic.get_arguments()) {
@@ -619,6 +701,13 @@ class Lowering: public Visitor<const Expression*> {
 			}
 			return TypeInterner::intern(&tuple_type);
 		}
+		if (type->get_id() == TypeId::ENUM) {
+			EnumType enum_type;
+			for (const auto& case_: static_cast<const EnumType*>(type)->get_cases()) {
+				enum_type.add_case(case_.first, transform_type(case_.second));
+			}
+			return TypeInterner::intern(&enum_type);
+		}
 		if (type->get_id() == TypeId::ARRAY) {
 			const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
 			return TypeInterner::get_array_type(transform_type(element_type));
@@ -692,6 +781,21 @@ public:
 		const std::size_t index = struct_type->get_index(struct_access.get_field_name());
 		return create<TupleAccess>(tuple, index, transform_type(struct_access.get_type()));
 	}
+	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
+		const Expression* expression = expression_table[enum_literal.get_expression()];
+		return create<EnumLiteral>(expression, enum_literal.get_index(), transform_type(enum_literal.get_type()));
+	}
+	const Expression* visit_switch(const Switch& switch_) override {
+		const Expression* enum_ = expression_table[switch_.get_enum()];
+		Switch* new_switch = create<Switch>(enum_, transform_type(switch_.get_type()));
+		for (const auto& case_: switch_.get_cases()) {
+			evaluate(new_switch->add_case(case_.first), case_.second);
+		}
+		return new_switch;
+	}
+	const Expression* visit_case_variable(const CaseVariable& case_variable) override {
+		return create<CaseVariable>(transform_type(case_variable.get_type()));
+	}
 	const Expression* visit_closure(const Closure& closure) override {
 		TupleLiteral* tuple_literal = create<TupleLiteral>(transform_type(closure.get_type()));
 		for (const Expression* expression: closure.get_environment_expressions()) {
@@ -762,6 +866,9 @@ class DeadCodeElimination {
 	// TODO: remove unused arguments
 	class IsArgument: public Visitor<bool> {
 	public:
+		bool visit_case_variable(const CaseVariable& case_variable) override {
+			return true;
+		}
 		bool visit_argument(const Argument& argument) override {
 			return true;
 		}
@@ -802,6 +909,15 @@ class DeadCodeElimination {
 		}
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			mark(tuple_access.get_tuple());
+		}
+		void visit_enum_literal(const EnumLiteral& enum_literal) override {
+			mark(enum_literal.get_expression());
+		}
+		void visit_switch(const Switch& switch_) override {
+			mark(switch_.get_enum());
+			for (const auto& case_: switch_.get_cases()) {
+				evaluate(usage_table, case_.second);
+			}
 		}
 		void visit_function_call(const FunctionCall& call) override {
 			for (const Expression* argument: call.get_arguments()) {
@@ -884,6 +1000,21 @@ class DeadCodeElimination {
 		const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 			const Expression* tuple = expression_table[tuple_access.get_tuple()];
 			return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+		}
+		const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
+			const Expression* expression = expression_table[enum_literal.get_expression()];
+			return create<EnumLiteral>(expression, enum_literal.get_index(), enum_literal.get_type());
+		}
+		const Expression* visit_switch(const Switch& switch_) override {
+			const Expression* enum_ = expression_table[switch_.get_enum()];
+			Switch* new_switch = create<Switch>(enum_, switch_.get_type());
+			for (const auto& case_: switch_.get_cases()) {
+				evaluate(new_switch->add_case(case_.first), case_.second);
+			}
+			return new_switch;
+		}
+		const Expression* visit_case_variable(const CaseVariable& case_variable) override {
+			return create<CaseVariable>(case_variable.get_type());
 		}
 		const Expression* visit_argument(const Argument& argument) override {
 			return create<Argument>(argument.get_index(), argument.get_type());
@@ -1065,6 +1196,21 @@ class Pass2 {
 			const Expression* tuple = expression_table[tuple_access.get_tuple()];
 			return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
 		}
+		const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
+			const Expression* expression = expression_table[enum_literal.get_expression()];
+			return create<EnumLiteral>(expression, enum_literal.get_index(), enum_literal.get_type());
+		}
+		const Expression* visit_switch(const Switch& switch_) override {
+			const Expression* enum_ = expression_table[switch_.get_enum()];
+			Switch* new_switch = create<Switch>(enum_, switch_.get_type());
+			for (const auto& case_: switch_.get_cases()) {
+				evaluate(new_switch->add_case(case_.first), case_.second);
+			}
+			return new_switch;
+		}
+		const Expression* visit_case_variable(const CaseVariable& case_variable) override {
+			return create<CaseVariable>(case_variable.get_type());
+		}
 		const Expression* visit_argument(const Argument& argument) override {
 			if (function_table[function].should_inline()) {
 				return arguments[argument.get_index()];
@@ -1177,6 +1323,13 @@ class Pass3: public Visitor<const Expression*> {
 		return new_index;
 	}
 	static const Type* transform_type(const Type* type) {
+		if (type->get_id() == TypeId::ENUM) {
+			EnumType new_type;
+			for (const auto& case_: static_cast<const EnumType*>(type)->get_cases()) {
+				new_type.add_case(case_.first, transform_type(case_.second));
+			}
+			return TypeInterner::intern(&new_type);
+		}
 		if (type->get_id() == TypeId::TUPLE) {
 			TupleType new_type;
 			for (const Type* element_type: static_cast<const TupleType*>(type)->get_element_types()) {
@@ -1249,6 +1402,21 @@ public:
 		const std::size_t index = adjust_index(element_types, tuple_access.get_index());
 		return create<TupleAccess>(tuple, index, transform_type(tuple_access.get_type()));
 	}
+	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
+		const Expression* expression = expression_table[enum_literal.get_expression()];
+		return create<EnumLiteral>(expression, enum_literal.get_index(), transform_type(enum_literal.get_type()));
+	}
+	const Expression* visit_switch(const Switch& switch_) override {
+		const Expression* enum_ = expression_table[switch_.get_enum()];
+		Switch* new_switch = create<Switch>(enum_, transform_type(switch_.get_type()));
+		for (const auto& case_: switch_.get_cases()) {
+			evaluate(new_switch->add_case(case_.first), case_.second);
+		}
+		return new_switch;
+	}
+	const Expression* visit_case_variable(const CaseVariable& case_variable) override {
+		return create<CaseVariable>(transform_type(case_variable.get_type()));
+	}
 	Expression* visit_argument(const Argument& argument) override {
 		const std::size_t index = adjust_index(function->get_argument_types(), argument.get_index());
 		return create<Argument>(index, transform_type(argument.get_type()));
@@ -1316,7 +1484,7 @@ class Pass4: public Visitor<const Expression*> {
 	};
 	static bool is_managed(const Expression* expression) {
 		const TypeId type_id = expression->get_type_id();
-		return type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
+		return type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
 	}
 	class UsageAnalysis1: public Visitor<void> {
 		UsageTable& usage_table;
@@ -1360,6 +1528,20 @@ class Pass4: public Visitor<const Expression*> {
 			evaluate(if_.get_else_block());
 			propagate_usages(&if_.get_then_block(), &if_);
 			propagate_usages(&if_.get_else_block(), &if_);
+		}
+		void visit_enum_literal(const EnumLiteral& enum_literal) override {
+			if (is_managed(enum_literal.get_expression())) {
+				add_usage(enum_literal.get_expression(), &enum_literal, 0);
+			}
+		}
+		void visit_switch(const Switch& switch_) override {
+			add_usage(switch_.get_enum(), &switch_, 0);
+			for (const auto& case_: switch_.get_cases()) {
+				evaluate(case_.second);
+			}
+			for (const auto& case_: switch_.get_cases()) {
+				propagate_usages(&case_.second, &switch_);
+			}
 		}
 		void visit_tuple_literal(const TupleLiteral& tuple_literal) override {
 			for (std::size_t i = 0; i < tuple_literal.get_elements().size(); ++i) {
@@ -1415,6 +1597,21 @@ class Pass4: public Visitor<const Expression*> {
 				}
 			}
 		}
+		void ensure_frees(const std::vector<std::pair<std::string, Block>>& cases) {
+			for (const auto& source_case: cases) {
+				const Block* source_block = &source_case.second;
+				for (auto& entry: usage_table.usages[source_block]) {
+					const Expression* resource = entry.first;
+					for (const auto& target_case: cases) {
+						const Block* target_block = &target_case.second;
+						if (usage_table.usages[target_block].count(resource) == 0 && usage_table.levels[resource] < level + 1) {
+							// if a resource from the source block has no usage in the target block, add it to the free list
+							usage_table.frees[target_block].push_back(resource);
+						}
+					}
+				}
+			}
+		}
 		void ensure_frees(const Block* source_block, const Block* target_block) {
 			for (auto& entry: usage_table.usages[source_block]) {
 				const Expression* resource = entry.first;
@@ -1440,6 +1637,15 @@ class Pass4: public Visitor<const Expression*> {
 			ensure_frees(&if_.get_else_block(), &if_.get_then_block());
 			evaluate(if_.get_then_block());
 			evaluate(if_.get_else_block());
+		}
+		void visit_switch(const Switch& switch_) override {
+			for (const auto& case_: switch_.get_cases()) {
+				remove_invalid_usages(&case_.second, &switch_);
+			}
+			ensure_frees(switch_.get_cases());
+			for (const auto& case_: switch_.get_cases()) {
+				evaluate(case_.second);
+			}
 		}
 	};
 	using FunctionTable = std::map<const Function*, Function*>;
@@ -1546,6 +1752,36 @@ public:
 			free(tuple);
 		}
 		return new_tuple_access;
+	}
+	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
+		const Expression* expression = enum_literal.get_expression();
+		if (is_managed(expression) && !is_last_use(expression, &enum_literal, 0)) {
+			return create<EnumLiteral>(copy(expression_table[expression]), enum_literal.get_index(), enum_literal.get_type());
+		}
+		else {
+			return create<EnumLiteral>(expression_table[expression], enum_literal.get_index(), enum_literal.get_type());
+		}
+	}
+	const Expression* visit_switch(const Switch& switch_) override {
+		const Expression* enum_ = switch_.get_enum();
+		Switch* new_switch;
+		if (!is_last_use(enum_, &switch_, 0)) {
+			new_switch = create<Switch>(copy(expression_table[enum_]), switch_.get_type());
+		}
+		else {
+			new_switch = create<Switch>(expression_table[enum_], switch_.get_type());
+		}
+		for (const auto& case_: switch_.get_cases()) {
+			evaluate(new_switch->add_case(case_.first), case_.second);
+		}
+		return new_switch;
+	}
+	const Expression* visit_case_variable(const CaseVariable& case_variable) override {
+		CaseVariable* new_case_variable = create<CaseVariable>(case_variable.get_type());
+		if (is_managed(&case_variable) && is_unused(&case_variable)) {
+			free(new_case_variable);
+		}
+		return new_case_variable;
 	}
 	const Expression* visit_argument(const Argument& argument) override {
 		Argument* new_argument = create<Argument>(argument.get_index(), argument.get_type());

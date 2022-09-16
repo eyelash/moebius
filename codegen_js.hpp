@@ -49,24 +49,28 @@ class CodegenJS: public Visitor<Variable> {
 	using ExpressionTable = std::map<const Expression*, Variable>;
 	ExpressionTable& expression_table;
 	std::size_t variable;
+	Variable case_variable;
 	Variable result;
 	const TailCallData& tail_call_data;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	CodegenJS(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable result, const TailCallData& tail_call_data): function_table(function_table), printer(printer), expression_table(expression_table), variable(variable), result(result), tail_call_data(tail_call_data) {}
-	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
-		CodegenJS codegen(function_table, printer, expression_table, variable, result, tail_call_data);
+	CodegenJS(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable case_variable, Variable result, const TailCallData& tail_call_data): function_table(function_table), printer(printer), expression_table(expression_table), variable(variable), case_variable(case_variable), result(result), tail_call_data(tail_call_data) {}
+	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable case_variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
+		CodegenJS codegen(function_table, printer, expression_table, variable, case_variable, result, tail_call_data);
 		for (const Expression* expression: block) {
 			expression_table[expression] = visit(codegen, expression);
 		}
 	}
 	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, std::size_t variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
 		ExpressionTable expression_table;
-		evaluate(function_table, printer, expression_table, variable, result, tail_call_data, block);
+		evaluate(function_table, printer, expression_table, variable, 0, result, tail_call_data, block);
 	}
 	void evaluate(Variable result, const Block& block) {
-		evaluate(function_table, printer, expression_table, variable, result, tail_call_data, block);
+		evaluate(function_table, printer, expression_table, variable, 0, result, tail_call_data, block);
+	}
+	void evaluate(Variable case_variable, Variable result, const Block& block) {
+		evaluate(function_table, printer, expression_table, variable, case_variable, result, tail_call_data, block);
 	}
 public:
 	Variable visit_int_literal(const IntLiteral& int_literal) override {
@@ -140,6 +144,43 @@ public:
 		const Variable result = next_variable();
 		printer.println(format("const % = %[%];", result, tuple, print_number(tuple_access.get_index())));
 		return result;
+	}
+	Variable visit_enum_literal(const EnumLiteral& enum_literal) override {
+		const Variable expression = expression_table[enum_literal.get_expression()];
+		const std::size_t index = enum_literal.get_index();
+		const Variable result = next_variable();
+		printer.println_increasing(format("const % = {", result));
+		printer.println(format("tag: %,", print_number(index)));
+		if (enum_literal.get_expression()->get_type() != TypeInterner::get_void_type()) {
+			printer.println(format("value: %,", expression));
+		}
+		printer.println_decreasing("};");
+		return result;
+	}
+	Variable visit_switch(const Switch& switch_) override {
+		const Variable enum_ = expression_table[switch_.get_enum()];
+		const Variable result = next_variable();
+		const Variable case_variable = next_variable();
+		if (switch_.get_type() != TypeInterner::get_void_type()) {
+			printer.println(format("let %;", result));
+		}
+		printer.println_increasing(format("switch (%.tag) {", enum_));
+		for (std::size_t i = 0; i < switch_.get_cases().size(); ++i) {
+			const Block& case_block = switch_.get_cases()[i].second;
+			const ::Type* case_type = static_cast<const EnumType*>(switch_.get_enum()->get_type())->get_cases()[i].second;
+			printer.println_increasing(format("case %: {", print_number(i)));
+			if (case_type != TypeInterner::get_void_type()) {
+				printer.println(format("const % = %.value;", case_variable, enum_));
+			}
+			evaluate(case_variable, result, case_block);
+			printer.println("break;");
+			printer.println_decreasing("}");
+		}
+		printer.println_decreasing("}");
+		return result;
+	}
+	Variable visit_case_variable(const CaseVariable& case_variable) override {
+		return this->case_variable;
 	}
 	Variable visit_argument(const Argument& argument) override {
 		return Variable(argument.get_index());

@@ -63,6 +63,7 @@ constexpr const char* intrinsics[] = {
 	"typeOf",
 	"arrayType",
 	"structType",
+	"enumType",
 	"tupleType"
 };
 
@@ -456,6 +457,37 @@ class MoebiusParser: private Parser {
 			current_scope->add_expression(if_);
 			return if_;
 		}
+		else if (parse("switch", alphanumeric)) {
+			parse_white_space();
+			expect("(");
+			parse_white_space();
+			const Expression* enum_ = parse_expression();
+			parse_white_space();
+			expect(")");
+			parse_white_space();
+			expect("{");
+			parse_white_space();
+			Switch* switch_ = new Switch(enum_);
+			switch_->set_position(position);
+			while (parse_not("}")) {
+				const StringView field_name = parse_identifier();
+				parse_white_space();
+				expect(":");
+				parse_white_space();
+				Scope scope(current_scope, switch_->add_case(field_name));
+				current_scope->add_variable(field_name, current_scope->create<CaseVariable>());
+				const Expression* field = parse_expression();
+				current_scope->create<Return>(field);
+				parse_white_space();
+				if (!parse(",")) {
+					break;
+				}
+				parse_white_space();
+			}
+			expect("}");
+			current_scope->add_expression(switch_);
+			return switch_;
+		}
 		else if (parse("func", alphanumeric)) {
 			parse_white_space();
 			expect("(");
@@ -830,6 +862,40 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				current_scope->add_expression(struct_literal);
 				Intrinsic* intrinsic = current_scope->create<Intrinsic>("structType");
+				intrinsic->set_position(position);
+				intrinsic->add_argument(struct_literal);
+				current_scope->add_variable(name, intrinsic);
+			}
+			else if (parse("enum", alphanumeric)) {
+				parse_white_space();
+				const StringView name = parse_identifier();
+				parse_white_space();
+				expect("{");
+				parse_white_space();
+				StructLiteral* struct_literal = new StructLiteral();
+				struct_literal->set_position(position);
+				while (parse_not("}")) {
+					const StringView field_name = parse_identifier();
+					parse_white_space();
+					if (parse(":")) {
+						parse_white_space();
+						const Expression* field_type = parse_expression();
+						parse_white_space();
+						struct_literal->add_field(field_name, field_type);
+					}
+					else {
+						const Expression* field_type = current_scope->create<TypeLiteral>(TypeInterner::get_void_type());
+						struct_literal->add_field(field_name, field_type);
+					}
+					if (!parse(",")) {
+						break;
+					}
+					parse_white_space();
+				}
+				expect("}");
+				parse_white_space();
+				current_scope->add_expression(struct_literal);
+				Intrinsic* intrinsic = current_scope->create<Intrinsic>("enumType");
 				intrinsic->set_position(position);
 				intrinsic->add_argument(struct_literal);
 				current_scope->add_variable(name, intrinsic);

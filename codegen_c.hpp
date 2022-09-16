@@ -37,7 +37,7 @@ class CodegenC: public Visitor<Variable> {
 	}
 	static bool is_managed(const ::Type* type) {
 		const TypeId type_id = type->get_id();
-		return type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
+		return type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
 	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
@@ -72,15 +72,36 @@ class CodegenC: public Visitor<Variable> {
 					types[type] = index;
 					return index;
 				}
+				case TypeId::ENUM: {
+					const Type number_type = get_type(TypeInterner::get_int_type());
+					const std::vector<std::pair<std::string, const ::Type*>>& cases = static_cast<const EnumType*>(type)->get_cases();
+					for (const auto& case_type: cases) {
+						get_type(case_type.second);
+					}
+					const std::size_t index = types.size();
+					type_declaration_printer.println_increasing("typedef struct {");
+					type_declaration_printer.println(format("% tag;", number_type));
+					type_declaration_printer.println_increasing("union {");
+					for (std::size_t i = 0; i < cases.size(); ++i) {
+						if (cases[i].second != TypeInterner::get_void_type()) {
+							type_declaration_printer.println(format("% v%;", get_type(cases[i].second), print_number(i)));
+						}
+					}
+					type_declaration_printer.println_decreasing("} value;");
+					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
+					types[type] = index;
+					generate_enum_functions(type);
+					return index;
+				}
 				case TypeId::TUPLE: {
-					std::vector<Type> element_types;
-					for (const ::Type* element_type: static_cast<const TupleType*>(type)->get_element_types()) {
-						element_types.push_back(get_type(element_type));
+					const std::vector<const ::Type*>& element_types = static_cast<const TupleType*>(type)->get_element_types();
+					for (const ::Type* element_type: element_types) {
+						get_type(element_type);
 					}
 					const std::size_t index = types.size();
 					type_declaration_printer.println_increasing("typedef struct {");
 					for (std::size_t i = 0; i < element_types.size(); ++i) {
-						type_declaration_printer.println(format("% v%;", element_types[i], print_number(i)));
+						type_declaration_printer.println(format("% v%;", get_type(element_types[i]), print_number(i)));
 					}
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
 					types[type] = index;
@@ -121,6 +142,46 @@ class CodegenC: public Visitor<Variable> {
 					return 0;
 				}
 			}
+		}
+		void generate_enum_functions(const ::Type* type) {
+			const Type enum_type = get_type(type);
+			const auto& types = static_cast<const EnumType*>(type)->get_cases();
+			const Type void_type = get_type(TypeInterner::get_void_type());
+			IndentPrinter& printer = type_declaration_printer;
+
+			// enum_copy
+			printer.println_increasing(format("static % %_copy(% enum_) {", enum_type, enum_type, enum_type));
+			printer.println(format("% new_enum;", enum_type));
+			printer.println("new_enum.tag = enum_.tag;");
+			printer.println_increasing("switch (enum_.tag) {");
+			for (std::size_t i = 0; i < types.size(); ++i) {
+				printer.println_increasing(format("case %: {", print_number(i)));
+				if (is_managed(types[i].second)) {
+					printer.println(format("new_enum.value.v% = %_copy(enum_.value.v%);", print_number(i), get_type(types[i].second), print_number(i)));
+				}
+				else if (types[i].second != TypeInterner::get_void_type()) {
+					printer.println(format("new_enum.value.v% = enum_.value.v%;", print_number(i), print_number(i)));
+				}
+				printer.println("break;");
+				printer.println_decreasing("}");
+			}
+			printer.println_decreasing("}");
+			printer.println("return new_enum;");
+			printer.println_decreasing("}");
+
+			// enum_free
+			printer.println_increasing(format("static % %_free(% enum_) {", void_type, enum_type, enum_type));
+			printer.println_increasing("switch (enum_.tag) {");
+			for (std::size_t i = 0; i < types.size(); ++i) {
+				printer.println_increasing(format("case %: {", print_number(i)));
+				if (is_managed(types[i].second)) {
+					printer.println(format("%_free(enum_.value.v%);", get_type(types[i].second), print_number(i)));
+				}
+				printer.println("break;");
+				printer.println_decreasing("}");
+			}
+			printer.println_decreasing("}");
+			printer.println_decreasing("}");
 		}
 		void generate_tuple_functions(const ::Type* type) {
 			const Type tuple_type = get_type(type);
@@ -278,24 +339,28 @@ class CodegenC: public Visitor<Variable> {
 	using ExpressionTable = std::map<const Expression*, Variable>;
 	ExpressionTable& expression_table;
 	std::size_t variable;
+	Variable case_variable;
 	Variable result;
 	const TailCallData& tail_call_data;
 	Variable next_variable() {
 		return Variable(variable++);
 	}
-	CodegenC(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable result, const TailCallData& tail_call_data): function_table(function_table), printer(printer), expression_table(expression_table), variable(variable), result(result), tail_call_data(tail_call_data) {}
-	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
-		CodegenC codegen(function_table, printer, expression_table, variable, result, tail_call_data);
+	CodegenC(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable case_variable, Variable result, const TailCallData& tail_call_data): function_table(function_table), printer(printer), expression_table(expression_table), variable(variable), case_variable(case_variable), result(result), tail_call_data(tail_call_data) {}
+	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, ExpressionTable& expression_table, std::size_t variable, Variable case_variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
+		CodegenC codegen(function_table, printer, expression_table, variable, case_variable, result, tail_call_data);
 		for (const Expression* expression: block) {
 			expression_table[expression] = visit(codegen, expression);
 		}
 	}
 	static void evaluate(FunctionTable& function_table, IndentPrinter& printer, std::size_t variable, Variable result, const TailCallData& tail_call_data, const Block& block) {
 		ExpressionTable expression_table;
-		evaluate(function_table, printer, expression_table, variable, result, tail_call_data, block);
+		evaluate(function_table, printer, expression_table, variable, 0, result, tail_call_data, block);
 	}
 	void evaluate(Variable result, const Block& block) {
-		evaluate(function_table, printer, expression_table, variable, result, tail_call_data, block);
+		evaluate(function_table, printer, expression_table, variable, 0, result, tail_call_data, block);
+	}
+	void evaluate(Variable case_variable, Variable result, const Block& block) {
+		evaluate(function_table, printer, expression_table, variable, case_variable, result, tail_call_data, block);
 	}
 	static const char* getenv(const char* variable, const char* default_value) {
 		const char* result = std::getenv(variable);
@@ -377,6 +442,44 @@ public:
 		const Type result_type = function_table.get_type(tuple_access.get_type());
 		printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
 		return result;
+	}
+	Variable visit_enum_literal(const EnumLiteral& enum_literal) override {
+		const Variable expression = expression_table[enum_literal.get_expression()];
+		const std::size_t index = enum_literal.get_index();
+		const Variable result = next_variable();
+		const Type result_type = function_table.get_type(enum_literal.get_type());
+		printer.println(format("% %;", result_type, result));
+		printer.println(format("%.tag = %;", result, print_number(index)));
+		if (enum_literal.get_expression()->get_type() != TypeInterner::get_void_type()) {
+			printer.println(format("%.value.v% = %;", result, print_number(index), expression));
+		}
+		return result;
+	}
+	Variable visit_switch(const Switch& switch_) override {
+		const Variable enum_ = expression_table[switch_.get_enum()];
+		const Variable result = next_variable();
+		const Variable case_variable = next_variable();
+		if (switch_.get_type() != TypeInterner::get_void_type()) {
+			const Type result_type = function_table.get_type(switch_.get_type());
+			printer.println(format("% %;", result_type, result));
+		}
+		printer.println_increasing(format("switch (%.tag) {", enum_));
+		for (std::size_t i = 0; i < switch_.get_cases().size(); ++i) {
+			const Block& case_block = switch_.get_cases()[i].second;
+			const ::Type* case_type = static_cast<const EnumType*>(switch_.get_enum()->get_type())->get_cases()[i].second;
+			printer.println_increasing(format("case %: {", print_number(i)));
+			if (case_type != TypeInterner::get_void_type()) {
+				printer.println(format("% % = %.value.v%;", function_table.get_type(case_type), case_variable, enum_, print_number(i)));
+			}
+			evaluate(case_variable, result, case_block);
+			printer.println("break;");
+			printer.println_decreasing("}");
+		}
+		printer.println_decreasing("}");
+		return result;
+	}
+	Variable visit_case_variable(const CaseVariable& case_variable) override {
+		return this->case_variable;
 	}
 	Variable visit_argument(const Argument& argument) override {
 		return Variable(argument.get_index());

@@ -42,7 +42,7 @@ examples/HelloWorld.moeb.exe
   - [ ] floating-point numbers
   - [x] closures
   - [x] structs (product types)
-  - [ ] enums (sum types)
+  - [x] enums (sum types)
   - [x] arrays
   - [x] strings
   - [ ] interfaces

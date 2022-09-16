@@ -13,6 +13,7 @@ enum class TypeId {
 	CHAR,
 	CLOSURE,
 	STRUCT,
+	ENUM,
 	TUPLE,
 	ARRAY,
 	STRING,
@@ -89,6 +90,39 @@ public:
 	std::size_t get_index(const std::string& field_name) const {
 		for (std::size_t i = 0; i < fields.size(); ++i) {
 			if (fields[i].first == field_name) {
+				return i;
+			}
+		}
+		return 0;
+	}
+};
+
+class EnumType: public Type {
+	std::vector<std::pair<std::string, const Type*>> cases;
+public:
+	TypeId get_id() const override {
+		return TypeId::ENUM;
+	}
+	bool operator <(const EnumType& rhs) const {
+		return cases < rhs.cases;
+	}
+	void add_case(const std::string& case_name, const Type* case_type) {
+		cases.emplace_back(case_name, case_type);
+	}
+	const std::vector<std::pair<std::string, const Type*>>& get_cases() const {
+		return cases;
+	}
+	bool has_case(const std::string& case_name) const {
+		for (std::size_t i = 0; i < cases.size(); ++i) {
+			if (cases[i].first == case_name) {
+				return true;
+			}
+		}
+		return false;
+	}
+	std::size_t get_index(const std::string& case_name) const {
+		for (std::size_t i = 0; i < cases.size(); ++i) {
+			if (cases[i].first == case_name) {
 				return i;
 			}
 		}
@@ -186,6 +220,7 @@ class TypeInterner {
 	static inline std::unique_ptr<CharType> char_type;
 	static inline std::set<std::unique_ptr<ClosureType>, TypeCompare<ClosureType>> closure_types;
 	static inline std::set<std::unique_ptr<StructType>, TypeCompare<StructType>> struct_types;
+	static inline std::set<std::unique_ptr<EnumType>, TypeCompare<EnumType>> enum_types;
 	static inline std::set<std::unique_ptr<TupleType>, TypeCompare<TupleType>> tuple_types;
 	static inline std::set<std::unique_ptr<ArrayType>, TypeCompare<ArrayType>> array_types;
 	static inline std::unique_ptr<StringType> string_type;
@@ -222,6 +257,9 @@ public:
 	static const Type* intern(const StructType* struct_type) {
 		return get_or_insert(struct_types, struct_type);
 	}
+	static const Type* intern(const EnumType* enum_type) {
+		return get_or_insert(enum_types, enum_type);
+	}
 	static const Type* intern(const TupleType* tuple_type) {
 		return get_or_insert(tuple_types, tuple_type);
 	}
@@ -253,6 +291,9 @@ class TupleLiteral;
 class TupleAccess;
 class StructLiteral;
 class StructAccess;
+class EnumLiteral;
+class Switch;
+class CaseVariable;
 class Closure;
 class ClosureAccess;
 class Argument;
@@ -293,6 +334,15 @@ public:
 		return T();
 	}
 	virtual T visit_struct_access(const StructAccess& struct_access) {
+		return T();
+	}
+	virtual T visit_enum_literal(const EnumLiteral& enum_literal) {
+		return T();
+	}
+	virtual T visit_switch(const Switch& switch_) {
+		return T();
+	}
+	virtual T visit_case_variable(const CaseVariable& case_variable) {
 		return T();
 	}
 	virtual T visit_closure(const Closure& closure) {
@@ -391,6 +441,15 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_struct_access(const StructAccess& struct_access) override {
 			result = visitor.visit_struct_access(struct_access);
 		}
+		void visit_enum_literal(const EnumLiteral& enum_literal) override {
+			result = visitor.visit_enum_literal(enum_literal);
+		}
+		void visit_switch(const Switch& switch_) override {
+			result = visitor.visit_switch(switch_);
+		}
+		void visit_case_variable(const CaseVariable& case_variable) override {
+			result = visitor.visit_case_variable(case_variable);
+		}
 		void visit_closure(const Closure& closure) override {
 			result = visitor.visit_closure(closure);
 		}
@@ -453,6 +512,9 @@ class Block {
 	const Expression* first = nullptr;
 	Expression* last = nullptr;
 public:
+	Block() = default;
+	Block(const Block&) = delete;
+	Block(Block&& block): first(std::exchange(block.first, nullptr)), last(std::exchange(block.last, nullptr)) {}
 	~Block() {
 		const Expression* expression = first;
 		while (expression) {
@@ -460,6 +522,12 @@ public:
 			delete expression;
 			expression = next;
 		}
+	}
+	Block& operator =(const Block&) = delete;
+	Block& operator =(Block&& block) {
+		std::swap(first, block.first);
+		std::swap(last, block.last);
+		return *this;
 	}
 	void add_expression(Expression* expression) {
 		if (first == nullptr) {
@@ -469,10 +537,6 @@ public:
 			last->next_expression = expression;
 		}
 		last = expression;
-	}
-	void clear() {
-		first = nullptr;
-		last = nullptr;
 	}
 	const Expression* get_last() const {
 		return last;
@@ -669,6 +733,54 @@ public:
 	}
 	const Expression* get_function() const {
 		return function;
+	}
+};
+
+class EnumLiteral: public Expression {
+	const Expression* expression;
+	std::size_t index;
+public:
+	EnumLiteral(const Expression* expression, std::size_t index, const Type* type = nullptr): Expression(type), expression(expression), index(index) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_enum_literal(*this);
+	}
+	const Expression* get_expression() const {
+		return expression;
+	}
+	std::size_t get_index() const {
+		return index;
+	}
+};
+
+class Switch: public Expression {
+	const Expression* enum_;
+	std::vector<std::pair<std::string, Block>> cases;
+public:
+	Switch(const Expression* enum_, const Type* type = nullptr): Expression(type), enum_(enum_) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_switch(*this);
+	}
+	Block* add_case(const std::string& field_name) {
+		cases.emplace_back(std::piecewise_construct, std::forward_as_tuple(field_name), std::forward_as_tuple());
+		return &cases.back().second;
+	}
+	Block* add_case(const StringView& field_name) {
+		cases.emplace_back(std::piecewise_construct, std::forward_as_tuple(field_name.begin(), field_name.end()), std::forward_as_tuple());
+		return &cases.back().second;
+	}
+	const Expression* get_enum() const {
+		return enum_;
+	}
+	const std::vector<std::pair<std::string, Block>>& get_cases() const {
+		return cases;
+	}
+};
+
+class CaseVariable: public Expression {
+public:
+	CaseVariable(const Type* type = nullptr): Expression(type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_case_variable(*this);
 	}
 };
 
@@ -1009,6 +1121,18 @@ public:
 					const Type* field_type = struct_type->get_fields()[i].second;
 					if (i > 0) p.print(",");
 					p.print(format("%:%", field_name, PrintType(field_type)));
+				}
+				p.print("})");
+				break;
+			}
+			case TypeId::ENUM: {
+				const EnumType* enum_type = static_cast<const EnumType*>(type);
+				p.print("Enum({");
+				for (std::size_t i = 0; i < enum_type->get_cases().size(); ++i) {
+					const std::string& case_name = enum_type->get_cases()[i].first;
+					const Type* case_type = enum_type->get_cases()[i].second;
+					if (i > 0) p.print(",");
+					p.print(format("%:%", case_name, PrintType(case_type)));
 				}
 				p.print("})");
 				break;
