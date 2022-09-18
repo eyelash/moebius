@@ -601,14 +601,20 @@ public:
 			return create<TypeLiteral>(TypeInterner::intern(&new_enum_type));
 		}
 		else if (intrinsic.name_equals("tupleType")) {
-			TupleType tuple_type;
-			for (const Expression* argument: intrinsic.get_arguments()) {
-				if (argument->get_type_id() != TypeId::TYPE) {
-					error(intrinsic, "arguments of tupleType must be types");
-				}
-				tuple_type.add_element_type(static_cast<const TypeType*>(argument->get_type())->get_type());
+			ensure_argument_count(intrinsic, 1);
+			const Expression* tuple_type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (tuple_type_expression->get_type_id() != TypeId::TUPLE) {
+				error(intrinsic, "argument of tupleType must be a tuple");
 			}
-			return create<TypeLiteral>(TypeInterner::intern(&tuple_type));
+			const TupleType* tuple_type = static_cast<const TupleType*>(tuple_type_expression->get_type());
+			TupleType new_tuple_type;
+			for (const Type* element: tuple_type->get_element_types()) {
+				if (element->get_id() != TypeId::TYPE) {
+					error(intrinsic, "tuple elements must be types");
+				}
+				new_tuple_type.add_element_type(static_cast<const TypeType*>(element)->get_type());
+			}
+			return create<TypeLiteral>(TypeInterner::intern(&new_tuple_type));
 		}
 		else if (intrinsic.name_equals("copy")) {
 			const Type* type = expression_table[intrinsic.get_arguments()[0]]->get_type();
