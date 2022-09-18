@@ -1,0 +1,60 @@
+func Array(T) = @arrayType(T)
+func Tuple(t) = @tupleType(t)
+func len(a) = @arrayLength(a)
+func get(a, i) = @arrayGet(a, i)
+func set(a, i, e) = @arraySplice(a, i, 1, e)
+func push(s, e) = @stringPush(s, e)
+func println(s) = @putStr(s) >> @putChar('\n')
+
+func swap(a, i, j) = {
+	let tmp = a.get(i)
+	let a = a.set(i, a.get(j))
+	return a.set(j, tmp)
+}
+
+func toString(x) = {
+	func numberToString(n, s): String =
+		if (n < 10) s.push('0' + n)
+		else numberToString(n / 10, s).push('0' + n % 10)
+
+	func arrayToString(a, i, s): String =
+		if (i < a.len()) {
+			let s = if (i > 0) s.push(", ") else s
+			let s = s.push(toString(a.get(i)))
+			return arrayToString(a, i + 1, s)
+		} else s.push("]")
+
+	return if (@typeOf(x) == String) x
+	else if (@typeOf(x) == Int) numberToString(x, "")
+	else arrayToString(x, 0, "[")
+}
+
+func quicksort(a: Array(Int), lo: Int, hi: Int): Array(Int) =
+	if (lo >= hi)
+		a
+	else {
+		func partition(a, lo, hi) = {
+			let pivot = a.get(hi - 1)
+			let i = lo
+			let j = lo
+			func loop(a, i, j): Tuple((Array(Int), Int)) =
+				if (j < hi - 1)
+					if (a.get(j) <= pivot) loop(a.swap(i, j), i + 1, j + 1)
+					else loop(a, i, j + 1)
+				else
+					(a, i)
+			let (a, i) = loop(a, i, j)
+			let a = a.swap(i, hi - 1)
+			return (a, i)
+		}
+		let (a, p) = partition(a, lo, hi)
+		let a = quicksort(a, lo, p)
+		let a = quicksort(a, p + 1, hi)
+		return a
+	}
+
+let a = [3, 14, 15, 92, 65, 35, 89, 79, 32, 38, 46]
+let a = a.swap(0, 1)
+let hi = a.len()
+let a = quicksort(a, 0, hi)
+return println("$a")
