@@ -113,11 +113,11 @@ class CodegenC: public Visitor<Variable> {
 					const Type element_type = get_type(get_element_type(type));
 					const Type number_type = get_type(TypeInterner::get_int_type());
 					const std::size_t index = types.size();
-					type_declaration_printer.println_increasing("typedef struct {");
-					type_declaration_printer.println(format("%* elements;", element_type));
+					type_declaration_printer.println_increasing(format("typedef struct % {", Type(index)));
 					type_declaration_printer.println(format("% length;", number_type));
 					type_declaration_printer.println(format("% capacity;", number_type));
-					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
+					type_declaration_printer.println(format("% elements[];", element_type));
+					type_declaration_printer.println_decreasing(format("} *%;", Type(index)));
 					types[type] = index;
 					generate_array_functions(type, type->get_id() == TypeId::STRING);
 					return index;
@@ -221,116 +221,114 @@ class CodegenC: public Visitor<Variable> {
 
 			// array_new
 			printer.println_increasing(format("static % %_new(%* elements, % length) {", array_type, array_type, element_type, number_type));
-			printer.println(format("% array;", array_type));
 			if (null_terminated) {
-				printer.println(format("array.elements = malloc((length + 1) * sizeof(%));", element_type));
+				printer.println(format("% array = malloc(sizeof(struct %) + (length + 1) * sizeof(%));", array_type, array_type, element_type));
 			}
 			else {
-				printer.println(format("array.elements = malloc(length * sizeof(%));", element_type));
+				printer.println(format("% array = malloc(sizeof(struct %) + length * sizeof(%));", array_type, array_type, element_type));
 			}
+			printer.println("array->length = length;");
+			printer.println("array->capacity = length;");
 			printer.println_increasing(format("for (% i = 0; i < length; i++) {", number_type));
-			printer.println("array.elements[i] = elements[i];");
+			printer.println("array->elements[i] = elements[i];");
 			printer.println_decreasing("}");
 			if (null_terminated) {
-				printer.println("array.elements[length] = 0;");
+				printer.println("array->elements[length] = 0;");
 			}
-			printer.println("array.length = length;");
-			printer.println("array.capacity = length;");
 			printer.println("return array;");
 			printer.println_decreasing("}");
 
 			// array_copy
 			printer.println_increasing(format("static % %_copy(% array) {", array_type, array_type, array_type));
-			printer.println(format("% new_array;", array_type));
 			if (null_terminated) {
-				printer.println(format("new_array.elements = malloc((array.length + 1) * sizeof(%));", element_type));
+				printer.println(format("% new_array = malloc(sizeof(struct %) + (array->length + 1) * sizeof(%));", array_type, array_type, element_type));
 			}
 			else {
-				printer.println(format("new_array.elements = malloc(array.length * sizeof(%));", element_type));
+				printer.println(format("% new_array = malloc(sizeof(struct %) + array->length * sizeof(%));", array_type, array_type, element_type));
 			}
-			printer.println_increasing(format("for (% i = 0; i < array.length; i++) {", number_type));
+			printer.println("new_array->length = array->length;");
+			printer.println("new_array->capacity = array->length;");
+			printer.println_increasing(format("for (% i = 0; i < array->length; i++) {", number_type));
 			if (is_managed(get_element_type(type))) {
-				printer.println(format("new_array.elements[i] = %_copy(array.elements[i]);", element_type));
+				printer.println(format("new_array->elements[i] = %_copy(array->elements[i]);", element_type));
 			}
 			else {
-				printer.println("new_array.elements[i] = array.elements[i];");
+				printer.println("new_array->elements[i] = array->elements[i];");
 			}
 			printer.println_decreasing("}");
 			if (null_terminated) {
-				printer.println("new_array.elements[array.length] = 0;");
+				printer.println("new_array->elements[array->length] = 0;");
 			}
-			printer.println("new_array.length = array.length;");
-			printer.println("new_array.capacity = array.length;");
 			printer.println("return new_array;");
 			printer.println_decreasing("}");
 
 			// array_free
 			printer.println_increasing(format("static % %_free(% array) {", void_type, array_type, array_type));
 			if (is_managed(get_element_type(type))) {
-				printer.println_increasing(format("for (% i = 0; i < array.length; i++) {", number_type));
-				printer.println(format("%_free(array.elements[i]);", element_type));
+				printer.println_increasing(format("for (% i = 0; i < array->length; i++) {", number_type));
+				printer.println(format("%_free(array->elements[i]);", element_type));
 				printer.println_decreasing("}");
 			}
-			printer.println("free(array.elements);");
+			printer.println("free(array);");
 			printer.println_decreasing("}");
 
 			// array_splice
 			printer.println_increasing(format("static % %_splice(% array, % index, % remove, %* insert_elements, % insert_length) {", array_type, array_type, array_type, number_type, number_type, element_type, number_type));
 			if (is_managed(get_element_type(type))) {
 				printer.println_increasing(format("for (% i = 0; i < remove; i++) {", number_type));
-				printer.println(format("%_free(array.elements[index + i]);", element_type));
+				printer.println(format("%_free(array->elements[index + i]);", element_type));
 				printer.println_decreasing("}");
 			}
-			printer.println(format("% new_length = array.length - remove + insert_length;", number_type));
-			printer.println_increasing("if (new_length > array.capacity) {");
-			printer.println(format("% new_capacity = array.capacity * 2;", number_type));
+			printer.println(format("% new_length = array->length - remove + insert_length;", number_type));
+			printer.println_increasing("if (new_length > array->capacity) {");
+			printer.println(format("% new_capacity = array->capacity * 2;", number_type));
 			printer.println("if (new_capacity < new_length) new_capacity = new_length;");
 			if (null_terminated) {
-				printer.println(format("%* new_elements = malloc((new_capacity + 1) * sizeof(%));", element_type, element_type));
+				printer.println(format("% new_array = malloc(sizeof(struct %) + (new_capacity + 1) * sizeof(%));", array_type, array_type, element_type));
 			}
 			else {
-				printer.println(format("%* new_elements = malloc(new_capacity * sizeof(%));", element_type, element_type));
+				printer.println(format("% new_array = malloc(sizeof(struct %) + new_capacity * sizeof(%));", array_type, array_type, element_type));
 			}
+			printer.println("new_array->length = new_length;");
+			printer.println("new_array->capacity = new_capacity;");
 			printer.println_increasing(format("for (% i = 0; i < index; i++) {", number_type));
-			printer.println("new_elements[i] = array.elements[i];");
+			printer.println("new_array->elements[i] = array->elements[i];");
 			printer.println_decreasing("}");
 			printer.println_increasing(format("for (% i = 0; i < insert_length; i++) {", number_type));
-			printer.println("new_elements[index + i] = insert_elements[i];");
+			printer.println("new_array->elements[index + i] = insert_elements[i];");
 			printer.println_decreasing("}");
-			printer.println_increasing(format("for (% i = index + remove; i < array.length; i++) {", number_type));
-			printer.println("new_elements[i - remove + insert_length] = array.elements[i];");
+			printer.println_increasing(format("for (% i = index + remove; i < array->length; i++) {", number_type));
+			printer.println("new_array->elements[i - remove + insert_length] = array->elements[i];");
 			printer.println_decreasing("}");
 			if (null_terminated) {
-				printer.println("new_elements[new_length] = 0;");
+				printer.println("new_array->elements[new_length] = 0;");
 			}
-			printer.println("free(array.elements);");
-			printer.println("array.elements = new_elements;");
-			printer.println("array.length = new_length;");
-			printer.println("array.capacity = new_capacity;");
+			printer.println("free(array);");
+			printer.println("return new_array;");
 			printer.println_decreasing("}");
 			printer.println_increasing("else {");
 			printer.println_increasing("if (remove > insert_length) {");
-			printer.println_increasing(format("for (% i = index + remove; i < array.length; i++) {", number_type));
-			printer.println("array.elements[i - remove + insert_length] = array.elements[i];");
+			printer.println_increasing(format("for (% i = index + remove; i < array->length; i++) {", number_type));
+			printer.println("array->elements[i - remove + insert_length] = array->elements[i];");
 			printer.println_decreasing("}");
 			if (null_terminated) {
-				printer.println("array.elements[new_length] = 0;");
+				printer.println("array->elements[new_length] = 0;");
 			}
 			printer.println_decreasing("}");
 			printer.println_increasing("else if (insert_length > remove) {");
 			if (null_terminated) {
-				printer.println("array.elements[new_length] = 0;");
+				printer.println("array->elements[new_length] = 0;");
 			}
-			printer.println_increasing(format("for (% i = array.length - 1; i >= index + remove; i--) {", number_type));
-			printer.println("array.elements[i - remove + insert_length] = array.elements[i];");
+			printer.println_increasing(format("for (% i = array->length - 1; i >= index + remove; i--) {", number_type));
+			printer.println("array->elements[i - remove + insert_length] = array->elements[i];");
 			printer.println_decreasing("}");
 			printer.println_decreasing("}");
 			printer.println_increasing(format("for (% i = 0; i < insert_length; i++) {", number_type));
-			printer.println("array.elements[index + i] = insert_elements[i];");
+			printer.println("array->elements[index + i] = insert_elements[i];");
 			printer.println_decreasing("}");
-			printer.println("array.length = new_length;");
-			printer.println_decreasing("}");
+			printer.println("array->length = new_length;");
 			printer.println("return array;");
+			printer.println_decreasing("}");
 			printer.println_decreasing("}");
 		}
 	};
@@ -516,7 +514,7 @@ public:
 		}
 		else if (intrinsic.name_equals("putStr")) {
 			const Variable argument = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("fputs(%.elements, stdout);", argument));
+			printer.println(format("fputs(%->elements, stdout);", argument));
 		}
 		else if (intrinsic.name_equals("getChar")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
@@ -526,12 +524,12 @@ public:
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Variable index = expression_table[intrinsic.get_arguments()[1]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %.elements[%];", type, result, array, index));
+			printer.println(format("% % = %->elements[%];", type, result, array, index));
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %.length;", type, result, array));
+			printer.println(format("% % = %->length;", type, result, array));
 		}
 		else if (intrinsic.name_equals("arraySplice")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
@@ -541,8 +539,8 @@ public:
 			const Variable remove = expression_table[intrinsic.get_arguments()[2]];
 			if (intrinsic.get_arguments().size() == 4 && intrinsic.get_arguments()[3]->get_type() == intrinsic.get_type()) {
 				const Variable insert = expression_table[intrinsic.get_arguments()[3]];
-				printer.println(format("% % = %_splice(%, %, %, %.elements, %.length);", type, result, type, array, index, remove, insert, insert));
-				printer.println(format("free(%.elements);", insert));
+				printer.println(format("% % = %_splice(%, %, %, %->elements, %->length);", type, result, type, array, index, remove, insert, insert));
+				printer.println(format("free(%);", insert));
 			}
 			else {
 				const std::size_t insert = intrinsic.get_arguments().size() - 3;
@@ -562,11 +560,11 @@ public:
 			const Variable string = expression_table[intrinsic.get_arguments()[0]];
 			const Variable argument = expression_table[intrinsic.get_arguments()[1]];
 			if (intrinsic.get_arguments()[1]->get_type() == intrinsic.get_type()) {
-				printer.println(format("% % = %_splice(%, %.length, 0, %.elements, %.length);", type, result, type, string, string, argument, argument));
-				printer.println(format("free(%.elements);", argument));
+				printer.println(format("% % = %_splice(%, %->length, 0, %->elements, %->length);", type, result, type, string, string, argument, argument));
+				printer.println(format("free(%);", argument));
 			}
 			else {
-				printer.println(format("% % = %_splice(%, %.length, 0, (%[]){%}, 1);", type, result, type, string, string, element_type, argument));
+				printer.println(format("% % = %_splice(%, %->length, 0, (%[]){%}, 1);", type, result, type, string, string, element_type, argument));
 			}
 		}
 		else if (intrinsic.name_equals("stringIterator")) {
