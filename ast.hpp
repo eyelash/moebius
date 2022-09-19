@@ -1078,12 +1078,17 @@ public:
 	}
 };
 
-class GetInt: public Visitor<bool> {
+class GetInt: public Visitor<const IntLiteral*> {
 public:
-	std::int32_t value;
-	bool visit_int_literal(const IntLiteral& int_literal) override {
-		value = int_literal.get_value();
-		return true;
+	const IntLiteral* visit_int_literal(const IntLiteral& int_literal) override {
+		return &int_literal;
+	}
+};
+
+class GetString: public Visitor<const StringLiteral*> {
+public:
+	const StringLiteral* visit_string_literal(const StringLiteral& string_literal) override {
+		return &string_literal;
 	}
 };
 
@@ -1096,6 +1101,13 @@ public:
 	}
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
 		return struct_literal.get_fields()[index].second;
+	}
+};
+
+class GetEnum: public Visitor<const EnumLiteral*> {
+public:
+	const EnumLiteral* visit_enum_literal(const EnumLiteral& enum_literal) override {
+		return &enum_literal;
 	}
 };
 

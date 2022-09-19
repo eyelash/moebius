@@ -39,14 +39,15 @@ class Pass1: public Visitor<const Expression*> {
 	const FunctionTableKey& key;
 	const std::vector<const Expression*>& environment_arguments;
 	const Type* case_type;
+	const Expression* case_variable;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
 	ExpressionTable& expression_table;
 	Block* destination_block;
 	bool omit_return;
 	const Expression* result = nullptr;
-	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), environment_arguments(environment_arguments), case_type(case_type), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
-		Pass1 pass1(program, function_table, key, environment_arguments, case_type, expression_table, destination_block, omit_return);
+	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), environment_arguments(environment_arguments), case_type(case_type), case_variable(case_variable), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+		Pass1 pass1(program, function_table, key, environment_arguments, case_type, case_variable, expression_table, destination_block, omit_return);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(pass1, expression);
 			if (new_expression) {
@@ -57,23 +58,35 @@ class Pass1: public Visitor<const Expression*> {
 	}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, environment_arguments, nullptr, expression_table, destination_block, source_block, false);
+		return evaluate(program, function_table, key, environment_arguments, nullptr, nullptr, expression_table, destination_block, source_block, false);
 	}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
 		std::vector<const Expression*> environment_arguments;
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, environment_arguments, nullptr, expression_table, destination_block, source_block, false);
+		return evaluate(program, function_table, key, environment_arguments, nullptr, nullptr, expression_table, destination_block, source_block, false);
 	}
 	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
-		return evaluate(program, function_table, key, environment_arguments, nullptr, expression_table, destination_block, source_block, omit_return);
+		return evaluate(program, function_table, key, environment_arguments, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
 	}
-	const Expression* evaluate(const Type* case_type, Block* destination_block, const Block& source_block, bool omit_return) {
-		return evaluate(program, function_table, key, environment_arguments, case_type, expression_table, destination_block, source_block, omit_return);
+	const Expression* evaluate(const Type* case_type, Block* destination_block, const Block& source_block, const Expression* case_variable = nullptr) {
+		return evaluate(program, function_table, key, environment_arguments, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
 		destination_block->add_expression(expression);
 		return expression;
+	}
+	static const IntLiteral* get_int_literal(const Expression* expression) {
+		GetInt visitor;
+		return visit(visitor, expression);
+	}
+	static const StringLiteral* get_string_literal(const Expression* expression) {
+		GetString visitor;
+		return visit(visitor, expression);
+	}
+	static const EnumLiteral* get_enum_literal(const Expression* expression) {
+		GetEnum visitor;
+		return visit(visitor, expression);
 	}
 public:
 	const Expression* visit_int_literal(const IntLiteral& int_literal) override {
@@ -83,10 +96,10 @@ public:
 		const Expression* left = expression_table[binary_expression.get_left()];
 		const Expression* right = expression_table[binary_expression.get_right()];
 		if (left->get_type_id() == TypeId::INT && right->get_type_id() == TypeId::INT) {
-			GetInt get_left_int;
-			GetInt get_right_int;
-			if (visit(get_left_int, left) && visit(get_right_int, right)) {
-				return create<IntLiteral>(execute_binary_operation(binary_expression.get_operation(), get_left_int.value, get_right_int.value));
+			if (const IntLiteral* left_literal = get_int_literal(left)) {
+				if (const IntLiteral* right_literal = get_int_literal(right)) {
+					return create<IntLiteral>(execute_binary_operation(binary_expression.get_operation(), left_literal->get_value(), right_literal->get_value()));
+				}
 			}
 			return create<BinaryExpression>(binary_expression.get_operation(), left, right);
 		}
@@ -130,14 +143,9 @@ public:
 		if (condition->get_type_id() != TypeId::INT) {
 			error(if_, "type of condition must be a number");
 		}
-		GetInt get_int;
-		if (visit(get_int, condition)) {
-			if (get_int.value) {
-				return evaluate(destination_block, if_.get_then_block(), true);
-			}
-			else {
-				return evaluate(destination_block, if_.get_else_block(), true);
-			}
+		if (const IntLiteral* condition_literal = get_int_literal(condition)) {
+			const Block& block = condition_literal->get_value() ? if_.get_then_block() : if_.get_else_block();
+			return evaluate(destination_block, block, true);
 		}
 		else {
 			If* new_if = create<If>(condition);
@@ -233,22 +241,35 @@ public:
 	}
 	const Expression* visit_switch(const Switch& switch_) override {
 		const Expression* enum_ = expression_table[switch_.get_enum()];
-		Switch* new_switch = create<Switch>(enum_);
 		if (enum_->get_type_id() != TypeId::ENUM) {
 			error(switch_, "switch expression must be an enum");
 		}
 		const EnumType* enum_type = static_cast<const EnumType*>(enum_->get_type());
-		auto iter = switch_.get_cases().begin();
-		for (const auto& case_: enum_type->get_cases()) {
-			const std::string& case_name = case_.first;
-			if (iter == switch_.get_cases().end()) {
+		for (std::size_t i = 0; i < enum_type->get_cases().size(); ++i) {
+			const std::string& case_name = enum_type->get_cases()[i].first;
+			if (i >= switch_.get_cases().size()) {
 				error(switch_, format("missing case \"%\"", case_name));
 			}
-			if (iter->first != case_name) {
-				error(switch_, format("expected case \"%\" instead of \"%\"", case_name, iter->first));
+			const std::string& actual_case_name = switch_.get_cases()[i].first;
+			if (actual_case_name != case_name) {
+				error(switch_, format("expected case \"%\" instead of \"%\"", case_name, actual_case_name));
 			}
-			const Type* case_type = case_.second;
-			const Expression* case_expression = evaluate(case_type, new_switch->add_case(case_name), iter->second, false);
+		}
+		if (switch_.get_cases().size() > enum_type->get_cases().size()) {
+			const std::string& actual_case_name = switch_.get_cases()[enum_type->get_cases().size()].first;
+			error(switch_, format("superfluous case \"%\"", actual_case_name));
+		}
+		if (const EnumLiteral* enum_literal = get_enum_literal(enum_)) {
+			const Type* case_type = enum_type->get_cases()[enum_literal->get_index()].second;
+			const Block& block = switch_.get_cases()[enum_literal->get_index()].second;
+			return evaluate(case_type, destination_block, block, enum_literal->get_expression());
+		}
+		Switch* new_switch = create<Switch>(enum_);
+		for (std::size_t i = 0; i < enum_type->get_cases().size(); ++i) {
+			const std::string& case_name = enum_type->get_cases()[i].first;
+			const Type* case_type = enum_type->get_cases()[i].second;
+			const Block& block = switch_.get_cases()[i].second;
+			const Expression* case_expression = evaluate(case_type, new_switch->add_case(case_name), block);
 			if (new_switch->get_type()) {
 				if (case_expression->get_type() != new_switch->get_type()) {
 					error(switch_, "case expressions must have the same type");
@@ -257,15 +278,16 @@ public:
 			else {
 				new_switch->set_type(case_expression->get_type());
 			}
-			++iter;
-		}
-		if (iter != switch_.get_cases().end()) {
-			error(switch_, format("superfluous case \"%\"", iter->first));
 		}
 		return new_switch;
 	}
 	const Expression* visit_case_variable(const CaseVariable& case_variable) override {
-		return create<CaseVariable>(case_type);
+		if (this->case_variable) {
+			return this->case_variable;
+		}
+		else {
+			return create<CaseVariable>(case_type);
+		}
 	}
 	const Expression* visit_closure(const Closure& closure) override {
 		ClosureType type(closure.get_function());
@@ -522,10 +544,21 @@ public:
 		}
 		else if (intrinsic.name_equals("stringPush")) {
 			ensure_argument_count(intrinsic, 2);
-			if (expression_table[intrinsic.get_arguments()[0]]->get_type() != TypeInterner::get_string_type()) {
+			const Expression* string = expression_table[intrinsic.get_arguments()[0]];
+			const Expression* argument = expression_table[intrinsic.get_arguments()[1]];
+			if (const StringLiteral* string_literal = get_string_literal(string)) {
+				if (const StringLiteral* argument_literal = get_string_literal(argument)) {
+					return create<StringLiteral>(string_literal->get_value() + argument_literal->get_value());
+				}
+				else if (const IntLiteral* argument_literal = get_int_literal(argument)) {
+					// TODO: Unicode support
+					return create<StringLiteral>(string_literal->get_value() + static_cast<char>(argument_literal->get_value()));
+				}
+			}
+			if (string->get_type() != TypeInterner::get_string_type()) {
 				error(intrinsic, "first argument of stringPush must be a string");
 			}
-			const Type* argument_type = expression_table[intrinsic.get_arguments()[1]]->get_type();
+			const Type* argument_type = argument->get_type();
 			if (!(argument_type == TypeInterner::get_int_type() || argument_type == TypeInterner::get_string_type())) {
 				error(intrinsic, "second argument of stringPush must be a number or a string");
 			}
