@@ -18,7 +18,7 @@ git clone https://github.com/eyelash/moebius
 cmake .
 make
 # compile some moebius code
-./compiler examples/HelloWorld.moeb
+./moebc examples/HelloWorld.moeb
 # run the compiled code
 examples/HelloWorld.moeb.exe
 ```
@@ -36,7 +36,7 @@ examples/HelloWorld.moeb.exe
   - [x] constant propagation
   - [x] tail call optimization
   - [ ] common subexpression elimination
-  - [ ] graph coloring register allocation
+  - [ ] register allocation
 - types
   - [x] integers
   - [ ] floating-point numbers
@@ -56,3 +56,4 @@ examples/HelloWorld.moeb.exe
 - [x] compile-time reflection
 - [ ] testing
 - [ ] monadic IO
+- [ ] async/await

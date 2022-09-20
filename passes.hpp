@@ -621,7 +621,6 @@ public:
 			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
 			EnumType new_enum_type;
 			for (const auto& field: struct_type->get_fields()) {
-				const std::string& field_name = field.first;
 				if (field.second->get_id() != TypeId::TYPE) {
 					error(intrinsic, "enum cases must be types");
 				}
@@ -629,6 +628,7 @@ public:
 				if (field_type->get_id() == TypeId::TYPE) {
 					error(intrinsic, "enum cases must not be types of types");
 				}
+				const std::string& field_name = field.first;
 				new_enum_type.add_case(field_name, field_type);
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&new_enum_type));
@@ -1537,7 +1537,9 @@ class Pass4: public Visitor<const Expression*> {
 	public:
 		UsageAnalysis1(UsageTable& usage_table, const Block* block, std::size_t level): usage_table(usage_table), block(block), level(level) {}
 		void add_usage(const Expression* resource, const Expression* consumer, std::size_t argument_index) {
-			usage_table.usages[block][resource] = std::make_pair(consumer, argument_index);
+			if (is_managed(resource)) {
+				usage_table.usages[block][resource] = std::make_pair(consumer, argument_index);
+			}
 		}
 		void propagate_usages(const Block* block, const Expression* consumer) {
 			for (auto& entry: usage_table.usages[block]) {
@@ -1562,9 +1564,7 @@ class Pass4: public Visitor<const Expression*> {
 		void visit_array_literal(const ArrayLiteral& array_literal) override {
 			for (std::size_t i = 0; i < array_literal.get_elements().size(); ++i) {
 				const Expression* element = array_literal.get_elements()[i];
-				if (is_managed(element)) {
-					add_usage(element, &array_literal, i);
-				}
+				add_usage(element, &array_literal, i);
 			}
 		}
 		void visit_if(const If& if_) override {
@@ -1574,9 +1574,7 @@ class Pass4: public Visitor<const Expression*> {
 			propagate_usages(&if_.get_else_block(), &if_);
 		}
 		void visit_enum_literal(const EnumLiteral& enum_literal) override {
-			if (is_managed(enum_literal.get_expression())) {
-				add_usage(enum_literal.get_expression(), &enum_literal, 0);
-			}
+			add_usage(enum_literal.get_expression(), &enum_literal, 0);
 		}
 		void visit_switch(const Switch& switch_) override {
 			add_usage(switch_.get_enum(), &switch_, 0);
@@ -1590,9 +1588,7 @@ class Pass4: public Visitor<const Expression*> {
 		void visit_tuple_literal(const TupleLiteral& tuple_literal) override {
 			for (std::size_t i = 0; i < tuple_literal.get_elements().size(); ++i) {
 				const Expression* element = tuple_literal.get_elements()[i];
-				if (is_managed(element)) {
-					add_usage(element, &tuple_literal, i);
-				}
+				add_usage(element, &tuple_literal, i);
 			}
 		}
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
@@ -1601,23 +1597,17 @@ class Pass4: public Visitor<const Expression*> {
 		void visit_function_call(const FunctionCall& call) override {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
 				const Expression* argument = call.get_arguments()[i];
-				if (is_managed(argument)) {
-					add_usage(argument, &call, i);
-				}
+				add_usage(argument, &call, i);
 			}
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {
 			for (std::size_t i = 0; i < intrinsic.get_arguments().size(); ++i) {
 				const Expression* argument = intrinsic.get_arguments()[i];
-				if (is_managed(argument)) {
-					add_usage(argument, &intrinsic, i);
-				}
+				add_usage(argument, &intrinsic, i);
 			}
 		}
 		void visit_return(const Return& return_) override {
-			if (is_managed(return_.get_expression())) {
-				add_usage(return_.get_expression(), &return_, 0);
-			}
+			add_usage(return_.get_expression(), &return_, 0);
 		}
 	};
 	class UsageAnalysis2: public Visitor<void> {
@@ -1930,6 +1920,11 @@ public:
 	void visit_if(const If& if_) override {
 		evaluate(if_.get_then_block());
 		evaluate(if_.get_else_block());
+	}
+	void visit_switch(const Switch& switch_) override {
+		for (const auto& case_: switch_.get_cases()) {
+			evaluate(case_.second);
+		}
 	}
 	void visit_function_call(const FunctionCall& call) override {
 		if (call.get_function() == function) {

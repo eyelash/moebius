@@ -372,7 +372,7 @@ class MoebiusParser: private Parser {
 		const SourcePosition position = get_position();
 		if (parse("{")) {
 			parse_white_space();
-			if (copy().parse("let", alphanumeric) || copy().parse("func", alphanumeric) || copy().parse("struct", alphanumeric) || copy().parse("return", alphanumeric)) {
+			if (copy().parse("let", alphanumeric) || copy().parse("return", alphanumeric) || copy().parse("func", alphanumeric) || copy().parse("struct", alphanumeric) || copy().parse("enum", alphanumeric)) {
 				const Expression* expression = parse_scope();
 				parse_white_space();
 				expect("}");
@@ -470,14 +470,14 @@ class MoebiusParser: private Parser {
 			Switch* switch_ = new Switch(enum_);
 			switch_->set_position(position);
 			while (parse_not("}")) {
-				const StringView field_name = parse_identifier();
+				const StringView case_name = parse_identifier();
 				parse_white_space();
 				expect(":");
 				parse_white_space();
-				Scope scope(current_scope, switch_->add_case(field_name));
-				current_scope->add_variable(field_name, current_scope->create<CaseVariable>());
-				const Expression* field = parse_expression();
-				current_scope->create<Return>(field);
+				Scope scope(current_scope, switch_->add_case(case_name));
+				current_scope->add_variable(case_name, current_scope->create<CaseVariable>());
+				const Expression* case_expression = parse_expression();
+				current_scope->create<Return>(case_expression);
 				parse_white_space();
 				if (!parse(",")) {
 					break;

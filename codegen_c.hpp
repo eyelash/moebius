@@ -564,6 +564,7 @@ public:
 				printer.println(format("free(%);", argument));
 			}
 			else {
+				// TODO: Unicode support
 				printer.println(format("% % = %_splice(%, %->length, 0, (%[]){%}, 1);", type, result, type, string, string, element_type, argument));
 			}
 		}

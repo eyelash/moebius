@@ -1149,6 +1149,17 @@ public:
 				p.print("})");
 				break;
 			}
+			case TypeId::TUPLE: {
+				const TupleType* tuple_type = static_cast<const TupleType*>(type);
+				p.print("Tuple((");
+				for (std::size_t i = 0; i < tuple_type->get_element_types().size(); ++i) {
+					const Type* element_type = tuple_type->get_element_types()[i];
+					if (i > 0) p.print(",");
+					p.print(PrintType(element_type));
+				}
+				p.print("))");
+				break;
+			}
 			case TypeId::ARRAY: {
 				const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
 				p.print(format("Array(%)", PrintType(element_type)));
