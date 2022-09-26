@@ -1135,6 +1135,11 @@ class Pass2 {
 			evaluate(if_.get_then_block());
 			evaluate(if_.get_else_block());
 		}
+		void visit_switch(const Switch& switch_) override {
+			for (const auto& case_: switch_.get_cases()) {
+				evaluate(case_.second);
+			}
+		}
 		void visit_function_call(const FunctionCall& call) override {
 			if (function_table[call.get_function()].callers == 0) {
 				function_table[call.get_function()].callers += 1;
