@@ -37,7 +37,6 @@ class Pass1: public Visitor<const Expression*> {
 	Program* program;
 	FunctionTable& function_table;
 	const FunctionTableKey& key;
-	const std::vector<const Expression*>& environment_arguments;
 	const Type* case_type;
 	const Expression* case_variable;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
@@ -45,9 +44,9 @@ class Pass1: public Visitor<const Expression*> {
 	Block* destination_block;
 	bool omit_return;
 	const Expression* result = nullptr;
-	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), environment_arguments(environment_arguments), case_type(case_type), case_variable(case_variable), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
-		Pass1 pass1(program, function_table, key, environment_arguments, case_type, case_variable, expression_table, destination_block, omit_return);
+	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), case_type(case_type), case_variable(case_variable), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+		Pass1 pass1(program, function_table, key, case_type, case_variable, expression_table, destination_block, omit_return);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(pass1, expression);
 			if (new_expression) {
@@ -56,20 +55,15 @@ class Pass1: public Visitor<const Expression*> {
 		}
 		return pass1.result;
 	}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const std::vector<const Expression*>& environment_arguments, Block* destination_block, const Block& source_block) {
-		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, environment_arguments, nullptr, nullptr, expression_table, destination_block, source_block, false);
-	}
 	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
-		std::vector<const Expression*> environment_arguments;
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, environment_arguments, nullptr, nullptr, expression_table, destination_block, source_block, false);
+		return evaluate(program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, false);
 	}
 	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
-		return evaluate(program, function_table, key, environment_arguments, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
+		return evaluate(program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
 	}
 	const Expression* evaluate(const Type* case_type, Block* destination_block, const Block& source_block, const Expression* case_variable = nullptr) {
-		return evaluate(program, function_table, key, environment_arguments, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
+		return evaluate(program, function_table, key, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -215,24 +209,6 @@ public:
 				return create<StructAccess>(struct_, struct_access.get_field_name(), type);
 			}
 		}
-		if (struct_access.get_function()) {
-			const Expression* function = expression_table[struct_access.get_function()];
-			if (function->get_type_id() == TypeId::CLOSURE) {
-				const ClosureType* old_closure_type = static_cast<const ClosureType*>(function->get_type());
-				ClosureType new_closure_type(old_closure_type->get_function());
-				Closure* new_closure = new Closure(nullptr);
-				for (std::size_t i = 0; i < old_closure_type->get_environment_types().size(); ++i) {
-					const Type* environment_type = old_closure_type->get_environment_types()[i];
-					new_closure_type.add_environment_type(environment_type);
-					new_closure->add_environment_expression(create<ClosureAccess>(function, i, environment_type));
-				}
-				new_closure_type.add_environment_type(struct_->get_type());
-				new_closure->add_environment_expression(struct_);
-				new_closure->set_type(TypeInterner::intern(&new_closure_type));
-				destination_block->add_expression(new_closure);
-				return new_closure;
-			}
-		}
 		error(struct_access, "invalid struct access");
 	}
 	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
@@ -308,39 +284,18 @@ public:
 		return create<ClosureAccess>(closure, argument_index, type);
 	}
 	const Expression* visit_argument(const Argument& argument) override {
-		if (argument.get_argument_type() == ArgumentType::ARGUMENT) {
-			const std::size_t argument_index = environment_arguments.size() + argument.get_index();
-			const Type* type = key.argument_types[argument_index];
-			return create<Argument>(argument_index, type);
-		}
-		else if (argument.get_argument_type() == ArgumentType::ENVIRONMENT) {
-			return environment_arguments[argument.get_index()];
-		}
-		else if (argument.get_argument_type() == ArgumentType::SELF) {
-			ClosureType type(key.old_function);
-			Closure* new_closure = create<Closure>(nullptr);
-			for (const Expression* argument: environment_arguments) {
-				type.add_environment_type(argument->get_type());
-				new_closure->add_environment_expression(argument);
-			}
-			new_closure->set_type(TypeInterner::intern(&type));
-			return new_closure;
-		}
-		return nullptr;
+		const std::size_t argument_index = argument.get_index();
+		const Type* type = key.argument_types[argument_index];
+		return create<Argument>(argument_index, type);
 	}
 	const Expression* visit_call(const Expression& call, const Expression* closure, const Expression* object, const std::vector<const Expression*>& arguments) {
-		FunctionCall* new_call = new FunctionCall();
+		FunctionCall* new_call = create<FunctionCall>();
 		FunctionTableKey new_key;
 		if (closure->get_type_id() != TypeId::CLOSURE) {
 			error(call, "call to a value that is not a function");
 		}
-		const ClosureType* closure_type = static_cast<const ClosureType*>(closure->get_type());
-		for (std::size_t i = 0; i < closure_type->get_environment_types().size(); ++i) {
-			const Type* argument_type = closure_type->get_environment_types()[i];
-			const Expression* new_argument = create<ClosureAccess>(closure, i, argument_type);
-			new_call->add_argument(new_argument);
-			new_key.argument_types.push_back(argument_type);
-		}
+		new_call->add_argument(closure);
+		new_key.argument_types.push_back(closure->get_type());
 		if (object) {
 			const Expression* new_argument = expression_table[object];
 			new_call->add_argument(new_argument);
@@ -351,9 +306,9 @@ public:
 			new_call->add_argument(new_argument);
 			new_key.argument_types.push_back(new_argument->get_type());
 		}
-		new_key.old_function = closure_type->get_function();
-		if (new_key.argument_types.size() != new_key.old_function->get_total_arguments()) {
-			std::size_t expected_arguments = new_key.old_function->get_total_arguments() - closure_type->get_environment_types().size();
+		new_key.old_function = static_cast<const ClosureType*>(closure->get_type())->get_function();
+		if (new_key.argument_types.size() != new_key.old_function->get_arguments()) {
+			std::size_t expected_arguments = new_key.old_function->get_arguments() - 1;
 			if (object) {
 				expected_arguments -= 1;
 			}
@@ -364,14 +319,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, nullptr);
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			std::vector<const Expression*> environment_arguments;
-			for (std::size_t i = 0; i < new_key.old_function->get_environment_arguments(); ++i) {
-				const Type* argument_type = closure_type->get_environment_types()[i];
-				Argument* argument = new Argument(i, argument_type);
-				new_function->get_block()->add_expression(argument);
-				environment_arguments.push_back(argument);
-			}
-			const Expression* new_expression = evaluate(program, function_table, new_key, environment_arguments, new_function->get_block(), new_key.old_function->get_block());
+			const Expression* new_expression = evaluate(program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 			if (new_function->get_return_type() && new_function->get_return_type() != new_expression->get_type()) {
 				error(call, format("function does not return the declared return type %", print_type(new_function->get_return_type())));
 			}
@@ -385,7 +333,6 @@ public:
 		}
 		new_call->set_type(function_table[new_key]->get_return_type());
 		new_call->set_function(function_table[new_key]);
-		destination_block->add_expression(new_call);
 		return new_call;
 	}
 	const Expression* visit_closure_call(const ClosureCall& call) override {

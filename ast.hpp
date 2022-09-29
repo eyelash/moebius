@@ -718,10 +718,9 @@ public:
 class StructAccess: public Expression {
 	const Expression* struct_;
 	std::string field_name;
-	const Expression* function;
 public:
-	StructAccess(const Expression* struct_, const std::string& field_name, const Type* type = nullptr): Expression(type), struct_(struct_), field_name(field_name), function(nullptr) {}
-	StructAccess(const Expression* struct_, const StringView& field_name, const Expression* function, const Type* type = nullptr): Expression(type), struct_(struct_), field_name(field_name.begin(), field_name.end()), function(function) {}
+	StructAccess(const Expression* struct_, const std::string& field_name, const Type* type = nullptr): Expression(type), struct_(struct_), field_name(field_name) {}
+	StructAccess(const Expression* struct_, const StringView& field_name, const Type* type = nullptr): Expression(type), struct_(struct_), field_name(field_name.begin(), field_name.end()) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_access(*this);
 	}
@@ -730,9 +729,6 @@ public:
 	}
 	const std::string& get_field_name() const {
 		return field_name;
-	}
-	const Expression* get_function() const {
-		return function;
 	}
 };
 
@@ -786,31 +782,21 @@ public:
 
 class Function {
 	Block block;
-	std::size_t environment_arguments;
 	std::size_t arguments;
 	std::vector<const Type*> argument_types;
 	const Type* return_type;
 public:
 	const Function* next_function = nullptr;
-	Function(const Type* return_type = nullptr): environment_arguments(0), arguments(0), return_type(return_type) {}
-	Function(const std::vector<const Type*>& argument_types, const Type* return_type = nullptr): environment_arguments(0), arguments(argument_types.size()), argument_types(argument_types), return_type(return_type) {}
-	std::size_t add_environment_argument() {
-		return environment_arguments++;
-	}
+	Function(const Type* return_type = nullptr): arguments(0), return_type(return_type) {}
+	Function(const std::vector<const Type*>& argument_types, const Type* return_type = nullptr): arguments(argument_types.size()), argument_types(argument_types), return_type(return_type) {}
 	std::size_t add_argument() {
 		return arguments++;
 	}
 	void set_return_type(const Type* type) {
 		this->return_type = type;
 	}
-	std::size_t get_environment_arguments() const {
-		return environment_arguments;
-	}
 	std::size_t get_arguments() const {
 		return arguments;
-	}
-	std::size_t get_total_arguments() const {
-		return environment_arguments + arguments;
 	}
 	const std::vector<const Type*>& get_argument_types() const {
 		return argument_types;
@@ -863,26 +849,15 @@ public:
 	}
 };
 
-enum class ArgumentType {
-	ARGUMENT,
-	ENVIRONMENT,
-	SELF
-};
-
 class Argument: public Expression {
 	std::size_t index;
-	ArgumentType argument_type;
 public:
-	Argument(std::size_t index, ArgumentType argument_type): Expression(nullptr), index(index), argument_type(argument_type) {}
-	Argument(std::size_t index, const Type* type): Expression(type), index(index), argument_type(ArgumentType::ARGUMENT) {}
+	Argument(std::size_t index, const Type* type = nullptr): Expression(type), index(index) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_argument(*this);
 	}
 	std::size_t get_index() const {
 		return index;
-	}
-	ArgumentType get_argument_type() const {
-		return argument_type;
 	}
 };
 

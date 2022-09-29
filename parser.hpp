@@ -71,18 +71,21 @@ class Scope {
 	Scope*& current_scope;
 	Scope* parent;
 	std::map<StringView, const Expression*> variables;
-	Function* function;
 	Closure* closure;
+	const Expression* self = nullptr;
 	Block* block;
 public:
-	Scope(Scope*& current_scope, Function* function, Closure* closure, Block* block): current_scope(current_scope), function(function), closure(closure), block(block) {
+	Scope(Scope*& current_scope, Closure* closure, Block* block): current_scope(current_scope), closure(closure), block(block) {
 		parent = current_scope;
 		current_scope = this;
 	}
-	Scope(Scope*& current_scope, Block* block): Scope(current_scope, nullptr, nullptr, block) {}
-	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr, nullptr) {}
+	Scope(Scope*& current_scope, Block* block): Scope(current_scope, nullptr, block) {}
+	Scope(Scope*& current_scope): Scope(current_scope, nullptr, nullptr) {}
 	~Scope() {
 		current_scope = parent;
+	}
+	void set_self(const Expression* self) {
+		this->self = self;
 	}
 	void add_variable(const StringView& name, const Expression* value) {
 		variables[name] = value;
@@ -95,9 +98,8 @@ public:
 		if (closure) {
 			if (parent) {
 				if (const Expression* expression = parent->look_up(name)) {
-					function->add_environment_argument();
 					const std::size_t index = closure->add_environment_expression(expression);
-					const Expression* argument = create<Argument>(index, ArgumentType::ENVIRONMENT);
+					const Expression* argument = create<ClosureAccess>(self, index);
 					add_variable(name, argument);
 					return argument;
 				}
@@ -497,11 +499,12 @@ class MoebiusParser: private Parser {
 			Closure* closure = new Closure(function);
 			closure->set_position(position);
 			{
-				Scope scope(current_scope, function, closure, function->get_block());
+				Scope scope(current_scope, closure, function->get_block());
+				current_scope->set_self(current_scope->create<Argument>(function->add_argument()));
 				while (parse_not(")")) {
 					const StringView argument_name = parse_identifier();
-					const std::size_t index = function->add_argument();
-					current_scope->add_variable(argument_name, current_scope->create<Argument>(index, ArgumentType::ARGUMENT));
+					const Expression* argument = current_scope->create<Argument>(function->add_argument());
+					current_scope->add_variable(argument_name, argument);
 					parse_white_space();
 					if (!parse(",")) {
 						break;
@@ -679,8 +682,7 @@ class MoebiusParser: private Parser {
 						parse_white_space();
 					}
 					else {
-						const Expression* function = current_scope->look_up(name);
-						StructAccess* struct_access = current_scope->create<StructAccess>(expression, name, function);
+						StructAccess* struct_access = current_scope->create<StructAccess>(expression, name);
 						struct_access->set_position(position);
 						expression = struct_access;
 					}
@@ -800,13 +802,13 @@ class MoebiusParser: private Parser {
 				Closure* closure = new Closure(function);
 				closure->set_position(position);
 				{
-					Scope scope(current_scope, function, closure, function->get_block());
-					const Expression* self = current_scope->create<Argument>(0, ArgumentType::SELF);
+					Scope scope(current_scope, closure, function->get_block());
+					const Expression* self = current_scope->create<Argument>(function->add_argument());
+					current_scope->set_self(self);
 					current_scope->add_variable(name, self);
 					while (parse_not(")")) {
 						auto [argument_name, type_assert_position, argument_type] = parse_name();
-						const std::size_t index = function->add_argument();
-						const Expression* argument = current_scope->create<Argument>(index, ArgumentType::ARGUMENT);
+						const Expression* argument = current_scope->create<Argument>(function->add_argument());
 						current_scope->add_variable(argument_name, argument);
 						if (argument_type) {
 							TypeAssert* type_assert = current_scope->create<TypeAssert>(argument, argument_type);
