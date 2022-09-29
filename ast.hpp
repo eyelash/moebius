@@ -301,6 +301,7 @@ class ClosureCall;
 class MethodCall;
 class FunctionCall;
 class Intrinsic;
+class VoidLiteral;
 class Bind;
 class Return;
 class TypeLiteral;
@@ -364,6 +365,9 @@ public:
 		return T();
 	}
 	virtual T visit_intrinsic(const Intrinsic& intrinsic) {
+		return T();
+	}
+	virtual T visit_void_literal(const VoidLiteral& void_literal) {
 		return T();
 	}
 	virtual T visit_bind(const Bind& bind) {
@@ -470,6 +474,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_intrinsic(const Intrinsic& intrinsic) override {
 			result = visitor.visit_intrinsic(intrinsic);
+		}
+		void visit_void_literal(const VoidLiteral& void_literal) override {
+			result = visitor.visit_void_literal(void_literal);
 		}
 		void visit_bind(const Bind& bind) override {
 			result = visitor.visit_bind(bind);
@@ -948,6 +955,14 @@ public:
 	}
 	const std::vector<const Expression*>& get_arguments() const {
 		return arguments;
+	}
+};
+
+class VoidLiteral: public Expression {
+public:
+	VoidLiteral(): Expression(TypeInterner::get_void_type()) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_void_literal(*this);
 	}
 };
 

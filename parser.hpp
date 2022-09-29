@@ -566,6 +566,11 @@ class MoebiusParser: private Parser {
 			expression->set_position(position);
 			return expression;
 		}
+		else if (parse("void", alphanumeric)) {
+			Expression* expression = current_scope->create<VoidLiteral>();
+			expression->set_position(position);
+			return expression;
+		}
 		else if (parse("Int", alphanumeric)) {
 			Expression* expression = current_scope->create<TypeLiteral>(TypeInterner::get_int_type());
 			expression->set_position(position);

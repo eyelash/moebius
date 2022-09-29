@@ -209,6 +209,20 @@ public:
 				return create<StructAccess>(struct_, struct_access.get_field_name(), type);
 			}
 		}
+		if (struct_->get_type_id() == TypeId::TYPE) {
+			const Type* type = static_cast<const TypeType*>(struct_->get_type())->get_type();
+			if (type->get_id() == TypeId::ENUM) {
+				const EnumType* enum_type = static_cast<const EnumType*>(type);
+				if (enum_type->has_case(struct_access.get_field_name())) {
+					const std::size_t index = enum_type->get_index(struct_access.get_field_name());
+					if (enum_type->get_cases()[index].second != TypeInterner::get_void_type()) {
+						error(struct_access, format("case \"%\" requires an argument", struct_access.get_field_name()));
+					}
+					VoidLiteral* void_literal = create<VoidLiteral>();
+					return create<EnumLiteral>(void_literal, index, enum_type);
+				}
+			}
+		}
 		error(struct_access, "invalid struct access");
 	}
 	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
@@ -607,6 +621,9 @@ public:
 			return create_intrinsic(intrinsic, TypeInterner::get_void_type());
 		}
 	}
+	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+		return create<VoidLiteral>();
+	}
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
 		const Expression* right = expression_table[bind.get_right()];
@@ -810,6 +827,9 @@ public:
 			new_intrinsic->add_argument(expression_table[argument]);
 		}
 		return new_intrinsic;
+	}
+	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+		return create<VoidLiteral>();
 	}
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
@@ -1019,6 +1039,9 @@ class DeadCodeElimination {
 				new_intrinsic->add_argument(expression_table[argument]);
 			}
 			return new_intrinsic;
+		}
+		const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+			return create<VoidLiteral>();
 		}
 		const Expression* visit_bind(const Bind& bind) override {
 			const Expression* left = expression_table[bind.get_left()];
@@ -1240,6 +1263,9 @@ class Pass2 {
 			}
 			return new_intrinsic;
 		}
+		const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+			return create<VoidLiteral>();
+		}
 		const Expression* visit_bind(const Bind& bind) override {
 			const Expression* left = expression_table[bind.get_left()];
 			const Expression* right = expression_table[bind.get_right()];
@@ -1428,6 +1454,9 @@ public:
 			new_intrinsic->add_argument(expression_table[argument]);
 		}
 		return new_intrinsic;
+	}
+	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+		return create<VoidLiteral>();
 	}
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
@@ -1809,6 +1838,9 @@ public:
 			}
 		}
 		return result;
+	}
+	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+		return create<VoidLiteral>();
 	}
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
