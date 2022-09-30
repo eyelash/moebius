@@ -578,12 +578,12 @@ public:
 		else if (intrinsic.name_equals("stringIteratorIsValid")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %.v1 < %.v0.length;", type, result, iterator, iterator));
+			printer.println(format("% % = %.v1 < %.v0->length;", type, result, iterator, iterator));
 		}
 		else if (intrinsic.name_equals("stringIteratorGet")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %.v0.elements[%.v1];", type, result, iterator, iterator));
+			printer.println(format("% % = %.v0->elements[%.v1];", type, result, iterator, iterator));
 		}
 		else if (intrinsic.name_equals("stringIteratorNext")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
