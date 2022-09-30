@@ -305,6 +305,8 @@ class VoidLiteral;
 class Bind;
 class Return;
 class TypeLiteral;
+class StructTypeLiteral;
+class EnumTypeLiteral;
 class TypeAssert;
 class ReturnType;
 
@@ -377,6 +379,12 @@ public:
 		return T();
 	}
 	virtual T visit_type_literal(const TypeLiteral& type_literal) {
+		return T();
+	}
+	virtual T visit_struct_type_literal(const StructTypeLiteral& struct_type_literal) {
+		return T();
+	}
+	virtual T visit_enum_type_literal(const EnumTypeLiteral& enum_type_literal) {
 		return T();
 	}
 	virtual T visit_type_assert(const TypeAssert& type_assert) {
@@ -486,6 +494,12 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_type_literal(const TypeLiteral& type_literal) override {
 			result = visitor.visit_type_literal(type_literal);
+		}
+		void visit_struct_type_literal(const StructTypeLiteral& struct_type_literal) override {
+			result = visitor.visit_struct_type_literal(struct_type_literal);
+		}
+		void visit_enum_type_literal(const EnumTypeLiteral& enum_type_literal) override {
+			result = visitor.visit_enum_type_literal(enum_type_literal);
 		}
 		void visit_type_assert(const TypeAssert& type_assert) override {
 			result = visitor.visit_type_assert(type_assert);
@@ -993,6 +1007,34 @@ public:
 	}
 };
 
+class StructTypeLiteral: public Expression {
+	std::vector<std::pair<std::string, const Expression*>> fields;
+public:
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_struct_type_literal(*this);
+	}
+	void add_field(const StringView& field_name, const Expression* field) {
+		fields.emplace_back(std::string(field_name.begin(), field_name.end()), field);
+	}
+	const std::vector<std::pair<std::string, const Expression*>>& get_fields() const {
+		return fields;
+	}
+};
+
+class EnumTypeLiteral: public Expression {
+	std::vector<std::pair<std::string, const Expression*>> cases;
+public:
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_enum_type_literal(*this);
+	}
+	void add_case(const StringView& case_name, const Expression* case_) {
+		cases.emplace_back(std::string(case_name.begin(), case_name.end()), case_);
+	}
+	const std::vector<std::pair<std::string, const Expression*>>& get_cases() const {
+		return cases;
+	}
+};
+
 class TypeAssert: public Expression {
 	const Expression* expression;
 	const Expression* type;
@@ -1117,26 +1159,26 @@ public:
 			}
 			case TypeId::STRUCT: {
 				const StructType* struct_type = static_cast<const StructType*>(type);
-				p.print("Struct({");
+				p.print("struct{");
 				for (std::size_t i = 0; i < struct_type->get_fields().size(); ++i) {
 					const std::string& field_name = struct_type->get_fields()[i].first;
 					const Type* field_type = struct_type->get_fields()[i].second;
 					if (i > 0) p.print(",");
 					p.print(format("%:%", field_name, PrintType(field_type)));
 				}
-				p.print("})");
+				p.print("}");
 				break;
 			}
 			case TypeId::ENUM: {
 				const EnumType* enum_type = static_cast<const EnumType*>(type);
-				p.print("Enum({");
+				p.print("enum{");
 				for (std::size_t i = 0; i < enum_type->get_cases().size(); ++i) {
 					const std::string& case_name = enum_type->get_cases()[i].first;
 					const Type* case_type = enum_type->get_cases()[i].second;
 					if (i > 0) p.print(",");
 					p.print(format("%:%", case_name, PrintType(case_type)));
 				}
-				p.print("})");
+				p.print("}");
 				break;
 			}
 			case TypeId::TUPLE: {

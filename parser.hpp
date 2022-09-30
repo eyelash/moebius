@@ -62,8 +62,6 @@ constexpr const char* intrinsics[] = {
 	"stringIteratorNext",
 	"typeOf",
 	"arrayType",
-	"structType",
-	"enumType",
 	"tupleType"
 };
 
@@ -519,6 +517,57 @@ class MoebiusParser: private Parser {
 			current_scope->add_expression(closure);
 			return closure;
 		}
+		else if (parse("struct", alphanumeric)) {
+			parse_white_space();
+			expect("{");
+			parse_white_space();
+			StructTypeLiteral* struct_type_literal = new StructTypeLiteral();
+			struct_type_literal->set_position(position);
+			while (parse_not("}")) {
+				const StringView field_name = parse_identifier();
+				parse_white_space();
+				expect(":");
+				parse_white_space();
+				const Expression* field_type = parse_expression();
+				struct_type_literal->add_field(field_name, field_type);
+				parse_white_space();
+				if (!parse(",")) {
+					break;
+				}
+				parse_white_space();
+			}
+			expect("}");
+			current_scope->add_expression(struct_type_literal);
+			return struct_type_literal;
+		}
+		else if (parse("enum", alphanumeric)) {
+			parse_white_space();
+			expect("{");
+			parse_white_space();
+			EnumTypeLiteral* enum_type_literal = new EnumTypeLiteral();
+			enum_type_literal->set_position(position);
+			while (parse_not("}")) {
+				const StringView case_name = parse_identifier();
+				parse_white_space();
+				if (parse(":")) {
+					parse_white_space();
+					const Expression* case_type = parse_expression();
+					parse_white_space();
+					enum_type_literal->add_case(case_name, case_type);
+				}
+				else {
+					const Expression* case_type = current_scope->create<TypeLiteral>(TypeInterner::get_void_type());
+					enum_type_literal->add_case(case_name, case_type);
+				}
+				if (!parse(",")) {
+					break;
+				}
+				parse_white_space();
+			}
+			expect("}");
+			current_scope->add_expression(enum_type_literal);
+			return enum_type_literal;
+		}
 		else if (parse("\"")) {
 			const Expression* left = parse_string_segment();
 			while (parse_not("\"")) {
@@ -850,15 +899,15 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				expect("{");
 				parse_white_space();
-				StructLiteral* struct_literal = new StructLiteral();
-				struct_literal->set_position(position);
+				StructTypeLiteral* struct_type_literal = new StructTypeLiteral();
+				struct_type_literal->set_position(position);
 				while (parse_not("}")) {
 					const StringView field_name = parse_identifier();
 					parse_white_space();
 					expect(":");
 					parse_white_space();
 					const Expression* field_type = parse_expression();
-					struct_literal->add_field(field_name, field_type);
+					struct_type_literal->add_field(field_name, field_type);
 					parse_white_space();
 					if (!parse(",")) {
 						break;
@@ -867,11 +916,8 @@ class MoebiusParser: private Parser {
 				}
 				expect("}");
 				parse_white_space();
-				current_scope->add_expression(struct_literal);
-				Intrinsic* intrinsic = current_scope->create<Intrinsic>("structType");
-				intrinsic->set_position(position);
-				intrinsic->add_argument(struct_literal);
-				current_scope->add_variable(name, intrinsic);
+				current_scope->add_expression(struct_type_literal);
+				current_scope->add_variable(name, struct_type_literal);
 			}
 			else if (parse("enum", alphanumeric)) {
 				parse_white_space();
@@ -879,20 +925,20 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				expect("{");
 				parse_white_space();
-				StructLiteral* struct_literal = new StructLiteral();
-				struct_literal->set_position(position);
+				EnumTypeLiteral* enum_type_literal = new EnumTypeLiteral();
+				enum_type_literal->set_position(position);
 				while (parse_not("}")) {
-					const StringView field_name = parse_identifier();
+					const StringView case_name = parse_identifier();
 					parse_white_space();
 					if (parse(":")) {
 						parse_white_space();
-						const Expression* field_type = parse_expression();
+						const Expression* case_type = parse_expression();
 						parse_white_space();
-						struct_literal->add_field(field_name, field_type);
+						enum_type_literal->add_case(case_name, case_type);
 					}
 					else {
-						const Expression* field_type = current_scope->create<TypeLiteral>(TypeInterner::get_void_type());
-						struct_literal->add_field(field_name, field_type);
+						const Expression* case_type = current_scope->create<TypeLiteral>(TypeInterner::get_void_type());
+						enum_type_literal->add_case(case_name, case_type);
 					}
 					if (!parse(",")) {
 						break;
@@ -901,11 +947,8 @@ class MoebiusParser: private Parser {
 				}
 				expect("}");
 				parse_white_space();
-				current_scope->add_expression(struct_literal);
-				Intrinsic* intrinsic = current_scope->create<Intrinsic>("enumType");
-				intrinsic->set_position(position);
-				intrinsic->add_argument(struct_literal);
-				current_scope->add_variable(name, intrinsic);
+				current_scope->add_expression(enum_type_literal);
+				current_scope->add_variable(name, enum_type_literal);
 			}
 			else {
 				break;

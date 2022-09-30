@@ -573,43 +573,6 @@ public:
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
 		}
-		else if (intrinsic.name_equals("enumType")) {
-			ensure_argument_count(intrinsic, 1);
-			const Expression* struct_type_expression = expression_table[intrinsic.get_arguments()[0]];
-			if (struct_type_expression->get_type_id() != TypeId::STRUCT) {
-				error(intrinsic, "argument of enumType must be a struct");
-			}
-			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
-			EnumType new_enum_type;
-			for (const auto& field: struct_type->get_fields()) {
-				if (field.second->get_id() != TypeId::TYPE) {
-					error(intrinsic, "enum cases must be types");
-				}
-				const Type* field_type = static_cast<const TypeType*>(field.second)->get_type();
-				if (field_type->get_id() == TypeId::TYPE) {
-					error(intrinsic, "enum cases must not be types of types");
-				}
-				const std::string& field_name = field.first;
-				new_enum_type.add_case(field_name, field_type);
-			}
-			return create<TypeLiteral>(TypeInterner::intern(&new_enum_type));
-		}
-		else if (intrinsic.name_equals("tupleType")) {
-			ensure_argument_count(intrinsic, 1);
-			const Expression* tuple_type_expression = expression_table[intrinsic.get_arguments()[0]];
-			if (tuple_type_expression->get_type_id() != TypeId::TUPLE) {
-				error(intrinsic, "argument of tupleType must be a tuple");
-			}
-			const TupleType* tuple_type = static_cast<const TupleType*>(tuple_type_expression->get_type());
-			TupleType new_tuple_type;
-			for (const Type* element: tuple_type->get_element_types()) {
-				if (element->get_id() != TypeId::TYPE) {
-					error(intrinsic, "tuple elements must be types");
-				}
-				new_tuple_type.add_element_type(static_cast<const TypeType*>(element)->get_type());
-			}
-			return create<TypeLiteral>(TypeInterner::intern(&new_tuple_type));
-		}
 		else if (intrinsic.name_equals("copy")) {
 			const Type* type = expression_table[intrinsic.get_arguments()[0]]->get_type();
 			return create_intrinsic(intrinsic, type);
@@ -644,6 +607,32 @@ public:
 	const Expression* visit_type_literal(const TypeLiteral& type_literal) override {
 		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
 		return create<TypeLiteral>(type);
+	}
+	const Expression* visit_struct_type_literal(const StructTypeLiteral& struct_type_literal) override {
+		StructType new_struct_type;
+		for (const auto& field: struct_type_literal.get_fields()) {
+			const std::string& field_name = field.first;
+			const Expression* type_expression = expression_table[field.second];
+			if (type_expression->get_type_id() != TypeId::TYPE) {
+				error(struct_type_literal, "struct fields must be types");
+			}
+			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+			new_struct_type.add_field(field_name, type);
+		}
+		return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
+	}
+	const Expression* visit_enum_type_literal(const EnumTypeLiteral& enum_type_literal) override {
+		EnumType new_enum_type;
+		for (const auto& case_: enum_type_literal.get_cases()) {
+			const std::string& case_name = case_.first;
+			const Expression* type_expression = expression_table[case_.second];
+			if (type_expression->get_type_id() != TypeId::TYPE) {
+				error(enum_type_literal, "enum cases must be types");
+			}
+			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+			new_enum_type.add_case(case_name, type);
+		}
+		return create<TypeLiteral>(TypeInterner::intern(&new_enum_type));
 	}
 	const Expression* visit_type_assert(const TypeAssert& type_assert) override {
 		const Expression* expression = expression_table[type_assert.get_expression()];
