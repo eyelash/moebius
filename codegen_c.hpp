@@ -60,19 +60,22 @@ class CodegenC: public Visitor<Variable> {
 				return iterator->second;
 			}
 			switch (type->get_id()) {
-				case TypeId::INT: {
+			case TypeId::INT:
+				{
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef int32_t %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
-				case TypeId::CHAR: {
+			case TypeId::CHAR:
+				{
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef char %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
-				case TypeId::ENUM: {
+			case TypeId::ENUM:
+				{
 					const Type number_type = get_type(TypeInterner::get_int_type());
 					const std::vector<std::pair<std::string, const ::Type*>>& cases = static_cast<const EnumType*>(type)->get_cases();
 					for (const auto& case_type: cases) {
@@ -93,7 +96,8 @@ class CodegenC: public Visitor<Variable> {
 					generate_enum_functions(type);
 					return index;
 				}
-				case TypeId::TUPLE: {
+			case TypeId::TUPLE:
+				{
 					const std::vector<const ::Type*>& element_types = static_cast<const TupleType*>(type)->get_element_types();
 					for (const ::Type* element_type: element_types) {
 						get_type(element_type);
@@ -108,8 +112,9 @@ class CodegenC: public Visitor<Variable> {
 					generate_tuple_functions(type);
 					return index;
 				}
-				case TypeId::ARRAY:
-				case TypeId::STRING: {
+			case TypeId::ARRAY:
+			case TypeId::STRING:
+				{
 					const Type element_type = get_type(get_element_type(type));
 					const Type number_type = get_type(TypeInterner::get_int_type());
 					const std::size_t index = types.size();
@@ -122,7 +127,8 @@ class CodegenC: public Visitor<Variable> {
 					generate_array_functions(type, type->get_id() == TypeId::STRING);
 					return index;
 				}
-				case TypeId::STRING_ITERATOR: {
+			case TypeId::STRING_ITERATOR:
+				{
 					TupleType tuple_type;
 					tuple_type.add_element_type(TypeInterner::get_string_type());
 					tuple_type.add_element_type(TypeInterner::get_int_type());
@@ -132,15 +138,15 @@ class CodegenC: public Visitor<Variable> {
 					types[type] = index;
 					return index;
 				}
-				case TypeId::VOID: {
+			case TypeId::VOID:
+				{
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef void %;", Type(index)));
 					types[type] = index;
 					return index;
 				}
-				default: {
-					return 0;
-				}
+			default:
+				return 0;
 			}
 		}
 		void generate_enum_functions(const ::Type* type) {

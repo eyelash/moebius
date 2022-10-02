@@ -968,7 +968,7 @@ public:
 		const Expression* expression = parse_scope();
 		current_scope->create<Return>(expression);
 		parse_white_space();
-		if (parse(any_char)) {
+		if (copy().parse(any_char)) {
 			error("unexpected character at end of program");
 		}
 		return main_function;

@@ -8,17 +8,18 @@ class CodegenX86: public Visitor<std::uint32_t> {
 	using Jump = typename A::Jump;
 	static std::uint32_t get_type_size(const Type* type) {
 		switch (type->get_id()) {
-			case TypeId::INT:
-				return 4;
-			case TypeId::TUPLE: {
+		case TypeId::INT:
+			return 4;
+		case TypeId::TUPLE:
+			{
 				std::uint32_t size = 0;
 				for (const Type* element_type: static_cast<const TupleType*>(type)->get_element_types()) {
 					size += get_type_size(element_type);
 				}
 				return size;
 			}
-			default:
-				return 0;
+		default:
+			return 0;
 		}
 	}
 	static std::uint32_t get_input_size(const Function* function) {
@@ -80,64 +81,64 @@ public:
 		assembler.MOV(EBX, PTR(EBP, right));
 		const std::uint32_t result = allocate(4);
 		switch (binary_expression.get_operation()) {
-			case BinaryOperation::ADD:
-				assembler.ADD(EAX, EBX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::SUB:
-				assembler.SUB(EAX, EBX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::MUL:
-				assembler.IMUL(EBX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::DIV:
-				assembler.CDQ();
-				assembler.IDIV(EBX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::REM:
-				assembler.CDQ();
-				assembler.IDIV(EBX);
-				assembler.MOV(PTR(EBP, result), EDX);
-				break;
-			case BinaryOperation::EQ:
-				assembler.CMP(EAX, EBX);
-				assembler.SETE(EAX);
-				assembler.MOVZX(EAX, EAX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::NE:
-				assembler.CMP(EAX, EBX);
-				assembler.SETNE(EAX);
-				assembler.MOVZX(EAX, EAX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::LT:
-				assembler.CMP(EAX, EBX);
-				assembler.SETL(EAX);
-				assembler.MOVZX(EAX, EAX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::LE:
-				assembler.CMP(EAX, EBX);
-				assembler.SETLE(EAX);
-				assembler.MOVZX(EAX, EAX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::GT:
-				assembler.CMP(EAX, EBX);
-				assembler.SETG(EAX);
-				assembler.MOVZX(EAX, EAX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
-			case BinaryOperation::GE:
-				assembler.CMP(EAX, EBX);
-				assembler.SETGE(EAX);
-				assembler.MOVZX(EAX, EAX);
-				assembler.MOV(PTR(EBP, result), EAX);
-				break;
+		case BinaryOperation::ADD:
+			assembler.ADD(EAX, EBX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::SUB:
+			assembler.SUB(EAX, EBX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::MUL:
+			assembler.IMUL(EBX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::DIV:
+			assembler.CDQ();
+			assembler.IDIV(EBX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::REM:
+			assembler.CDQ();
+			assembler.IDIV(EBX);
+			assembler.MOV(PTR(EBP, result), EDX);
+			break;
+		case BinaryOperation::EQ:
+			assembler.CMP(EAX, EBX);
+			assembler.SETE(EAX);
+			assembler.MOVZX(EAX, EAX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::NE:
+			assembler.CMP(EAX, EBX);
+			assembler.SETNE(EAX);
+			assembler.MOVZX(EAX, EAX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::LT:
+			assembler.CMP(EAX, EBX);
+			assembler.SETL(EAX);
+			assembler.MOVZX(EAX, EAX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::LE:
+			assembler.CMP(EAX, EBX);
+			assembler.SETLE(EAX);
+			assembler.MOVZX(EAX, EAX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::GT:
+			assembler.CMP(EAX, EBX);
+			assembler.SETG(EAX);
+			assembler.MOVZX(EAX, EAX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
+		case BinaryOperation::GE:
+			assembler.CMP(EAX, EBX);
+			assembler.SETGE(EAX);
+			assembler.MOVZX(EAX, EAX);
+			assembler.MOV(PTR(EBP, result), EAX);
+			break;
 		}
 		return result;
 	}

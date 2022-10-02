@@ -54,7 +54,6 @@ func quicksort(a: Array(Int), lo: Int, hi: Int): Array(Int) =
 	}
 
 let a = [3, 14, 15, 92, 65, 35, 89, 79, 32, 38, 46]
-let a = a.swap(0, 1)
 let hi = a.len()
 let a = quicksort(a, 0, hi)
 return println("$a")

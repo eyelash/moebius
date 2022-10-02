@@ -584,7 +584,7 @@ public:
 			return create_intrinsic(intrinsic, TypeInterner::get_void_type());
 		}
 	}
-	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+	const Expression* visit_void_literal(const VoidLiteral&) override {
 		return create<VoidLiteral>();
 	}
 	const Expression* visit_bind(const Bind& bind) override {
@@ -817,7 +817,7 @@ public:
 		}
 		return new_intrinsic;
 	}
-	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+	const Expression* visit_void_literal(const VoidLiteral&) override {
 		return create<VoidLiteral>();
 	}
 	const Expression* visit_bind(const Bind& bind) override {
@@ -1029,7 +1029,7 @@ class DeadCodeElimination {
 			}
 			return new_intrinsic;
 		}
-		const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+		const Expression* visit_void_literal(const VoidLiteral&) override {
 			return create<VoidLiteral>();
 		}
 		const Expression* visit_bind(const Bind& bind) override {
@@ -1083,7 +1083,7 @@ class Pass2 {
 		FunctionTable& function_table;
 		const Function* function;
 	public:
-		Analyze(FunctionTable& function_table, const Function* function): function_table(function_table) {}
+		Analyze(FunctionTable& function_table, const Function* function): function_table(function_table), function(function) {}
 		void evaluate(const Block& block) {
 			for (const Expression* expression: block) {
 				visit(*this, expression);
@@ -1252,7 +1252,7 @@ class Pass2 {
 			}
 			return new_intrinsic;
 		}
-		const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+		const Expression* visit_void_literal(const VoidLiteral&) override {
 			return create<VoidLiteral>();
 		}
 		const Expression* visit_bind(const Bind& bind) override {
@@ -1444,7 +1444,7 @@ public:
 		}
 		return new_intrinsic;
 	}
-	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+	const Expression* visit_void_literal(const VoidLiteral&) override {
 		return create<VoidLiteral>();
 	}
 	const Expression* visit_bind(const Bind& bind) override {
@@ -1828,7 +1828,7 @@ public:
 		}
 		return result;
 	}
-	const Expression* visit_void_literal(const VoidLiteral& void_literal) override {
+	const Expression* visit_void_literal(const VoidLiteral&) override {
 		return create<VoidLiteral>();
 	}
 	const Expression* visit_bind(const Bind& bind) override {

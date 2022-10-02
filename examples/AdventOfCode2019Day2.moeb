@@ -6,7 +6,7 @@ func putStrLn(s) = putStr(s) >> putChar('\n')
 
 func length(array) = @arrayLength(array)
 func get(array, index) = @arrayGet(array, index)
-func set(array, index, newElement) = @arraySplice(array, index, 1, newElement)
+func set(array, index, element) = @arraySplice(array, index, 1, element)
 func push(array, element) =
 	if (@typeOf(array) == String)
 		@stringPush(array, element)

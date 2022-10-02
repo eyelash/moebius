@@ -312,85 +312,85 @@ class ReturnType;
 
 template <class T> class Visitor {
 public:
-	virtual T visit_int_literal(const IntLiteral& int_literal) {
+	virtual T visit_int_literal(const IntLiteral&) {
 		return T();
 	}
-	virtual T visit_binary_expression(const BinaryExpression& binary_expression) {
+	virtual T visit_binary_expression(const BinaryExpression&) {
 		return T();
 	}
-	virtual T visit_array_literal(const ArrayLiteral& array_literal) {
+	virtual T visit_array_literal(const ArrayLiteral&) {
 		return T();
 	}
-	virtual T visit_string_literal(const StringLiteral& string_literal) {
+	virtual T visit_string_literal(const StringLiteral&) {
 		return T();
 	}
-	virtual T visit_if(const If& if_) {
+	virtual T visit_if(const If&) {
 		return T();
 	}
-	virtual T visit_tuple_literal(const TupleLiteral& tuple_literal) {
+	virtual T visit_tuple_literal(const TupleLiteral&) {
 		return T();
 	}
-	virtual T visit_tuple_access(const TupleAccess& tuple_access) {
+	virtual T visit_tuple_access(const TupleAccess&) {
 		return T();
 	}
-	virtual T visit_struct_literal(const StructLiteral& struct_literal) {
+	virtual T visit_struct_literal(const StructLiteral&) {
 		return T();
 	}
-	virtual T visit_struct_access(const StructAccess& struct_access) {
+	virtual T visit_struct_access(const StructAccess&) {
 		return T();
 	}
-	virtual T visit_enum_literal(const EnumLiteral& enum_literal) {
+	virtual T visit_enum_literal(const EnumLiteral&) {
 		return T();
 	}
-	virtual T visit_switch(const Switch& switch_) {
+	virtual T visit_switch(const Switch&) {
 		return T();
 	}
-	virtual T visit_case_variable(const CaseVariable& case_variable) {
+	virtual T visit_case_variable(const CaseVariable&) {
 		return T();
 	}
-	virtual T visit_closure(const Closure& closure) {
+	virtual T visit_closure(const Closure&) {
 		return T();
 	}
-	virtual T visit_closure_access(const ClosureAccess& closure_access) {
+	virtual T visit_closure_access(const ClosureAccess&) {
 		return T();
 	}
-	virtual T visit_argument(const Argument& argument) {
+	virtual T visit_argument(const Argument&) {
 		return T();
 	}
-	virtual T visit_closure_call(const ClosureCall& call) {
+	virtual T visit_closure_call(const ClosureCall&) {
 		return T();
 	}
-	virtual T visit_method_call(const MethodCall& call) {
+	virtual T visit_method_call(const MethodCall&) {
 		return T();
 	}
-	virtual T visit_function_call(const FunctionCall& call) {
+	virtual T visit_function_call(const FunctionCall&) {
 		return T();
 	}
-	virtual T visit_intrinsic(const Intrinsic& intrinsic) {
+	virtual T visit_intrinsic(const Intrinsic&) {
 		return T();
 	}
-	virtual T visit_void_literal(const VoidLiteral& void_literal) {
+	virtual T visit_void_literal(const VoidLiteral&) {
 		return T();
 	}
-	virtual T visit_bind(const Bind& bind) {
+	virtual T visit_bind(const Bind&) {
 		return T();
 	}
-	virtual T visit_return(const Return& return_) {
+	virtual T visit_return(const Return&) {
 		return T();
 	}
-	virtual T visit_type_literal(const TypeLiteral& type_literal) {
+	virtual T visit_type_literal(const TypeLiteral&) {
 		return T();
 	}
-	virtual T visit_struct_type_literal(const StructTypeLiteral& struct_type_literal) {
+	virtual T visit_struct_type_literal(const StructTypeLiteral&) {
 		return T();
 	}
-	virtual T visit_enum_type_literal(const EnumTypeLiteral& enum_type_literal) {
+	virtual T visit_enum_type_literal(const EnumTypeLiteral&) {
 		return T();
 	}
-	virtual T visit_type_assert(const TypeAssert& type_assert) {
+	virtual T visit_type_assert(const TypeAssert&) {
 		return T();
 	}
-	virtual T visit_return_type(const ReturnType& return_type) {
+	virtual T visit_return_type(const ReturnType&) {
 		return T();
 	}
 };
@@ -1149,15 +1149,14 @@ public:
 	PrintType(const Type* type): type(type) {}
 	void print(const Printer& p) const {
 		switch (type->get_id()) {
-			case TypeId::INT: {
-				p.print("Int");
-				break;
-			}
-			case TypeId::CLOSURE: {
-				p.print("Function");
-				break;
-			}
-			case TypeId::STRUCT: {
+		case TypeId::INT:
+			p.print("Int");
+			break;
+		case TypeId::CLOSURE:
+			p.print("Function");
+			break;
+		case TypeId::STRUCT:
+			{
 				const StructType* struct_type = static_cast<const StructType*>(type);
 				p.print("struct{");
 				for (std::size_t i = 0; i < struct_type->get_fields().size(); ++i) {
@@ -1169,7 +1168,8 @@ public:
 				p.print("}");
 				break;
 			}
-			case TypeId::ENUM: {
+		case TypeId::ENUM:
+			{
 				const EnumType* enum_type = static_cast<const EnumType*>(type);
 				p.print("enum{");
 				for (std::size_t i = 0; i < enum_type->get_cases().size(); ++i) {
@@ -1181,7 +1181,8 @@ public:
 				p.print("}");
 				break;
 			}
-			case TypeId::TUPLE: {
+		case TypeId::TUPLE:
+			{
 				const TupleType* tuple_type = static_cast<const TupleType*>(type);
 				p.print("Tuple((");
 				for (std::size_t i = 0; i < tuple_type->get_element_types().size(); ++i) {
@@ -1192,31 +1193,29 @@ public:
 				p.print("))");
 				break;
 			}
-			case TypeId::ARRAY: {
+		case TypeId::ARRAY:
+			{
 				const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
 				p.print(format("Array(%)", PrintType(element_type)));
 				break;
 			}
-			case TypeId::STRING: {
-				p.print("String");
-				break;
-			}
-			case TypeId::STRING_ITERATOR: {
-				p.print("StringIterator");
-				break;
-			}
-			case TypeId::VOID: {
-				p.print("Void");
-				break;
-			}
-			case TypeId::TYPE: {
+		case TypeId::STRING:
+			p.print("String");
+			break;
+		case TypeId::STRING_ITERATOR:
+			p.print("StringIterator");
+			break;
+		case TypeId::VOID:
+			p.print("Void");
+			break;
+		case TypeId::TYPE:
+			{
 				const Type* type_type = static_cast<const TypeType*>(type)->get_type();
 				p.print(format("Type(%)", PrintType(type_type)));
 				break;
 			}
-			default: {
-				break;
-			}
+		default:
+			break;
 		}
 	}
 };
