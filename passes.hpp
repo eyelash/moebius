@@ -74,6 +74,10 @@ class Pass1: public Visitor<const Expression*> {
 		GetInt visitor;
 		return visit(visitor, expression);
 	}
+	static const ArrayLiteral* get_array_literal(const Expression* expression) {
+		GetArray visitor;
+		return visit(visitor, expression);
+	}
 	static const StringLiteral* get_string_literal(const Expression* expression) {
 		GetString visitor;
 		return visit(visitor, expression);
@@ -462,17 +466,29 @@ public:
 		}
 		else if (intrinsic.name_equals("arrayGet")) {
 			ensure_argument_count(intrinsic, 2);
-			const Type* array_type = expression_table[intrinsic.get_arguments()[0]]->get_type();
-			const Type* element_type = get_element_type(intrinsic, array_type);
-			if (expression_table[intrinsic.get_arguments()[1]]->get_type() != TypeInterner::get_int_type()) {
+			const Expression* array = expression_table[intrinsic.get_arguments()[0]];
+			const Expression* index = expression_table[intrinsic.get_arguments()[1]];
+			if (const ArrayLiteral* array_literal = get_array_literal(array)) {
+				if (const IntLiteral* index_literal = get_int_literal(index)) {
+					if (static_cast<std::size_t>(index_literal->get_value()) >= array_literal->get_elements().size()) {
+						error(intrinsic, "array index out of bounds");
+					}
+					return array_literal->get_elements()[index_literal->get_value()];
+				}
+			}
+			const Type* element_type = get_element_type(intrinsic, array->get_type());
+			if (index->get_type() != TypeInterner::get_int_type()) {
 				error(intrinsic, "second argument of arrayGet must be a number");
 			}
 			return create_intrinsic(intrinsic, element_type);
 		}
 		else if (intrinsic.name_equals("arrayLength")) {
 			ensure_argument_count(intrinsic, 1);
-			const Type* array_type = expression_table[intrinsic.get_arguments()[0]]->get_type();
-			get_element_type(intrinsic, array_type);
+			const Expression* array = expression_table[intrinsic.get_arguments()[0]];
+			if (const ArrayLiteral* array_literal = get_array_literal(array)) {
+				return create<IntLiteral>(array_literal->get_elements().size());
+			}
+			get_element_type(intrinsic, array->get_type());
 			return create_intrinsic(intrinsic, TypeInterner::get_int_type());
 		}
 		else if (intrinsic.name_equals("arraySplice")) {

@@ -1117,6 +1117,13 @@ public:
 	}
 };
 
+class GetArray: public Visitor<const ArrayLiteral*> {
+public:
+	const ArrayLiteral* visit_array_literal(const ArrayLiteral& array_literal) override {
+		return &array_literal;
+	}
+};
+
 class GetString: public Visitor<const StringLiteral*> {
 public:
 	const StringLiteral* visit_string_literal(const StringLiteral& string_literal) override {
