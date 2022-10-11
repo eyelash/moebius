@@ -62,7 +62,8 @@ constexpr const char* intrinsics[] = {
 	"stringIteratorNext",
 	"typeOf",
 	"arrayType",
-	"tupleType"
+	"tupleType",
+	"import"
 };
 
 class Scope {

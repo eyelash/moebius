@@ -34,6 +34,7 @@ class Pass1: public Visitor<const Expression*> {
 		}
 	};
 	using FunctionTable = std::map<FunctionTableKey, Function*>;
+	Program* old_program;
 	Program* program;
 	FunctionTable& function_table;
 	const FunctionTableKey& key;
@@ -44,9 +45,9 @@ class Pass1: public Visitor<const Expression*> {
 	Block* destination_block;
 	bool omit_return;
 	const Expression* result = nullptr;
-	Pass1(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, bool omit_return): program(program), function_table(function_table), key(key), case_type(case_type), case_variable(case_variable), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
-		Pass1 pass1(program, function_table, key, case_type, case_variable, expression_table, destination_block, omit_return);
+	Pass1(Program* old_program, Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, bool omit_return): old_program(old_program), program(program), function_table(function_table), key(key), case_type(case_type), case_variable(case_variable), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+	static const Expression* evaluate(Program* old_program, Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+		Pass1 pass1(old_program, program, function_table, key, case_type, case_variable, expression_table, destination_block, omit_return);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(pass1, expression);
 			if (new_expression) {
@@ -55,15 +56,15 @@ class Pass1: public Visitor<const Expression*> {
 		}
 		return pass1.result;
 	}
-	static const Expression* evaluate(Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
+	static const Expression* evaluate(Program* old_program, Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		return evaluate(program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, false);
+		return evaluate(old_program, program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, false);
 	}
 	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
-		return evaluate(program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
+		return evaluate(old_program, program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
 	}
 	const Expression* evaluate(const Type* case_type, Block* destination_block, const Block& source_block, const Expression* case_variable = nullptr) {
-		return evaluate(program, function_table, key, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
+		return evaluate(old_program, program, function_table, key, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -337,7 +338,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, nullptr);
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			const Expression* new_expression = evaluate(program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
+			const Expression* new_expression = evaluate(old_program, program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 			if (new_function->get_return_type() && new_function->get_return_type() != new_expression->get_type()) {
 				error(call, format("function does not return the declared return type %", print_type(new_function->get_return_type())));
 			}
@@ -414,7 +415,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, new_key.old_function->get_return_type());
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			evaluate(program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
+			evaluate(old_program, program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 		}
 		new_call->set_type(function_table[new_key]->get_return_type());
 		new_call->set_function(function_table[new_key]);
@@ -589,6 +590,26 @@ public:
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
 		}
+		else if (intrinsic.name_equals("import")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* path_expression = expression_table[intrinsic.get_arguments()[0]];
+			const StringLiteral* path_literal = get_string_literal(path_expression);
+			if (!path_literal) {
+				error(intrinsic, "import path must be a compile-time string");
+			}
+			auto path = std::filesystem::path(intrinsic.get_position().get_file_name()).parent_path() / path_literal->get_value();
+			const Function* main_function = MoebiusParser::parse_program(path.c_str(), old_program);
+			FunctionCall* new_call = create<FunctionCall>();
+			FunctionTableKey new_key(main_function);
+			Function* new_function = new Function(nullptr);
+			program->add_function(new_function);
+			//function_table[new_key] = new_function;
+			const Expression* new_expression = evaluate(old_program, program, function_table, new_key, new_function->get_block(), main_function->get_block());
+			new_function->set_return_type(new_expression->get_type());
+			new_call->set_type(new_function->get_return_type());
+			new_call->set_function(new_function);
+			return new_call;
+		}
 		else if (intrinsic.name_equals("copy")) {
 			const Type* type = expression_table[intrinsic.get_arguments()[0]]->get_type();
 			return create_intrinsic(intrinsic, type);
@@ -671,13 +692,13 @@ public:
 		function_table[key]->set_return_type(type);
 		return nullptr;
 	}
-	static std::unique_ptr<Program> run(const Program& program) {
+	static std::unique_ptr<Program> run(Program& program) {
 		const Function* main_function = program.get_main_function();
 		std::unique_ptr<Program> new_program = std::make_unique<Program>();
 		FunctionTable function_table;
 		Function* new_function = new Function(TypeInterner::get_void_type());
 		new_program->add_function(new_function);
-		evaluate(new_program.get(), function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
+		evaluate(&program, new_program.get(), function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };

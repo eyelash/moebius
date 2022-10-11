@@ -1,10 +1,12 @@
-func Array(T) = @arrayType(T)
-func Tuple(t) = @tupleType(t)
-func len(a) = @arrayLength(a)
-func get(a, i) = @arrayGet(a, i)
-func set(a, i, e) = @arraySplice(a, i, 1, e)
-func push(s, e) = @stringPush(s, e)
-func println(s) = @putStr(s) >> @putChar('\n')
+let std = @import("StandardLibrary.moeb")
+
+let Array = std.Array
+let Tuple = std.Tuple
+let length = std.length
+let get = std.get
+let set = std.set
+let push = std.push
+let putStrLn = std.putStrLn
 
 func swap(a, i, j) = {
 	let tmp = a.get(i)
@@ -12,22 +14,7 @@ func swap(a, i, j) = {
 	return a.set(j, tmp)
 }
 
-func toString(x) = {
-	func numberToString(n, s): String =
-		if (n < 10) s.push('0' + n)
-		else numberToString(n / 10, s).push('0' + n % 10)
-
-	func arrayToString(a, i, s): String =
-		if (i < a.len()) {
-			let s = if (i > 0) s.push(", ") else s
-			let s = s.push(toString(a.get(i)))
-			return arrayToString(a, i + 1, s)
-		} else s.push("]")
-
-	return if (@typeOf(x) == String) x
-	else if (@typeOf(x) == Int) numberToString(x, "")
-	else arrayToString(x, 0, "[")
-}
+let toString = std.toString
 
 func quicksort(a: Array(Int), lo: Int, hi: Int): Array(Int) =
 	if (lo >= hi)
@@ -54,6 +41,6 @@ func quicksort(a: Array(Int), lo: Int, hi: Int): Array(Int) =
 	}
 
 let a = [3, 14, 15, 92, 65, 35, 89, 79, 32, 38, 46]
-let hi = a.len()
+let hi = a.length()
 let a = quicksort(a, 0, hi)
-return println("$a")
+return putStrLn("$a")
