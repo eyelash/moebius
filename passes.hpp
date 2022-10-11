@@ -572,23 +572,21 @@ public:
 			const Type* element_type = static_cast<const TypeType*>(element_type_expression->get_type())->get_type();
 			return create<TypeLiteral>(TypeInterner::get_array_type(element_type));
 		}
-		else if (intrinsic.name_equals("structType")) {
+		else if (intrinsic.name_equals("tupleType")) {
 			ensure_argument_count(intrinsic, 1);
-			const Expression* struct_type_expression = expression_table[intrinsic.get_arguments()[0]];
-			if (struct_type_expression->get_type_id() != TypeId::STRUCT) {
-				error(intrinsic, "argument of structType must be a struct");
+			const Expression* tuple_type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (tuple_type_expression->get_type_id() != TypeId::TUPLE) {
+				error(intrinsic, "argument of tupleType must be a tuple");
 			}
-			const StructType* struct_type = static_cast<const StructType*>(struct_type_expression->get_type());
-			StructType new_struct_type;
-			for (const auto& field: struct_type->get_fields()) {
-				const Type* field_type = field.second;
-				if (field_type->get_id() != TypeId::TYPE) {
-					error(intrinsic, "struct fields must be types");
+			const TupleType* tuple_type = static_cast<const TupleType*>(tuple_type_expression->get_type());
+			TupleType new_tuple_type;
+			for (const Type* element: tuple_type->get_element_types()) {
+				if (element->get_id() != TypeId::TYPE) {
+					error(intrinsic, "tuple elements must be types");
 				}
-				const std::string& field_name = field.first;
-				new_struct_type.add_field(field_name, static_cast<const TypeType*>(field_type)->get_type());
+				new_tuple_type.add_element_type(static_cast<const TypeType*>(element)->get_type());
 			}
-			return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
+			return create<TypeLiteral>(TypeInterner::intern(&new_tuple_type));
 		}
 		else if (intrinsic.name_equals("import")) {
 			ensure_argument_count(intrinsic, 1);
