@@ -133,7 +133,12 @@ public:
 			printer.print(format("const % = [", result));
 			for (std::size_t i = 0; i < tuple_literal.get_elements().size(); ++i) {
 				if (i > 0) printer.print(", ");
-				printer.print(expression_table[tuple_literal.get_elements()[i]]);
+				if (tuple_literal.get_elements()[i]->get_type() != TypeInterner::get_void_type()) {
+					printer.print(expression_table[tuple_literal.get_elements()[i]]);
+				}
+				else {
+					printer.print("undefined");
+				}
 			}
 			printer.print("];");
 		}));
@@ -142,7 +147,9 @@ public:
 	Variable visit_tuple_access(const TupleAccess& tuple_access) override {
 		const Variable tuple = expression_table[tuple_access.get_tuple()];
 		const Variable result = next_variable();
-		printer.println(format("const % = %[%];", result, tuple, print_number(tuple_access.get_index())));
+		if (tuple_access.get_type() != TypeInterner::get_void_type()) {
+			printer.println(format("const % = %[%];", result, tuple, print_number(tuple_access.get_index())));
+		}
 		return result;
 	}
 	Variable visit_enum_literal(const EnumLiteral& enum_literal) override {
@@ -190,8 +197,10 @@ public:
 		const Variable result = next_variable();
 		if (tail_call_data.is_tail_call(&call)) {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
-				const Variable argument = expression_table[call.get_arguments()[i]];
-				printer.println(format("% = %;", Variable(i), argument));
+				if (call.get_arguments()[i]->get_type() != TypeInterner::get_void_type()) {
+					const Variable argument = expression_table[call.get_arguments()[i]];
+					printer.println(format("% = %;", Variable(i), argument));
+				}
 			}
 			printer.println("continue;");
 		}
@@ -200,9 +209,13 @@ public:
 				printer.print(format("const % = ", result));
 			}
 			printer.print(format("f%(", print_number(new_index)));
+			bool is_first_argument = true;
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
-				if (i > 0) printer.print(", ");
-				printer.print(expression_table[call.get_arguments()[i]]);
+				if (call.get_arguments()[i]->get_type() != TypeInterner::get_void_type()) {
+					if (is_first_argument) is_first_argument = false;
+					else printer.print(", ");
+					printer.print(expression_table[call.get_arguments()[i]]);
+				}
 			}
 			printer.print(");");
 		}));
@@ -324,9 +337,13 @@ public:
 			const std::size_t arguments = function->get_argument_types().size();
 			printer.println_increasing(print_functor([&](auto& printer) {
 				printer.print(format("function f%(", print_number(index)));
+				bool is_first_argument = true;
 				for (std::size_t i = 0; i < arguments; ++i) {
-					if (i > 0) printer.print(", ");
-					printer.print(format("v%", print_number(i)));
+					if (function->get_argument_types()[i] != TypeInterner::get_void_type()) {
+						if (is_first_argument) is_first_argument = false;
+						else printer.print(", ");
+						printer.print(format("v%", print_number(i)));
+					}
 				}
 				printer.print(") {");
 			}));
