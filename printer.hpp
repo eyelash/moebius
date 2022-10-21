@@ -166,6 +166,25 @@ constexpr PrintNumber print_number(unsigned int n) {
 	return PrintNumber(n);
 }
 
+class PrintPlural {
+	const char* word;
+	unsigned int count;
+public:
+	constexpr PrintPlural(const char* word, unsigned int count): word(word), count(count) {}
+	void print(const Printer& p) const {
+		p.print(print_number(count));
+		p.print(' ');
+		p.print(word);
+		if (count != 1) {
+			p.print('s');
+		}
+	}
+};
+
+constexpr PrintPlural print_plural(const char* word, unsigned int count) {
+	return PrintPlural(word, count);
+}
+
 class IndentPrinter {
 	Printer printer;
 	unsigned int indentation = 0;

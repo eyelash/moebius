@@ -116,7 +116,7 @@ public:
 			}
 		}
 		else {
-			error(binary_expression, format("binary expression of types % and %", print_type(left->get_type()), print_type(right->get_type())));
+			error(binary_expression, "invalid binary expression");
 		}
 	}
 	const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
@@ -128,7 +128,7 @@ public:
 		for (const Expression* element: array_literal.get_elements()) {
 			const Expression* new_element = expression_table[element];
 			if (new_element->get_type() != element_type) {
-				error(array_literal, format("array elements must be of type %", print_type(element_type)));
+				error(array_literal, "array elements must have the same type");
 			}
 			new_array_literal->add_element(new_element);
 		}
@@ -140,7 +140,7 @@ public:
 	const Expression* visit_if(const If& if_) override {
 		const Expression* condition = expression_table[if_.get_condition()];
 		if (condition->get_type_id() != TypeId::INT) {
-			error(if_, "type of condition must be a number");
+			error(if_, "if condition must be a number");
 		}
 		if (const IntLiteral* condition_literal = get_int_literal(condition)) {
 			const Block& block = condition_literal->get_value() ? if_.get_then_block() : if_.get_else_block();
@@ -151,7 +151,7 @@ public:
 			const Expression* then_expression = evaluate(new_if->get_then_block(), if_.get_then_block(), false);
 			const Expression* else_expression = evaluate(new_if->get_else_block(), if_.get_else_block(), false);
 			if (then_expression->get_type() != else_expression->get_type()) {
-				error(if_, "if and else branches must return values of the same type");
+				error(if_, "if and else branches must have the same type");
 			}
 			new_if->set_type(then_expression->get_type());
 			return new_if;
@@ -267,7 +267,7 @@ public:
 			const Expression* case_expression = evaluate(case_type, new_switch->add_case(case_name), block);
 			if (new_switch->get_type()) {
 				if (case_expression->get_type() != new_switch->get_type()) {
-					error(switch_, "case expressions must have the same type");
+					error(switch_, "cases must have the same type");
 				}
 			}
 			else {
@@ -331,7 +331,7 @@ public:
 			if (object) {
 				expected_arguments -= 1;
 			}
-			error(call, format("call with % arguments to a function that accepts % arguments", print_number(arguments.size()), print_number(expected_arguments)));
+			error(call, format("call with % to a function that accepts %", print_plural("argument", arguments.size()), print_plural("argument", expected_arguments)));
 		}
 
 		if (function_table[new_key] == nullptr) {
@@ -423,7 +423,7 @@ public:
 	}
 	void ensure_argument_count(const Intrinsic& intrinsic, std::size_t argument_count) {
 		if (intrinsic.get_arguments().size() != argument_count) {
-			error(intrinsic, format("% takes % %", intrinsic.get_name(), print_number(argument_count), argument_count == 1 ? "argument" : "arguments"));
+			error(intrinsic, format("% must be called with %", intrinsic.get_name(), print_plural("argument", argument_count)));
 		}
 	}
 	void ensure_argument_types(const Intrinsic& intrinsic, std::initializer_list<const Type*> types) {
@@ -432,7 +432,7 @@ public:
 		for (const Type* type: types) {
 			const Expression* argument = expression_table[intrinsic.get_arguments()[i]];
 			if (argument->get_type() != type) {
-				error(intrinsic, format("argument % of % must be of type %", print_number(i + 1), intrinsic.get_name(), print_type(type)));
+				error(intrinsic, format("argument % of % must have type %", print_number(i + 1), intrinsic.get_name(), print_type(type)));
 			}
 			++i;
 		}
@@ -507,14 +507,14 @@ public:
 			if (intrinsic.get_arguments().size() == 4) {
 				const Type* argument_type = expression_table[intrinsic.get_arguments()[3]]->get_type();
 				if (!(argument_type == element_type || argument_type == array_type)) {
-					error(intrinsic, format("argument 4 of arraySplice must be of type % or %", print_type(element_type), print_type(array_type)));
+					error(intrinsic, format("argument 4 of arraySplice must have type % or %", print_type(element_type), print_type(array_type)));
 				}
 			}
 			else {
 				for (std::size_t i = 3; i < intrinsic.get_arguments().size(); ++i) {
 					const Type* argument_type = expression_table[intrinsic.get_arguments()[i]]->get_type();
 					if (argument_type != element_type) {
-						error(intrinsic, format("argument % of arraySplice must be of type %", print_number(i + 1), print_type(element_type)));
+						error(intrinsic, format("argument % of arraySplice must have type %", print_number(i + 1), print_type(element_type)));
 					}
 				}
 			}
