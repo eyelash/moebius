@@ -625,10 +625,7 @@ public:
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
 		const Expression* right = expression_table[bind.get_right()];
-		if (left->get_type_id() != TypeId::VOID || right->get_type_id() != TypeId::VOID) {
-			error(bind, "arguments of bind must be of type Void");
-		}
-		return create<Bind>(left, right);
+		return create<Bind>(left, right, right->get_type());
 	}
 	const Expression* visit_return(const Return& return_) override {
 		result = expression_table[return_.get_expression()];
@@ -858,7 +855,7 @@ public:
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
 		const Expression* right = expression_table[bind.get_right()];
-		return create<Bind>(left, right);
+		return create<Bind>(left, right, transform_type(bind.get_type()));
 	}
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = expression_table[return_.get_expression()];
@@ -1070,7 +1067,7 @@ class DeadCodeElimination {
 		const Expression* visit_bind(const Bind& bind) override {
 			const Expression* left = expression_table[bind.get_left()];
 			const Expression* right = expression_table[bind.get_right()];
-			return create<Bind>(left, right);
+			return create<Bind>(left, right, bind.get_type());
 		}
 		const Expression* visit_return(const Return& return_) override {
 			const Expression* expression = expression_table[return_.get_expression()];
@@ -1293,7 +1290,7 @@ class Pass2 {
 		const Expression* visit_bind(const Bind& bind) override {
 			const Expression* left = expression_table[bind.get_left()];
 			const Expression* right = expression_table[bind.get_right()];
-			return create<Bind>(left, right);
+			return create<Bind>(left, right, bind.get_type());
 		}
 		const Expression* visit_return(const Return& return_) override {
 			result = expression_table[return_.get_expression()];
@@ -1485,7 +1482,7 @@ public:
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
 		const Expression* right = expression_table[bind.get_right()];
-		return create<Bind>(left, right);
+		return create<Bind>(left, right, transform_type(bind.get_type()));
 	}
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = expression_table[return_.get_expression()];
@@ -1869,7 +1866,7 @@ public:
 	const Expression* visit_bind(const Bind& bind) override {
 		const Expression* left = expression_table[bind.get_left()];
 		const Expression* right = expression_table[bind.get_right()];
-		return create<Bind>(left, right);
+		return create<Bind>(left, right, bind.get_type());
 	}
 	const Expression* visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();

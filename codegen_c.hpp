@@ -633,7 +633,14 @@ public:
 		return result;
 	}
 	Variable visit_bind(const Bind& bind) override {
-		return next_variable();
+		const Variable left = expression_table[bind.get_left()];
+		const Variable right = expression_table[bind.get_right()];
+		const Variable result = next_variable();
+		if (bind.get_right()->get_type() != TypeInterner::get_void_type()) {
+			const Type result_type = function_table.get_type(bind.get_right()->get_type());
+			printer.println(format("% % = %;", result_type, result, right));
+		}
+		return result;
 	}
 	Variable visit_return(const Return& return_) override {
 		const Expression* expression = return_.get_expression();

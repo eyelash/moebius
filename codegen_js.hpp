@@ -307,8 +307,12 @@ public:
 		return result;
 	}
 	Variable visit_bind(const Bind& bind) override {
+		const Variable left = expression_table[bind.get_left()];
+		const Variable right = expression_table[bind.get_right()];
 		const Variable result = next_variable();
-		printer.println(format("const % = null;", result));
+		if (bind.get_right()->get_type() != TypeInterner::get_void_type()) {
+			printer.println(format("const % = %;", result, right));
+		}
 		return result;
 	}
 	Variable visit_return(const Return& return_) override {

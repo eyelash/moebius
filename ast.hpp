@@ -984,7 +984,7 @@ class Bind: public Expression {
 	const Expression* left;
 	const Expression* right;
 public:
-	Bind(const Expression* left, const Expression* right): Expression(TypeInterner::get_void_type()), left(left), right(right) {}
+	Bind(const Expression* left, const Expression* right, const Type* type = nullptr): Expression(type), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_bind(*this);
 	}
