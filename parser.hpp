@@ -979,9 +979,9 @@ public:
 		MoebiusParser parser(&file, program);
 		return parser.parse_program();
 	}
-	static std::unique_ptr<Program> parse_program(const char* file_name) {
-		std::unique_ptr<Program> program = std::make_unique<Program>();
-		parse_program(file_name, program.get());
+	static Program parse_program(const char* file_name) {
+		Program program;
+		parse_program(file_name, &program);
 		return program;
 	}
 };

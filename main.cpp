@@ -25,16 +25,16 @@ int main(int argc, char** argv) {
 		print_error(Printer(std::cerr), "no input file");
 		return EXIT_FAILURE;
 	}
-	std::unique_ptr<Program> program = MoebiusParser::parse_program(arguments.source_path);
-	program = Pass1::run(*program);
-	program = Lowering::run(*program);
-	program = Pass3::run(*program);
-	program = DeadCodeElimination::run(*program);
-	program = Pass2::run(*program);
-	program = Pass1::run(*program);
-	program = DeadCodeElimination::run(*program);
-	program = Pass4::run(*program);
+	Program program = MoebiusParser::parse_program(arguments.source_path);
+	program = Pass1::run(program);
+	program = Lowering::run(program);
+	program = Pass3::run(program);
+	program = DeadCodeElimination::run(program);
+	program = Pass2::run(program);
+	program = Pass1::run(program);
+	program = DeadCodeElimination::run(program);
+	program = Pass4::run(program);
 	TailCallData tail_call_data;
-	Pass5::run(*program, tail_call_data);
-	arguments.codegen(*program, arguments.source_path, tail_call_data);
+	Pass5::run(program, tail_call_data);
+	arguments.codegen(program, arguments.source_path, tail_call_data);
 }

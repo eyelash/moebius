@@ -283,22 +283,31 @@ public:
 		opcode(0xCD);
 		write<std::uint8_t>(x);
 	}
-	template <class T> void comment(const T& t) {}
+	template <class T> void comment(const T&) {}
 };
 
 class TextAssembler {
 	Printer printer;
 	static StringView print_register(Register r) {
 		switch (r) {
-			case EAX: return "EAX";
-			case ECX: return "ECX";
-			case EDX: return "EDX";
-			case EBX: return "EBX";
-			case ESP: return "ESP";
-			case EBP: return "EBP";
-			case ESI: return "ESI";
-			case EDI: return "EDI";
-			default: return StringView();
+		case EAX:
+			return "EAX";
+		case ECX:
+			return "ECX";
+		case EDX:
+			return "EDX";
+		case EBX:
+			return "EBX";
+		case ESP:
+			return "ESP";
+		case EBP:
+			return "EBP";
+		case ESI:
+			return "ESI";
+		case EDI:
+			return "EDI";
+		default:
+			return StringView();
 		}
 	}
 	class PrintPtr {
@@ -321,7 +330,7 @@ public:
 	std::size_t get_position() const {
 		return 0;
 	}
-	void write_file(const char* path) {}
+	void write_file(const char*) {}
 	void MOV(Register dst, Register src) {
 		printer.println(format("  MOV %, %", print_register(dst), print_register(src)));
 	}

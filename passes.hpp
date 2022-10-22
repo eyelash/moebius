@@ -1,27 +1,40 @@
 #pragma once
 
 #include "ast.hpp"
+#include <filesystem>
 
 // type checking, monomorphization, and constant propagation
 class Pass1: public Visitor<const Expression*> {
-	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
+	template <class T> [[noreturn]] static void error(const Expression& expression, const T& t) {
 		print_error(Printer(std::cerr), expression.get_position(), t);
 		std::exit(EXIT_FAILURE);
 	}
 	static std::int32_t execute_binary_operation(BinaryOperation operation, std::int32_t left, std::int32_t right) {
 		switch (operation) {
-			case BinaryOperation::ADD: return left + right;
-			case BinaryOperation::SUB: return left - right;
-			case BinaryOperation::MUL: return left * right;
-			case BinaryOperation::DIV: return left / right;
-			case BinaryOperation::REM: return left % right;
-			case BinaryOperation::EQ: return left == right;
-			case BinaryOperation::NE: return left != right;
-			case BinaryOperation::LT: return left < right;
-			case BinaryOperation::LE: return left <= right;
-			case BinaryOperation::GT: return left > right;
-			case BinaryOperation::GE: return left >= right;
-			default: return 0;
+		case BinaryOperation::ADD:
+			return left + right;
+		case BinaryOperation::SUB:
+			return left - right;
+		case BinaryOperation::MUL:
+			return left * right;
+		case BinaryOperation::DIV:
+			return left / right;
+		case BinaryOperation::REM:
+			return left % right;
+		case BinaryOperation::EQ:
+			return left == right;
+		case BinaryOperation::NE:
+			return left != right;
+		case BinaryOperation::LT:
+			return left < right;
+		case BinaryOperation::LE:
+			return left <= right;
+		case BinaryOperation::GT:
+			return left > right;
+		case BinaryOperation::GE:
+			return left >= right;
+		default:
+			return 0;
 		}
 	}
 	struct FunctionTableKey {
@@ -111,13 +124,8 @@ public:
 			else if (binary_expression.get_operation() == BinaryOperation::NE) {
 				return create<IntLiteral>(left_type != right_type);
 			}
-			else {
-				error(binary_expression, "invalid binary expression");
-			}
 		}
-		else {
-			error(binary_expression, "invalid binary expression");
-		}
+		error(binary_expression, "invalid binary expression");
 	}
 	const Expression* visit_array_literal(const ArrayLiteral& array_literal) override {
 		if (array_literal.get_elements().size() == 0) {
@@ -687,13 +695,13 @@ public:
 		function_table[key]->set_return_type(type);
 		return nullptr;
 	}
-	static std::unique_ptr<Program> run(Program& program) {
+	static Program run(Program& program) {
 		const Function* main_function = program.get_main_function();
-		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+		Program new_program;
 		FunctionTable function_table;
 		Function* new_function = new Function(TypeInterner::get_void_type());
-		new_program->add_function(new_function);
-		evaluate(&program, new_program.get(), function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
+		new_program.add_function(new_function);
+		evaluate(&program, &new_program, function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };
@@ -865,8 +873,8 @@ public:
 		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
 		return create<TypeLiteral>(type);
 	}
-	static std::unique_ptr<Program> run(const Program& program) {
-		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+	static Program run(const Program& program) {
+		Program new_program;
 		FunctionTable function_table;
 		for (const Function* function: program) {
 			std::vector<const Type*> argument_types;
@@ -874,7 +882,7 @@ public:
 				argument_types.push_back(transform_type(type));
 			}
 			Function* new_function = new Function(argument_types, transform_type(function->get_return_type()));
-			new_program->add_function(new_function);
+			new_program.add_function(new_function);
 			function_table[function] = new_function;
 		}
 		for (const Function* function: program) {
@@ -1075,12 +1083,12 @@ class DeadCodeElimination {
 		}
 	};
 public:
-	static std::unique_ptr<Program> run(const Program& program) {
-		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+	static Program run(const Program& program) {
+		Program new_program;
 		FunctionTable function_table;
 		for (const Function* function: program) {
 			Function* new_function = new Function(function->get_argument_types(), function->get_return_type());
-			new_program->add_function(new_function);
+			new_program.add_function(new_function);
 			function_table[function] = new_function;
 		}
 		for (const Function* function: program) {
@@ -1308,15 +1316,15 @@ class Pass2 {
 	};
 public:
 	Pass2() = delete;
-	static std::unique_ptr<Program> run(const Program& program) {
+	static Program run(const Program& program) {
 		const Function* main_function = program.get_main_function();
-		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+		Program new_program;
 		FunctionTable function_table;
 		Analyze analyze(function_table, main_function);
 		analyze.evaluate(main_function->get_block());
 		Function* new_function = new Function(main_function->get_return_type());
-		new_program->add_function(new_function);
-		Replace::evaluate(new_program.get(), function_table, main_function, new_function->get_block(), main_function->get_block());
+		new_program.add_function(new_function);
+		Replace::evaluate(&new_program, function_table, main_function, new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };
@@ -1488,8 +1496,8 @@ public:
 		const Expression* expression = expression_table[return_.get_expression()];
 		return create<Return>(expression);
 	}
-	static std::unique_ptr<Program> run(const Program& program) {
-		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+	static Program run(const Program& program) {
+		Program new_program;
 		FunctionTable function_table;
 		for (const Function* function: program) {
 			if (is_empty_tuple(function->get_return_type())) {
@@ -1502,7 +1510,7 @@ public:
 				}
 			}
 			Function* new_function = new Function(argument_types, transform_type(function->get_return_type()));
-			new_program->add_function(new_function);
+			new_program.add_function(new_function);
 			function_table[function] = new_function;
 		}
 		for (const Function* function: program) {
@@ -1877,12 +1885,12 @@ public:
 			return create<Return>(expression_table[expression]);
 		}
 	}
-	static std::unique_ptr<Program> run(const Program& program) {
-		std::unique_ptr<Program> new_program = std::make_unique<Program>();
+	static Program run(const Program& program) {
+		Program new_program;
 		FunctionTable function_table;
 		for (const Function* function: program) {
 			Function* new_function = new Function(function->get_argument_types(), function->get_return_type());
-			new_program->add_function(new_function);
+			new_program.add_function(new_function);
 			function_table[function] = new_function;
 		}
 		for (const Function* function: program) {

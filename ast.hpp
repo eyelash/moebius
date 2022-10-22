@@ -198,51 +198,60 @@ public:
 	}
 };
 
+template <class T> class TypePointer {
+	T* pointer;
+public:
+	TypePointer(T* pointer = nullptr): pointer(pointer) {}
+	TypePointer(const TypePointer&) = delete;
+	TypePointer(TypePointer&& type_pointer): pointer(std::exchange(type_pointer.pointer, nullptr)) {}
+	~TypePointer() {
+		if (pointer) {
+			delete pointer;
+		}
+	}
+	TypePointer& operator =(const TypePointer&) = delete;
+	TypePointer& operator =(TypePointer&& type_pointer) {
+		std::swap(pointer, type_pointer.pointer);
+		return *this;
+	}
+	operator T*() const {
+		return pointer;
+	}
+};
+
 template <class T> class TypeCompare {
 public:
 	bool operator ()(const T* type1, const T* type2) const {
-		return *type1 < *type2;
-	}
-	bool operator ()(const T* type1, const std::unique_ptr<T>& type2) const {
-		return *type1 < *type2;
-	}
-	bool operator ()(const std::unique_ptr<T>& type1, const T* type2) const {
-		return *type1 < *type2;
-	}
-	bool operator ()(const std::unique_ptr<T>& type1, const std::unique_ptr<T>& type2) const {
 		return *type1 < *type2;
 	}
 	using is_transparent = std::true_type;
 };
 
 class TypeInterner {
-	static inline std::unique_ptr<IntType> int_type;
-	static inline std::unique_ptr<CharType> char_type;
-	static inline std::set<std::unique_ptr<ClosureType>, TypeCompare<ClosureType>> closure_types;
-	static inline std::set<std::unique_ptr<StructType>, TypeCompare<StructType>> struct_types;
-	static inline std::set<std::unique_ptr<EnumType>, TypeCompare<EnumType>> enum_types;
-	static inline std::set<std::unique_ptr<TupleType>, TypeCompare<TupleType>> tuple_types;
-	static inline std::set<std::unique_ptr<ArrayType>, TypeCompare<ArrayType>> array_types;
-	static inline std::unique_ptr<StringType> string_type;
-	static inline std::unique_ptr<StringIteratorType> string_iterator_type;
-	static inline std::unique_ptr<VoidType> void_type;
-	static inline std::set<std::unique_ptr<TypeType>, TypeCompare<TypeType>> type_types;
-	template <class T> static T* get_or_set(std::unique_ptr<T>& type) {
-		if (type) {
-			return type.get();
+	template <class T> using TypeSet = std::set<TypePointer<T>, TypeCompare<T>>;
+	static inline TypePointer<IntType> int_type;
+	static inline TypePointer<CharType> char_type;
+	static inline TypeSet<ClosureType> closure_types;
+	static inline TypeSet<StructType> struct_types;
+	static inline TypeSet<EnumType> enum_types;
+	static inline TypeSet<TupleType> tuple_types;
+	static inline TypeSet<ArrayType> array_types;
+	static inline TypePointer<StringType> string_type;
+	static inline TypePointer<StringIteratorType> string_iterator_type;
+	static inline TypePointer<VoidType> void_type;
+	static inline TypeSet<TypeType> type_types;
+	template <class T> static T* get_or_set(TypePointer<T>& type) {
+		if (type == nullptr) {
+			type = new T();
 		}
-		T* interned_type = new T();
-		type = std::unique_ptr<T>(interned_type);
-		return interned_type;
+		return type;
 	}
-	template <class T> static T* get_or_insert(std::set<std::unique_ptr<T>, TypeCompare<T>>& types, const T* type) {
+	template <class T> static T* get_or_insert(TypeSet<T>& types, const T* type) {
 		auto iterator = types.find(type);
-		if (iterator != types.end()) {
-			return iterator->get();
+		if (iterator == types.end()) {
+			iterator = types.emplace(new T(*type)).first;
 		}
-		T* interned_type = new T(*type);
-		types.emplace(interned_type);
-		return interned_type;
+		return *iterator;
 	}
 public:
 	static const Type* get_int_type() {
@@ -1067,6 +1076,9 @@ class Program {
 	const Function* first = nullptr;
 	Function* last = nullptr;
 public:
+	Program() = default;
+	Program(const Program&) = delete;
+	Program(Program&& program): first(std::exchange(program.first, nullptr)), last(std::exchange(program.last, nullptr)) {}
 	~Program() {
 		const Function* function = first;
 		while (function) {
@@ -1074,6 +1086,12 @@ public:
 			delete function;
 			function = next;
 		}
+	}
+	Program& operator =(const Program&) = delete;
+	Program& operator =(Program&& program) {
+		std::swap(first, program.first);
+		std::swap(last, program.last);
+		return *this;
 	}
 	void add_function(Function* function) {
 		if (first == nullptr) {

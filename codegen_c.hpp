@@ -15,18 +15,30 @@ class CodegenC: public Visitor<Variable> {
 	};
 	static StringView print_operator(BinaryOperation operation) {
 		switch (operation) {
-			case BinaryOperation::ADD: return "+";
-			case BinaryOperation::SUB: return "-";
-			case BinaryOperation::MUL: return "*";
-			case BinaryOperation::DIV: return "/";
-			case BinaryOperation::REM: return "%";
-			case BinaryOperation::EQ: return "==";
-			case BinaryOperation::NE: return "!=";
-			case BinaryOperation::LT: return "<";
-			case BinaryOperation::LE: return "<=";
-			case BinaryOperation::GT: return ">";
-			case BinaryOperation::GE: return ">=";
-			default: return StringView();
+		case BinaryOperation::ADD:
+			return "+";
+		case BinaryOperation::SUB:
+			return "-";
+		case BinaryOperation::MUL:
+			return "*";
+		case BinaryOperation::DIV:
+			return "/";
+		case BinaryOperation::REM:
+			return "%";
+		case BinaryOperation::EQ:
+			return "==";
+		case BinaryOperation::NE:
+			return "!=";
+		case BinaryOperation::LT:
+			return "<";
+		case BinaryOperation::LE:
+			return "<=";
+		case BinaryOperation::GT:
+			return ">";
+		case BinaryOperation::GE:
+			return ">=";
+		default:
+			return StringView();
 		}
 	}
 	static const ::Type* get_element_type(const ::Type* type) {
@@ -633,7 +645,6 @@ public:
 		return result;
 	}
 	Variable visit_bind(const Bind& bind) override {
-		const Variable left = expression_table[bind.get_left()];
 		const Variable right = expression_table[bind.get_right()];
 		const Variable result = next_variable();
 		if (bind.get_right()->get_type() != TypeInterner::get_void_type()) {
