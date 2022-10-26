@@ -226,15 +226,11 @@ public:
 };
 
 class SourcePosition {
-	std::string file_name;
 	std::size_t position;
 public:
-	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
+	SourcePosition(std::size_t position): position(position) {}
 	SourcePosition() {}
-	const char* get_file_name() const {
-		return file_name.empty() ? nullptr : file_name.c_str();
-	}
-	std::size_t get_position() const {
+	operator std::size_t() const {
 		return position;
 	}
 };
@@ -244,17 +240,16 @@ template <class T, class C> void print_message(const Printer& printer, const C& 
 	printer.print(t);
 	printer.print('\n');
 }
-template <class T, class C> void print_message(const Printer& printer, const SourcePosition& source_position, const C& color, const char* severity, const T& t) {
-	const char* file_name = source_position.get_file_name();
-	if (file_name == nullptr) {
+template <class T, class C> void print_message(const Printer& printer, const char* path, std::size_t source_position, const C& color, const char* severity, const T& t) {
+	if (path == nullptr) {
 		print_message(printer, color, severity, t);
 	}
 	else {
-		SourceFile file(file_name);
+		SourceFile file(path);
 		unsigned int line_number = 1;
 		const char* c = file.begin();
 		const char* end = file.end();
-		const char* position = std::min(c + source_position.get_position(), end);
+		const char* position = std::min(c + source_position, end);
 		const char* line_start = c;
 		while (c < position) {
 			if (*c == '\n') {
@@ -268,7 +263,7 @@ template <class T, class C> void print_message(const Printer& printer, const Sou
 		}
 		const unsigned int column = 1 + (c - line_start);
 
-		printer.print(bold(format("%:%:%: ", file_name, print_number(line_number), print_number(column))));
+		printer.print(bold(format("%:%:%: ", path, print_number(line_number), print_number(column))));
 		print_message(printer, color, severity, t);
 
 		c = line_start;
@@ -290,8 +285,8 @@ template <class T, class C> void print_message(const Printer& printer, const Sou
 template <class T> void print_error(const Printer& printer, const T& t) {
 	print_message(printer, red, "error", t);
 }
-template <class T> void print_error(const Printer& printer, const SourcePosition& source_position, const T& t) {
-	print_message(printer, source_position, red, "error", t);
+template <class T> void print_error(const Printer& printer, const char* path, std::size_t source_position, const T& t) {
+	print_message(printer, path, source_position, red, "error", t);
 }
 
 class Variable {

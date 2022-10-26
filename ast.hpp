@@ -811,6 +811,7 @@ public:
 };
 
 class Function {
+	std::string path;
 	Block block;
 	std::size_t arguments;
 	std::vector<const Type*> argument_types;
@@ -839,6 +840,12 @@ public:
 	}
 	const Block& get_block() const {
 		return block;
+	}
+	void set_path(const char *path) {
+		this->path = std::string(path);
+	}
+	const char* get_path() const {
+		return path.empty() ? nullptr : path.c_str();
 	}
 };
 

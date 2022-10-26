@@ -146,8 +146,11 @@ public:
 	constexpr StringView operator -(const Cursor& start) const {
 		return StringView(start.position, position - start.position);
 	}
+	const char* get_path() const {
+		return file->get_name();
+	}
 	SourcePosition get_position() const {
-		return SourcePosition(file->get_name(), static_cast<std::size_t>(position - file->begin()));
+		return SourcePosition(position - file->begin());
 	}
 };
 
@@ -244,7 +247,7 @@ class MoebiusParser: private Parser {
 	Program* program;
 	Scope* current_scope = nullptr;
 	template <class T> [[noreturn]] void error(const SourcePosition& position, const T& t) {
-		print_error(Printer(std::cerr), position, t);
+		print_error(Printer(std::cerr), cursor.get_path(), position, t);
 		std::exit(EXIT_FAILURE);
 	}
 	template <class T> [[noreturn]] void error(const T& t) {
@@ -494,6 +497,7 @@ class MoebiusParser: private Parser {
 			expect("(");
 			parse_white_space();
 			Function* function = new Function();
+			function->set_path(cursor.get_path());
 			program->add_function(function);
 			Closure* closure = new Closure(function);
 			closure->set_position(position);
@@ -853,6 +857,7 @@ class MoebiusParser: private Parser {
 				expect("(");
 				parse_white_space();
 				Function* function = new Function();
+				function->set_path(cursor.get_path());
 				program->add_function(function);
 				Closure* closure = new Closure(function);
 				closure->set_position(position);
@@ -964,6 +969,7 @@ public:
 	const Function* parse_program() {
 		parse_white_space();
 		Function* main_function = new Function();
+		main_function->set_path(cursor.get_path());
 		program->add_function(main_function);
 		Scope scope(current_scope, main_function->get_block());
 		const Expression* expression = parse_scope();

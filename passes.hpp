@@ -5,8 +5,8 @@
 
 // type checking, monomorphization, and constant propagation
 class Pass1: public Visitor<const Expression*> {
-	template <class T> [[noreturn]] static void error(const Expression& expression, const T& t) {
-		print_error(Printer(std::cerr), expression.get_position(), t);
+	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
+		print_error(Printer(std::cerr), key.old_function->get_path(), expression.get_position(), t);
 		std::exit(EXIT_FAILURE);
 	}
 	static std::int32_t execute_binary_operation(BinaryOperation operation, std::int32_t left, std::int32_t right) {
@@ -613,7 +613,7 @@ public:
 			if (!path_literal) {
 				error(intrinsic, "import path must be a compile-time string");
 			}
-			auto path = get_import_path(intrinsic.get_position().get_file_name(), path_literal->get_value()).lexically_normal().string();
+			auto path = get_import_path(key.old_function->get_path(), path_literal->get_value()).lexically_normal().string();
 			if (file_table[path] == nullptr) {
 				file_table[path] = MoebiusParser::parse_program(path.c_str(), old_program);
 			}
