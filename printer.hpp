@@ -207,31 +207,21 @@ public:
 };
 
 class SourceFile {
-	const char* file_name;
+	const char* path;
 	std::vector<char> content;
 public:
-	SourceFile(const char* file_name): file_name(file_name) {
-		std::ifstream file(file_name);
+	SourceFile(const char* path): path(path) {
+		std::ifstream file(path);
 		content.insert(content.end(), std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 	}
-	const char* get_name() const {
-		return file_name;
+	const char* get_path() const {
+		return path;
 	}
 	const char* begin() const {
 		return content.data();
 	}
 	const char* end() const {
 		return content.data() + content.size();
-	}
-};
-
-class SourcePosition {
-	std::size_t position;
-public:
-	SourcePosition(std::size_t position): position(position) {}
-	SourcePosition() {}
-	operator std::size_t() const {
-		return position;
 	}
 };
 

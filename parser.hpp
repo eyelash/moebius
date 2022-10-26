@@ -147,10 +147,10 @@ public:
 		return StringView(start.position, position - start.position);
 	}
 	const char* get_path() const {
-		return file->get_name();
+		return file->get_path();
 	}
-	SourcePosition get_position() const {
-		return SourcePosition(position - file->begin());
+	std::size_t get_position() const {
+		return position - file->begin();
 	}
 };
 
@@ -238,15 +238,16 @@ public:
 	Parser copy() const {
 		return Parser(cursor);
 	}
-	SourcePosition get_position() const {
+	std::size_t get_position() const {
 		return cursor.get_position();
 	}
 };
 
 class MoebiusParser: private Parser {
+	using SourcePosition = std::size_t;
 	Program* program;
 	Scope* current_scope = nullptr;
-	template <class T> [[noreturn]] void error(const SourcePosition& position, const T& t) {
+	template <class T> [[noreturn]] void error(std::size_t position, const T& t) {
 		print_error(Printer(std::cerr), cursor.get_path(), position, t);
 		std::exit(EXIT_FAILURE);
 	}
@@ -980,14 +981,9 @@ public:
 		}
 		return main_function;
 	}
-	static const Function* parse_program(const char* file_name, Program* program) {
-		SourceFile file(file_name);
+	static const Function* parse_program(const char* path, Program* program) {
+		SourceFile file(path);
 		MoebiusParser parser(&file, program);
 		return parser.parse_program();
-	}
-	static Program parse_program(const char* file_name) {
-		Program program;
-		parse_program(file_name, &program);
-		return program;
 	}
 };

@@ -324,7 +324,7 @@ class TextAssembler {
 public:
 	class Jump {
 	public:
-		void set_target(TextAssembler& assembler, std::size_t target) const {}
+		void set_target(TextAssembler&, std::size_t) const {}
 	};
 	void write_headers() {}
 	std::size_t get_position() const {

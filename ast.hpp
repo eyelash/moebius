@@ -406,7 +406,7 @@ public:
 
 class Expression {
 	const Type* type;
-	SourcePosition position;
+	std::size_t position;
 public:
 	const Expression* next_expression = nullptr;
 	Expression(const Type* type = nullptr): type(type) {}
@@ -421,10 +421,10 @@ public:
 	TypeId get_type_id() const {
 		return get_type()->get_id();
 	}
-	void set_position(const SourcePosition& position) {
+	void set_position(std::size_t position) {
 		this->position = position;
 	}
-	const SourcePosition& get_position() const {
+	std::size_t get_position() const {
 		return position;
 	}
 };

@@ -5,10 +5,6 @@
 
 // type checking, monomorphization, and constant propagation
 class Pass1: public Visitor<const Expression*> {
-	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
-		print_error(Printer(std::cerr), key.old_function->get_path(), expression.get_position(), t);
-		std::exit(EXIT_FAILURE);
-	}
 	static std::int32_t execute_binary_operation(BinaryOperation operation, std::int32_t left, std::int32_t right) {
 		switch (operation) {
 		case BinaryOperation::ADD:
@@ -75,11 +71,18 @@ class Pass1: public Visitor<const Expression*> {
 		ExpressionTable expression_table;
 		return evaluate(old_program, program, file_table, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, false);
 	}
+	const Expression* evaluate(const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
+		return evaluate(old_program, program, file_table, function_table, key, destination_block, source_block);
+	}
 	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
 		return evaluate(old_program, program, file_table, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
 	}
 	const Expression* evaluate(const Type* case_type, Block* destination_block, const Block& source_block, const Expression* case_variable = nullptr) {
 		return evaluate(old_program, program, file_table, function_table, key, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
+	}
+	template <class T> [[noreturn]] void error(const Expression& expression, const T& t) {
+		print_error(Printer(std::cerr), key.old_function->get_path(), expression.get_position(), t);
+		std::exit(EXIT_FAILURE);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -348,7 +351,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, nullptr);
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			const Expression* new_expression = evaluate(old_program, program, file_table, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
+			const Expression* new_expression = evaluate(new_key, new_function->get_block(), new_key.old_function->get_block());
 			if (new_function->get_return_type() && new_function->get_return_type() != new_expression->get_type()) {
 				error(call, format("function does not return the declared return type %", print_type(new_function->get_return_type())));
 			}
@@ -425,7 +428,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, new_key.old_function->get_return_type());
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			evaluate(old_program, program, file_table, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
+			evaluate(new_key, new_function->get_block(), new_key.old_function->get_block());
 		}
 		new_call->set_type(function_table[new_key]->get_return_type());
 		new_call->set_function(function_table[new_key]);
@@ -613,7 +616,7 @@ public:
 			if (!path_literal) {
 				error(intrinsic, "import path must be a compile-time string");
 			}
-			auto path = get_import_path(key.old_function->get_path(), path_literal->get_value()).lexically_normal().string();
+			const std::string path = get_import_path(key.old_function->get_path(), path_literal->get_value()).lexically_normal().string();
 			if (file_table[path] == nullptr) {
 				file_table[path] = MoebiusParser::parse_program(path.c_str(), old_program);
 			}
@@ -623,7 +626,7 @@ public:
 				Function* new_function = new Function(nullptr);
 				program->add_function(new_function);
 				function_table[new_key] = new_function;
-				const Expression* new_expression = evaluate(old_program, program, file_table, function_table, new_key, new_function->get_block(), file_table[path]->get_block());
+				const Expression* new_expression = evaluate(new_key, new_function->get_block(), new_key.old_function->get_block());
 				new_function->set_return_type(new_expression->get_type());
 			}
 			else {
@@ -718,7 +721,7 @@ public:
 	static Program run(const char* file_name) {
 		Program old_program;
 		FileTable file_table;
-		auto path = std::filesystem::path(file_name).lexically_normal().string();
+		const std::string path = std::filesystem::path(file_name).lexically_normal().string();
 		file_table[path] = MoebiusParser::parse_program(path.c_str(), &old_program);
 		Program new_program;
 		FunctionTable function_table;
@@ -734,9 +737,11 @@ public:
 		Program new_program;
 		FileTable file_table;
 		FunctionTable function_table;
-		Function* new_function = new Function(TypeInterner::get_void_type());
+		FunctionTableKey new_key(main_function);
+		Function* new_function = new Function(main_function->get_return_type());
 		new_program.add_function(new_function);
-		evaluate(&program, &new_program, file_table, function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
+		function_table[new_key] = new_function;
+		evaluate(&program, &new_program, file_table, function_table, new_key, new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };
@@ -936,10 +941,10 @@ class DeadCodeElimination {
 	// TODO: remove unused arguments
 	class IsArgument: public Visitor<bool> {
 	public:
-		bool visit_case_variable(const CaseVariable& case_variable) override {
+		bool visit_case_variable(const CaseVariable&) override {
 			return true;
 		}
-		bool visit_argument(const Argument& argument) override {
+		bool visit_argument(const Argument&) override {
 			return true;
 		}
 	};
@@ -1359,6 +1364,7 @@ public:
 		analyze.evaluate(main_function->get_block());
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program.add_function(new_function);
+		function_table[main_function].new_function = new_function;
 		Replace::evaluate(&new_program, function_table, main_function, new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
