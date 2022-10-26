@@ -25,8 +25,7 @@ int main(int argc, char** argv) {
 		print_error(Printer(std::cerr), "no input file");
 		return EXIT_FAILURE;
 	}
-	Program program = MoebiusParser::parse_program(arguments.source_path);
-	program = Pass1::run(program);
+	Program program = Pass1::run(arguments.source_path);
 	program = Lowering::run(program);
 	program = Pass3::run(program);
 	program = DeadCodeElimination::run(program);

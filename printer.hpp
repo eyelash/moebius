@@ -226,13 +226,13 @@ public:
 };
 
 class SourcePosition {
-	const char* file_name;
+	std::string file_name;
 	std::size_t position;
 public:
 	SourcePosition(const char* file_name, std::size_t position): file_name(file_name), position(position) {}
-	SourcePosition(): file_name(nullptr) {}
+	SourcePosition() {}
 	const char* get_file_name() const {
-		return file_name;
+		return file_name.empty() ? nullptr : file_name.c_str();
 	}
 	std::size_t get_position() const {
 		return position;

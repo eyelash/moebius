@@ -47,8 +47,10 @@ class Pass1: public Visitor<const Expression*> {
 		}
 	};
 	using FunctionTable = std::map<FunctionTableKey, Function*>;
+	using FileTable = std::map<std::string, const Function*>;
 	Program* old_program;
 	Program* program;
+	FileTable& file_table;
 	FunctionTable& function_table;
 	const FunctionTableKey& key;
 	const Type* case_type;
@@ -58,9 +60,9 @@ class Pass1: public Visitor<const Expression*> {
 	Block* destination_block;
 	bool omit_return;
 	const Expression* result = nullptr;
-	Pass1(Program* old_program, Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, bool omit_return): old_program(old_program), program(program), function_table(function_table), key(key), case_type(case_type), case_variable(case_variable), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
-	static const Expression* evaluate(Program* old_program, Program* program, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
-		Pass1 pass1(old_program, program, function_table, key, case_type, case_variable, expression_table, destination_block, omit_return);
+	Pass1(Program* old_program, Program* program, FileTable& file_table, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, bool omit_return): old_program(old_program), program(program), file_table(file_table), function_table(function_table), key(key), case_type(case_type), case_variable(case_variable), expression_table(expression_table), destination_block(destination_block), omit_return(omit_return) {}
+	static const Expression* evaluate(Program* old_program, Program* program, FileTable& file_table, FunctionTable& function_table, const FunctionTableKey& key, const Type* case_type, const Expression* case_variable, ExpressionTable& expression_table, Block* destination_block, const Block& source_block, bool omit_return) {
+		Pass1 pass1(old_program, program, file_table, function_table, key, case_type, case_variable, expression_table, destination_block, omit_return);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(pass1, expression);
 			if (new_expression) {
@@ -69,15 +71,15 @@ class Pass1: public Visitor<const Expression*> {
 		}
 		return pass1.result;
 	}
-	static const Expression* evaluate(Program* old_program, Program* program, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
+	static const Expression* evaluate(Program* old_program, Program* program, FileTable& file_table, FunctionTable& function_table, const FunctionTableKey& key, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		return evaluate(old_program, program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, false);
+		return evaluate(old_program, program, file_table, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, false);
 	}
 	const Expression* evaluate(Block* destination_block, const Block& source_block, bool omit_return) {
-		return evaluate(old_program, program, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
+		return evaluate(old_program, program, file_table, function_table, key, nullptr, nullptr, expression_table, destination_block, source_block, omit_return);
 	}
 	const Expression* evaluate(const Type* case_type, Block* destination_block, const Block& source_block, const Expression* case_variable = nullptr) {
-		return evaluate(old_program, program, function_table, key, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
+		return evaluate(old_program, program, file_table, function_table, key, case_type, case_variable, expression_table, destination_block, source_block, case_variable != nullptr);
 	}
 	template <class T, class... A> T* create(A&&... arguments) {
 		T* expression = new T(std::forward<A>(arguments)...);
@@ -346,7 +348,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, nullptr);
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			const Expression* new_expression = evaluate(old_program, program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
+			const Expression* new_expression = evaluate(old_program, program, file_table, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 			if (new_function->get_return_type() && new_function->get_return_type() != new_expression->get_type()) {
 				error(call, format("function does not return the declared return type %", print_type(new_function->get_return_type())));
 			}
@@ -423,7 +425,7 @@ public:
 			Function* new_function = new Function(new_key.argument_types, new_key.old_function->get_return_type());
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
-			evaluate(old_program, program, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
+			evaluate(old_program, program, file_table, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 		}
 		new_call->set_type(function_table[new_key]->get_return_type());
 		new_call->set_function(function_table[new_key]);
@@ -459,6 +461,14 @@ public:
 			new_intrinsic->add_argument(expression_table[argument]);
 		}
 		return new_intrinsic;
+	}
+	static std::filesystem::path get_import_path(std::filesystem::path current_file, std::filesystem::path new_file) {
+		if (new_file.is_absolute()) {
+			return new_file;
+		}
+		else {
+			return current_file.parent_path() / new_file;
+		}
 	}
 	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
 		if (intrinsic.name_equals("putChar")) {
@@ -603,17 +613,27 @@ public:
 			if (!path_literal) {
 				error(intrinsic, "import path must be a compile-time string");
 			}
-			auto path = std::filesystem::path(intrinsic.get_position().get_file_name()).parent_path() / path_literal->get_value();
-			const Function* main_function = MoebiusParser::parse_program(path.c_str(), old_program);
+			auto path = get_import_path(intrinsic.get_position().get_file_name(), path_literal->get_value()).lexically_normal().string();
+			if (file_table[path] == nullptr) {
+				file_table[path] = MoebiusParser::parse_program(path.c_str(), old_program);
+			}
 			FunctionCall* new_call = create<FunctionCall>();
-			FunctionTableKey new_key(main_function);
-			Function* new_function = new Function(nullptr);
-			program->add_function(new_function);
-			//function_table[new_key] = new_function;
-			const Expression* new_expression = evaluate(old_program, program, function_table, new_key, new_function->get_block(), main_function->get_block());
-			new_function->set_return_type(new_expression->get_type());
-			new_call->set_type(new_function->get_return_type());
-			new_call->set_function(new_function);
+			FunctionTableKey new_key(file_table[path]);
+			if (function_table[new_key] == nullptr) {
+				Function* new_function = new Function(nullptr);
+				program->add_function(new_function);
+				function_table[new_key] = new_function;
+				const Expression* new_expression = evaluate(old_program, program, file_table, function_table, new_key, new_function->get_block(), file_table[path]->get_block());
+				new_function->set_return_type(new_expression->get_type());
+			}
+			else {
+				// detect recursion
+				if (function_table[new_key]->get_return_type() == nullptr) {
+					error(intrinsic, "cannot determine return type of recursive import");
+				}
+			}
+			new_call->set_type(function_table[new_key]->get_return_type());
+			new_call->set_function(function_table[new_key]);
 			return new_call;
 		}
 		else if (intrinsic.name_equals("copy")) {
@@ -695,13 +715,28 @@ public:
 		function_table[key]->set_return_type(type);
 		return nullptr;
 	}
+	static Program run(const char* file_name) {
+		Program old_program;
+		FileTable file_table;
+		auto path = std::filesystem::path(file_name).lexically_normal().string();
+		file_table[path] = MoebiusParser::parse_program(path.c_str(), &old_program);
+		Program new_program;
+		FunctionTable function_table;
+		FunctionTableKey new_key(file_table[path]);
+		Function* new_function = new Function(TypeInterner::get_void_type());
+		new_program.add_function(new_function);
+		function_table[new_key] = new_function;
+		evaluate(&old_program, &new_program, file_table, function_table, new_key, new_function->get_block(), file_table[path]->get_block());
+		return new_program;
+	}
 	static Program run(Program& program) {
 		const Function* main_function = program.get_main_function();
 		Program new_program;
+		FileTable file_table;
 		FunctionTable function_table;
 		Function* new_function = new Function(TypeInterner::get_void_type());
 		new_program.add_function(new_function);
-		evaluate(&program, &new_program, function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
+		evaluate(&program, &new_program, file_table, function_table, FunctionTableKey(main_function), new_function->get_block(), main_function->get_block());
 		return new_program;
 	}
 };
