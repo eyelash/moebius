@@ -506,9 +506,13 @@ class MoebiusParser: private Parser {
 				Scope scope(current_scope, closure, function->get_block());
 				current_scope->set_self(current_scope->create<Argument>(function->add_argument()));
 				while (parse_not(")")) {
-					const StringView argument_name = parse_identifier();
+					auto [argument_name, type_assert_position, argument_type] = parse_name();
 					const Expression* argument = current_scope->create<Argument>(function->add_argument());
 					current_scope->add_variable(argument_name, argument);
+					if (argument_type) {
+						TypeAssert* type_assert = current_scope->create<TypeAssert>(argument, argument_type);
+						type_assert->set_position(type_assert_position);
+					}
 					parse_white_space();
 					if (!parse(",")) {
 						break;
@@ -516,6 +520,16 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 				}
 				expect(")");
+				parse_white_space();
+				const SourcePosition return_type_position = get_position();
+				if (parse(":")) {
+					parse_white_space();
+					const Expression* type = parse_expression();
+					ReturnType* return_type = current_scope->create<ReturnType>(type);
+					return_type->set_position(return_type_position);
+					parse_white_space();
+				}
+				expect("=>");
 				parse_white_space();
 				const Expression* expression = parse_expression();
 				current_scope->create<Return>(expression);
@@ -891,7 +905,7 @@ class MoebiusParser: private Parser {
 						return_type->set_position(return_type_position);
 						parse_white_space();
 					}
-					expect("=");
+					expect("=>");
 					parse_white_space();
 					const Expression* expression = parse_expression();
 					current_scope->create<Return>(expression);

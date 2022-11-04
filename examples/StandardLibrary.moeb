@@ -1,28 +1,28 @@
-func Array(T) = @arrayType(T)
-func Tuple(t) = @tupleType(t)
+func Array(T) => @arrayType(T)
+func Tuple(t) => @tupleType(t)
 
-func putChar(char) = @putChar(char)
-func putStr(string) = @putStr(string)
-func putStrLn(string) = putStr(string) >> putChar('\n')
-func getChar() = @getChar()
+func putChar(char) => @putChar(char)
+func putStr(string) => @putStr(string)
+func putStrLn(string) => putStr(string) >> putChar('\n')
+func getChar() => @getChar()
 
-func length(array) = @arrayLength(array)
-func get(array, index) = @arrayGet(array, index)
-func set(array, index, element) = @arraySplice(array, index, 1, element)
-func push(array, element) =
+func length(array) => @arrayLength(array)
+func get(array, index) => @arrayGet(array, index)
+func set(array, index, element) => @arraySplice(array, index, 1, element)
+func push(array, element) =>
 	if (@typeOf(array) == String)
 		@stringPush(array, element)
 	else
 		@arraySplice(array, @arrayLength(array), 0, element)
 
-func toString(x) = {
-	func positiveIntToString(int, prefix): String =
+func toString(x) => {
+	func positiveIntToString(int, prefix): String =>
 		if (int < 10)
 			prefix.push('0' + int)
 		else
 			positiveIntToString(int / 10, prefix).push('0' + (int % 10))
 
-	func arrayToString(array, index, string): String =
+	func arrayToString(array, index, string): String =>
 		if (index < array.length()) {
 			let string = if (index > 0) string.push(", ") else string
 			let string = string.push(toString(array.get(index)))

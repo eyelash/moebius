@@ -8,7 +8,7 @@ let set = std.set
 let push = std.push
 let putStrLn = std.putStrLn
 
-func swap(a, i, j) = {
+func swap(a, i, j) => {
 	let tmp = a.get(i)
 	let a = a.set(i, a.get(j))
 	return a.set(j, tmp)
@@ -16,15 +16,15 @@ func swap(a, i, j) = {
 
 let toString = std.toString
 
-func quicksort(a: Array(Int), lo: Int, hi: Int): Array(Int) =
+func quicksort(a: Array(Int), lo: Int, hi: Int): Array(Int) =>
 	if (lo >= hi)
 		a
 	else {
-		func partition(a, lo, hi) = {
+		func partition(a, lo, hi) => {
 			let pivot = a.get(hi - 1)
 			let i = lo
 			let j = lo
-			func loop(a, i, j): Tuple((Array(Int), Int)) =
+			func loop(a, i, j): Tuple((Array(Int), Int)) =>
 				if (j < hi - 1)
 					if (a.get(j) <= pivot) loop(a.swap(i, j), i + 1, j + 1)
 					else loop(a, i, j + 1)
