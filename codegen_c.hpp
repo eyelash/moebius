@@ -49,7 +49,7 @@ class CodegenC: public Visitor<Variable> {
 	}
 	static bool is_managed(const ::Type* type) {
 		const TypeId type_id = type->get_id();
-		return type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
+		return type_id == TypeId::STRUCT || type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
 	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
@@ -84,6 +84,24 @@ class CodegenC: public Visitor<Variable> {
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef char %;", Type(index)));
 					types[type] = index;
+					return index;
+				}
+			case TypeId::STRUCT:
+				{
+					const std::vector<std::pair<std::string, const ::Type*>>& fields = static_cast<const StructType*>(type)->get_fields();
+					for (const auto& field: fields) {
+						get_type(field.second);
+					}
+					const std::size_t index = types.size();
+					type_declaration_printer.println_increasing("typedef struct {");
+					for (std::size_t i = 0; i < fields.size(); ++i) {
+						if (fields[i].second != TypeInterner::get_void_type()) {
+							type_declaration_printer.println(format("% %;", get_type(fields[i].second), fields[i].first));
+						}
+					}
+					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
+					types[type] = index;
+					generate_struct_functions(type);
 					return index;
 				}
 			case TypeId::ENUM:
@@ -162,6 +180,35 @@ class CodegenC: public Visitor<Variable> {
 			default:
 				return 0;
 			}
+		}
+		void generate_struct_functions(const ::Type* type) {
+			const Type struct_type = get_type(type);
+			const auto& fields = static_cast<const StructType*>(type)->get_fields();
+			const Type void_type = get_type(TypeInterner::get_void_type());
+			IndentPrinter& printer = type_declaration_printer;
+
+			// struct_copy
+			printer.println_increasing(format("static % %_copy(% struct_) {", struct_type, struct_type, struct_type));
+			printer.println(format("% new_struct;", struct_type));
+			for (std::size_t i = 0; i < fields.size(); ++i) {
+				if (is_managed(fields[i].second)) {
+					printer.println(format("new_struct.% = %_copy(struct_.%);", fields[i].first, get_type(fields[i].second), fields[i].first));
+				}
+				else if (fields[i].second != TypeInterner::get_void_type()) {
+					printer.println(format("new_struct.% = struct_.%;", fields[i].first, fields[i].first));
+				}
+			}
+			printer.println("return new_struct;");
+			printer.println_decreasing("}");
+
+			// struct_free
+			printer.println_increasing(format("static % %_free(% struct_) {", void_type, struct_type, struct_type));
+			for (std::size_t i = 0; i < fields.size(); ++i) {
+				if (is_managed(fields[i].second)) {
+					printer.println(format("%_free(struct_.%);", get_type(fields[i].second), fields[i].first));
+				}
+			}
+			printer.println_decreasing("}");
 		}
 		void generate_enum_functions(const ::Type* type) {
 			const Type enum_type = get_type(type);
@@ -462,6 +509,27 @@ public:
 		if (tuple_access.get_type() != TypeInterner::get_void_type()) {
 			const Type result_type = function_table.get_type(tuple_access.get_type());
 			printer.println(format("% % = %.v%;", result_type, result, tuple, print_number(tuple_access.get_index())));
+		}
+		return result;
+	}
+	Variable visit_struct_literal(const StructLiteral& struct_literal) override {
+		const Variable result = next_variable();
+		const Type type = function_table.get_type(struct_literal.get_type());
+		printer.println(format("% %;", type, result));
+		for (std::size_t i = 0; i < struct_literal.get_fields().size(); ++i) {
+			const auto& field = struct_literal.get_fields()[i];
+			if (field.second->get_type() != TypeInterner::get_void_type()) {
+				printer.println(format("%.% = %;", result, field.first, expression_table[field.second]));
+			}
+		}
+		return result;
+	}
+	Variable visit_struct_access(const StructAccess& struct_access) override {
+		const Variable struct_ = expression_table[struct_access.get_struct()];
+		const Variable result = next_variable();
+		if (struct_access.get_type() != TypeInterner::get_void_type()) {
+			const Type result_type = function_table.get_type(struct_access.get_type());
+			printer.println(format("% % = %.%;", result_type, result, struct_, struct_access.get_field_name()));
 		}
 		return result;
 	}

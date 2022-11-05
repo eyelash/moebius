@@ -985,6 +985,14 @@ class DeadCodeElimination {
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			mark(tuple_access.get_tuple());
 		}
+		void visit_struct_literal(const StructLiteral& struct_literal) override {
+			for (const auto& field: struct_literal.get_fields()) {
+				mark(field.second);
+			}
+		}
+		void visit_struct_access(const StructAccess& struct_access) override {
+			mark(struct_access.get_struct());
+		}
 		void visit_enum_literal(const EnumLiteral& enum_literal) override {
 			mark(enum_literal.get_expression());
 		}
@@ -1075,6 +1083,17 @@ class DeadCodeElimination {
 		const Expression* visit_tuple_access(const TupleAccess& tuple_access) override {
 			const Expression* tuple = expression_table[tuple_access.get_tuple()];
 			return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
+		}
+		const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
+			StructLiteral* new_struct_literal = create<StructLiteral>(struct_literal.get_type());
+			for (const auto& field: struct_literal.get_fields()) {
+				new_struct_literal->add_field(field.first, expression_table[field.second]);
+			}
+			return new_struct_literal;
+		}
+		const Expression* visit_struct_access(const StructAccess& struct_access) override {
+			const Expression* struct_ = expression_table[struct_access.get_struct()];
+			return create<StructAccess>(struct_, struct_access.get_field_name(), struct_access.get_type());
 		}
 		const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
 			const Expression* expression = expression_table[enum_literal.get_expression()];
@@ -1279,6 +1298,17 @@ class Pass2 {
 			const Expression* tuple = expression_table[tuple_access.get_tuple()];
 			return create<TupleAccess>(tuple, tuple_access.get_index(), tuple_access.get_type());
 		}
+		const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
+			StructLiteral* new_struct_literal = create<StructLiteral>(struct_literal.get_type());
+			for (const auto& field: struct_literal.get_fields()) {
+				new_struct_literal->add_field(field.first, expression_table[field.second]);
+			}
+			return new_struct_literal;
+		}
+		const Expression* visit_struct_access(const StructAccess& struct_access) override {
+			const Expression* struct_ = expression_table[struct_access.get_struct()];
+			return create<StructAccess>(struct_, struct_access.get_field_name(), struct_access.get_type());
+		}
 		const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
 			const Expression* expression = expression_table[enum_literal.get_expression()];
 			return create<EnumLiteral>(expression, enum_literal.get_index(), enum_literal.get_type());
@@ -1410,6 +1440,13 @@ class Pass3: public Visitor<const Expression*> {
 		return new_index;
 	}
 	static const Type* transform_type(const Type* type) {
+		if (type->get_id() == TypeId::STRUCT) {
+			StructType new_type;
+			for (const auto& field: static_cast<const StructType*>(type)->get_fields()) {
+				new_type.add_field(field.first, transform_type(field.second));
+			}
+			return TypeInterner::intern(&new_type);
+		}
 		if (type->get_id() == TypeId::ENUM) {
 			EnumType new_type;
 			for (const auto& case_: static_cast<const EnumType*>(type)->get_cases()) {
@@ -1488,6 +1525,19 @@ public:
 		const std::vector<const Type*>& element_types = static_cast<const TupleType*>(tuple_access.get_tuple()->get_type())->get_element_types();
 		const std::size_t index = adjust_index(element_types, tuple_access.get_index());
 		return create<TupleAccess>(tuple, index, transform_type(tuple_access.get_type()));
+	}
+	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
+		StructLiteral* new_struct_literal = create<StructLiteral>(transform_type(struct_literal.get_type()));
+		for (const auto& field: struct_literal.get_fields()) {
+			if (!is_empty_tuple(field.second)) {
+				new_struct_literal->add_field(field.first, expression_table[field.second]);
+			}
+		}
+		return new_struct_literal;
+	}
+	const Expression* visit_struct_access(const StructAccess& struct_access) override {
+		const Expression* struct_ = expression_table[struct_access.get_struct()];
+		return create<StructAccess>(struct_, struct_access.get_field_name(), transform_type(struct_access.get_type()));
 	}
 	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
 		const Expression* expression = expression_table[enum_literal.get_expression()];
@@ -1574,7 +1624,7 @@ class Pass4: public Visitor<const Expression*> {
 	};
 	static bool is_managed(const Expression* expression) {
 		const TypeId type_id = expression->get_type_id();
-		return type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
+		return type_id == TypeId::STRUCT || type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
 	}
 	class UsageAnalysis1: public Visitor<void> {
 		UsageTable& usage_table;
@@ -1639,6 +1689,15 @@ class Pass4: public Visitor<const Expression*> {
 		}
 		void visit_tuple_access(const TupleAccess& tuple_access) override {
 			add_usage(tuple_access.get_tuple(), &tuple_access, 0);
+		}
+		void visit_struct_literal(const StructLiteral& struct_literal) override {
+			for (std::size_t i = 0; i < struct_literal.get_fields().size(); ++i) {
+				const auto& field = struct_literal.get_fields()[i];
+				add_usage(field.second, &struct_literal, i);
+			}
+		}
+		void visit_struct_access(const StructAccess& struct_access) override {
+			add_usage(struct_access.get_struct(), &struct_access, 0);
 		}
 		void visit_function_call(const FunctionCall& call) override {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
@@ -1832,6 +1891,31 @@ public:
 			free(tuple);
 		}
 		return new_tuple_access;
+	}
+	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
+		StructLiteral* new_struct_literal = new StructLiteral(struct_literal.get_type());
+		for (std::size_t i = 0; i < struct_literal.get_fields().size(); ++i) {
+			const auto& field = struct_literal.get_fields()[i];
+			if (is_managed(field.second) && !is_last_use(field.second, &struct_literal, i)) {
+				new_struct_literal->add_field(field.first, copy(expression_table[field.second]));
+			}
+			else {
+				new_struct_literal->add_field(field.first, expression_table[field.second]);
+			}
+		}
+		destination_block->add_expression(new_struct_literal);
+		return new_struct_literal;
+	}
+	const Expression* visit_struct_access(const StructAccess& struct_access) override {
+		const Expression* struct_ = expression_table[struct_access.get_struct()];
+		const Expression* new_struct_access = create<StructAccess>(struct_, struct_access.get_field_name(), struct_access.get_type());
+		if (is_managed(&struct_access)) {
+			new_struct_access = copy(new_struct_access);
+		}
+		if (is_last_use(struct_access.get_struct(), &struct_access, 0)) {
+			free(struct_);
+		}
+		return new_struct_access;
 	}
 	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
 		const Expression* expression = enum_literal.get_expression();

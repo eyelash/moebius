@@ -172,6 +172,26 @@ public:
 		}
 		return result;
 	}
+	Variable visit_struct_literal(const StructLiteral& struct_literal) override {
+		const Variable result = next_variable();
+		printer.println_increasing(format("const % = {", result));
+		for (std::size_t i = 0; i < struct_literal.get_fields().size(); ++i) {
+			const auto& field = struct_literal.get_fields()[i];
+			if (field.second->get_type() != TypeInterner::get_void_type()) {
+				printer.println(format("%: %,", field.first, expression_table[field.second]));
+			}
+		}
+		printer.println_decreasing("};");
+		return result;
+	}
+	Variable visit_struct_access(const StructAccess& struct_access) override {
+		const Variable struct_ = expression_table[struct_access.get_struct()];
+		const Variable result = next_variable();
+		if (struct_access.get_type() != TypeInterner::get_void_type()) {
+			printer.println(format("const % = %.%;", result, struct_, struct_access.get_field_name()));
+		}
+		return result;
+	}
 	Variable visit_enum_literal(const EnumLiteral& enum_literal) override {
 		const Variable expression = expression_table[enum_literal.get_expression()];
 		const std::size_t index = enum_literal.get_index();
