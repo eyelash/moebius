@@ -384,30 +384,36 @@ class MoebiusParser: private Parser {
 				return expression;
 			}
 			else {
-				StructLiteral* struct_literal = new StructLiteral();
+				StructTypeLiteral* struct_type_literal = new StructTypeLiteral();
+				StructLiteral* struct_literal = new StructLiteral(struct_type_literal);
+				struct_type_literal->set_position(position);
 				struct_literal->set_position(position);
 				while (parse_not("}")) {
 					const StringView field_name = parse_identifier();
 					parse_white_space();
+					const Expression* field;
 					if (parse(":")) {
 						parse_white_space();
-						const Expression* field = parse_expression();
-						struct_literal->add_field(field_name, field);
+						field = parse_expression();
 						parse_white_space();
 					}
 					else {
-						const Expression* field = current_scope->look_up(field_name);
+						field = current_scope->look_up(field_name);
 						if (field == nullptr) {
 							error(format("undefined variable \"%\"", field_name));
 						}
-						struct_literal->add_field(field_name, field);
 					}
+					Intrinsic* field_type = current_scope->create<Intrinsic>("typeOf");
+					field_type->add_argument(field);
+					struct_type_literal->add_field(field_name, field_type);
+					struct_literal->add_field(field_name, field);
 					if (!parse(",")) {
 						break;
 					}
 					parse_white_space();
 				}
 				expect("}");
+				current_scope->add_expression(struct_type_literal);
 				current_scope->add_expression(struct_literal);
 				return struct_literal;
 			}
@@ -763,16 +769,24 @@ class MoebiusParser: private Parser {
 				}
 				else if (parse("{")) {
 					parse_white_space();
-					StructLiteral* struct_literal = new StructLiteral();
+					StructLiteral* struct_literal = new StructLiteral(expression);
 					struct_literal->set_position(position);
 					while (parse_not("}")) {
 						const StringView field_name = parse_identifier();
 						parse_white_space();
-						expect(":");
-						parse_white_space();
-						const Expression* field = parse_expression();
+						const Expression* field;
+						if (parse(":")) {
+							parse_white_space();
+							field = parse_expression();
+							parse_white_space();
+						}
+						else {
+							field = current_scope->look_up(field_name);
+							if (field == nullptr) {
+								error(format("undefined variable \"%\"", field_name));
+							}
+						}
 						struct_literal->add_field(field_name, field);
-						parse_white_space();
 						if (!parse(",")) {
 							break;
 						}

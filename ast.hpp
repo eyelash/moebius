@@ -229,11 +229,12 @@ public:
 
 class TypeInterner {
 	template <class T> using TypeSet = std::set<TypePointer<T>, TypeCompare<T>>;
+	template <class T> using TypeVector = std::vector<TypePointer<T>>;
 	static inline TypePointer<IntType> int_type;
 	static inline TypePointer<CharType> char_type;
 	static inline TypeSet<ClosureType> closure_types;
-	static inline TypeSet<StructType> struct_types;
-	static inline TypeSet<EnumType> enum_types;
+	static inline TypeVector<StructType> struct_types;
+	static inline TypeVector<EnumType> enum_types;
 	static inline TypeSet<TupleType> tuple_types;
 	static inline TypeSet<ArrayType> array_types;
 	static inline TypePointer<StringType> string_type;
@@ -253,6 +254,11 @@ class TypeInterner {
 		}
 		return *iterator;
 	}
+	template <class T> static T* create(TypeVector<T>& types) {
+		T* type = new T();
+		types.push_back(type);
+		return type;
+	}
 public:
 	static const Type* get_int_type() {
 		return get_or_set(int_type);
@@ -263,11 +269,11 @@ public:
 	static const Type* intern(const ClosureType* closure_type) {
 		return get_or_insert(closure_types, closure_type);
 	}
-	static const Type* intern(const StructType* struct_type) {
-		return get_or_insert(struct_types, struct_type);
+	static StructType* create_struct_type() {
+		return create(struct_types);
 	}
-	static const Type* intern(const EnumType* enum_type) {
-		return get_or_insert(enum_types, enum_type);
+	static EnumType* create_enum_type() {
+		return create(enum_types);
 	}
 	static const Type* intern(const TupleType* tuple_type) {
 		return get_or_insert(tuple_types, tuple_type);
@@ -728,9 +734,11 @@ public:
 };
 
 class StructLiteral: public Expression {
+	const Expression* type_expression;
 	std::vector<std::pair<std::string, const Expression*>> fields;
 public:
-	StructLiteral(const Type* type = nullptr): Expression(type) {}
+	StructLiteral(const Expression* type_expression): Expression(nullptr), type_expression(type_expression) {}
+	StructLiteral(const Type* type = nullptr): Expression(type), type_expression(nullptr) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_struct_literal(*this);
 	}
@@ -739,6 +747,9 @@ public:
 	}
 	void add_field(const StringView& field_name, const Expression* field) {
 		fields.emplace_back(std::string(field_name.begin(), field_name.end()), field);
+	}
+	const Expression* get_type_expression() const {
+		return type_expression;
 	}
 	const std::vector<std::pair<std::string, const Expression*>>& get_fields() const {
 		return fields;
@@ -1188,31 +1199,11 @@ public:
 			p.print("Function");
 			break;
 		case TypeId::STRUCT:
-			{
-				const StructType* struct_type = static_cast<const StructType*>(type);
-				p.print("struct{");
-				for (std::size_t i = 0; i < struct_type->get_fields().size(); ++i) {
-					const std::string& field_name = struct_type->get_fields()[i].first;
-					const Type* field_type = struct_type->get_fields()[i].second;
-					if (i > 0) p.print(",");
-					p.print(format("%:%", field_name, PrintType(field_type)));
-				}
-				p.print("}");
-				break;
-			}
+			p.print("Struct");
+			break;
 		case TypeId::ENUM:
-			{
-				const EnumType* enum_type = static_cast<const EnumType*>(type);
-				p.print("enum{");
-				for (std::size_t i = 0; i < enum_type->get_cases().size(); ++i) {
-					const std::string& case_name = enum_type->get_cases()[i].first;
-					const Type* case_type = enum_type->get_cases()[i].second;
-					if (i > 0) p.print(",");
-					p.print(format("%:%", case_name, PrintType(case_type)));
-				}
-				p.print("}");
-				break;
-			}
+			p.print("Enum");
+			break;
 		case TypeId::TUPLE:
 			{
 				const TupleType* tuple_type = static_cast<const TupleType*>(type);

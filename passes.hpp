@@ -199,18 +199,41 @@ public:
 		return create<TupleAccess>(tuple, index, type);
 	}
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
-		StructType type;
-		StructLiteral* new_struct_literal = create<StructLiteral>();
+		const Type* type;
+		if (struct_literal.get_type_expression()) {
+			const Expression* type_expression = expression_table[struct_literal.get_type_expression()];
+			if (type_expression->get_type_id() != TypeId::TYPE) {
+				error(struct_literal, "expression must be a type");
+			}
+			type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+			if (type->get_id() != TypeId::STRUCT) {
+				error(struct_literal, "expression must be a struct type");
+			}
+			const StructType* struct_type = static_cast<const StructType*>(type);
+			for (std::size_t i = 0; i < struct_type->get_fields().size(); ++i) {
+				const std::string& field_name = struct_type->get_fields()[i].first;
+				if (i >= struct_literal.get_fields().size()) {
+					error(struct_literal, format("missing field \"%\"", field_name));
+				}
+				const std::string& actual_field_name = struct_literal.get_fields()[i].first;
+				if (actual_field_name != field_name) {
+					error(struct_literal, format("expected field \"%\" instead of \"%\"", field_name, actual_field_name));
+				}
+			}
+			if (struct_literal.get_fields().size() > struct_type->get_fields().size()) {
+				const std::string& actual_field_name = struct_literal.get_fields()[struct_type->get_fields().size()].first;
+				error(struct_literal, format("superfluous field \"%\"", actual_field_name));
+			}
+		}
+		else {
+			type = struct_literal.get_type();
+		}
+		StructLiteral* new_struct_literal = create<StructLiteral>(type);
 		for (const auto& field: struct_literal.get_fields()) {
 			const std::string& field_name = field.first;
-			if (type.has_field(field_name)) {
-				error(struct_literal, format("duplicate field \"%\"", field_name));
-			}
 			const Expression* new_field = expression_table[field.second];
-			type.add_field(field_name, new_field->get_type());
 			new_struct_literal->add_field(field_name, new_field);
 		}
-		new_struct_literal->set_type(TypeInterner::intern(&type));
 		return new_struct_literal;
 	}
 	const Expression* visit_struct_access(const StructAccess& struct_access) override {
@@ -672,30 +695,36 @@ public:
 		return create<TypeLiteral>(type);
 	}
 	const Expression* visit_struct_type_literal(const StructTypeLiteral& struct_type_literal) override {
-		StructType new_struct_type;
+		StructType* new_struct_type = TypeInterner::create_struct_type();
 		for (const auto& field: struct_type_literal.get_fields()) {
 			const std::string& field_name = field.first;
+			if (new_struct_type->has_field(field_name)) {
+				error(struct_type_literal, format("duplicate field \"%\"", field_name));
+			}
 			const Expression* type_expression = expression_table[field.second];
 			if (type_expression->get_type_id() != TypeId::TYPE) {
 				error(struct_type_literal, "struct fields must be types");
 			}
 			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
-			new_struct_type.add_field(field_name, type);
+			new_struct_type->add_field(field_name, type);
 		}
-		return create<TypeLiteral>(TypeInterner::intern(&new_struct_type));
+		return create<TypeLiteral>(new_struct_type);
 	}
 	const Expression* visit_enum_type_literal(const EnumTypeLiteral& enum_type_literal) override {
-		EnumType new_enum_type;
+		EnumType* new_enum_type = TypeInterner::create_enum_type();
 		for (const auto& case_: enum_type_literal.get_cases()) {
 			const std::string& case_name = case_.first;
+			if (new_enum_type->has_case(case_name)) {
+				error(enum_type_literal, format("duplicate case \"%\"", case_name));
+			}
 			const Expression* type_expression = expression_table[case_.second];
 			if (type_expression->get_type_id() != TypeId::TYPE) {
 				error(enum_type_literal, "enum cases must be types");
 			}
 			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
-			new_enum_type.add_case(case_name, type);
+			new_enum_type->add_case(case_name, type);
 		}
-		return create<TypeLiteral>(TypeInterner::intern(&new_enum_type));
+		return create<TypeLiteral>(new_enum_type);
 	}
 	const Expression* visit_type_assert(const TypeAssert& type_assert) override {
 		const Expression* expression = expression_table[type_assert.get_expression()];
@@ -748,6 +777,8 @@ public:
 
 // lower closures and structs to tuples
 class Lowering: public Visitor<const Expression*> {
+	using TypeTable = std::map<const Type*, const Type*>;
+	TypeTable& type_table;
 	using FunctionTable = std::map<const Function*, Function*>;
 	FunctionTable& function_table;
 	using ExpressionTable = std::map<const Expression*, const Expression*>;
@@ -758,38 +789,52 @@ class Lowering: public Visitor<const Expression*> {
 		destination_block->add_expression(expression);
 		return expression;
 	}
-	static const Type* transform_type(const Type* type) {
+	static const Type* transform_type(TypeTable& type_table, const Type* type) {
+		auto iterator = type_table.find(type);
+		if (iterator != type_table.end()) {
+			return iterator->second;
+		}
 		if (type->get_id() == TypeId::CLOSURE) {
 			TupleType tuple_type;
 			for (const Type* environment_type: static_cast<const ClosureType*>(type)->get_environment_types()) {
-				tuple_type.add_element_type(transform_type(environment_type));
+				tuple_type.add_element_type(transform_type(type_table, environment_type));
 			}
-			return TypeInterner::intern(&tuple_type);
+			const Type* transformed_type = TypeInterner::intern(&tuple_type);
+			type_table[type] = transformed_type;
+			return transformed_type;
 		}
 		if (type->get_id() == TypeId::STRUCT) {
-			TupleType tuple_type;
+			StructType* struct_type = TypeInterner::create_struct_type();
 			for (const auto& field: static_cast<const StructType*>(type)->get_fields()) {
-				tuple_type.add_element_type(transform_type(field.second));
+				struct_type->add_field(field.first, transform_type(type_table, field.second));
 			}
-			return TypeInterner::intern(&tuple_type);
+			type_table[type] = struct_type;
+			return struct_type;
 		}
 		if (type->get_id() == TypeId::ENUM) {
-			EnumType enum_type;
+			EnumType* enum_type = TypeInterner::create_enum_type();
 			for (const auto& case_: static_cast<const EnumType*>(type)->get_cases()) {
-				enum_type.add_case(case_.first, transform_type(case_.second));
+				enum_type->add_case(case_.first, transform_type(type_table, case_.second));
 			}
-			return TypeInterner::intern(&enum_type);
+			type_table[type] = enum_type;
+			return enum_type;
 		}
 		if (type->get_id() == TypeId::ARRAY) {
 			const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
-			return TypeInterner::get_array_type(transform_type(element_type));
+			const Type* transformed_type = TypeInterner::get_array_type(transform_type(type_table, element_type));
+			type_table[type] = transformed_type;
+			return transformed_type;
 		}
+		type_table[type] = type;
 		return type;
 	}
+	const Type* transform_type(const Type* type) {
+		return transform_type(type_table, type);
+	}
 public:
-	Lowering(FunctionTable& function_table, ExpressionTable& expression_table, Block* destination_block): function_table(function_table), expression_table(expression_table), destination_block(destination_block) {}
-	static void evaluate(FunctionTable& function_table, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
-		Lowering lowering(function_table, expression_table, destination_block);
+	Lowering(TypeTable& type_table, FunctionTable& function_table, ExpressionTable& expression_table, Block* destination_block): type_table(type_table), function_table(function_table), expression_table(expression_table), destination_block(destination_block) {}
+	static void evaluate(TypeTable& type_table, FunctionTable& function_table, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
+		Lowering lowering(type_table, function_table, expression_table, destination_block);
 		for (const Expression* expression: source_block) {
 			const Expression* new_expression = visit(lowering, expression);
 			if (new_expression) {
@@ -797,12 +842,12 @@ public:
 			}
 		}
 	}
-	static void evaluate(FunctionTable& function_table, Block* destination_block, const Block& source_block) {
+	static void evaluate(TypeTable& type_table, FunctionTable& function_table, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		evaluate(function_table, expression_table, destination_block, source_block);
+		evaluate(type_table, function_table, expression_table, destination_block, source_block);
 	}
 	void evaluate(Block* destination_block, const Block& source_block) {
-		evaluate(function_table, expression_table, destination_block, source_block);
+		evaluate(type_table, function_table, expression_table, destination_block, source_block);
 	}
 	const Expression* visit_int_literal(const IntLiteral& int_literal) override {
 		return create<IntLiteral>(int_literal.get_value());
@@ -841,17 +886,15 @@ public:
 		return create<TupleAccess>(tuple, tuple_access.get_index(), transform_type(tuple_access.get_type()));
 	}
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
-		TupleLiteral* tuple_literal = create<TupleLiteral>(transform_type(struct_literal.get_type()));
+		StructLiteral* new_struct_literal = create<StructLiteral>(transform_type(struct_literal.get_type()));
 		for (const auto& field: struct_literal.get_fields()) {
-			tuple_literal->add_element(expression_table[field.second]);
+			new_struct_literal->add_field(field.first, expression_table[field.second]);
 		}
-		return tuple_literal;
+		return new_struct_literal;
 	}
 	const Expression* visit_struct_access(const StructAccess& struct_access) override {
-		const Expression* tuple = expression_table[struct_access.get_struct()];
-		const StructType* struct_type = static_cast<const StructType*>(struct_access.get_struct()->get_type());
-		const std::size_t index = struct_type->get_index(struct_access.get_field_name());
-		return create<TupleAccess>(tuple, index, transform_type(struct_access.get_type()));
+		const Expression* struct_ = expression_table[struct_access.get_struct()];
+		return create<StructAccess>(struct_, struct_access.get_field_name(), transform_type(struct_access.get_type()));
 	}
 	const Expression* visit_enum_literal(const EnumLiteral& enum_literal) override {
 		const Expression* expression = expression_table[enum_literal.get_expression()];
@@ -915,19 +958,20 @@ public:
 	}
 	static Program run(const Program& program) {
 		Program new_program;
+		TypeTable type_table;
 		FunctionTable function_table;
 		for (const Function* function: program) {
 			std::vector<const Type*> argument_types;
 			for (const Type* type: function->get_argument_types()) {
-				argument_types.push_back(transform_type(type));
+				argument_types.push_back(transform_type(type_table, type));
 			}
-			Function* new_function = new Function(argument_types, transform_type(function->get_return_type()));
+			Function* new_function = new Function(argument_types, transform_type(type_table, function->get_return_type()));
 			new_program.add_function(new_function);
 			function_table[function] = new_function;
 		}
 		for (const Function* function: program) {
 			Function* new_function = function_table[function];
-			evaluate(function_table, new_function->get_block(), function->get_block());
+			evaluate(type_table, function_table, new_function->get_block(), function->get_block());
 		}
 		return new_program;
 	}
@@ -1402,6 +1446,8 @@ public:
 
 // remove empty tuples
 class Pass3: public Visitor<const Expression*> {
+	using TypeTable = std::map<const Type*, const Type*>;
+	TypeTable& type_table;
 	using FunctionTable = std::map<const Function*, Function*>;
 	FunctionTable& function_table;
 	const Function* function;
@@ -1439,52 +1485,66 @@ class Pass3: public Visitor<const Expression*> {
 		}
 		return new_index;
 	}
-	static const Type* transform_type(const Type* type) {
+	static const Type* transform_type(TypeTable& type_table, const Type* type) {
+		auto iterator = type_table.find(type);
+		if (iterator != type_table.end()) {
+			return iterator->second;
+		}
 		if (type->get_id() == TypeId::STRUCT) {
-			StructType new_type;
+			StructType* new_type = TypeInterner::create_struct_type();
 			for (const auto& field: static_cast<const StructType*>(type)->get_fields()) {
-				new_type.add_field(field.first, transform_type(field.second));
+				new_type->add_field(field.first, transform_type(type_table, field.second));
 			}
-			return TypeInterner::intern(&new_type);
+			type_table[type] = new_type;
+			return new_type;
 		}
 		if (type->get_id() == TypeId::ENUM) {
-			EnumType new_type;
+			EnumType* new_type = TypeInterner::create_enum_type();
 			for (const auto& case_: static_cast<const EnumType*>(type)->get_cases()) {
-				new_type.add_case(case_.first, transform_type(case_.second));
+				new_type->add_case(case_.first, transform_type(type_table, case_.second));
 			}
-			return TypeInterner::intern(&new_type);
+			type_table[type] = new_type;
+			return new_type;
 		}
 		if (type->get_id() == TypeId::TUPLE) {
 			TupleType new_type;
 			for (const Type* element_type: static_cast<const TupleType*>(type)->get_element_types()) {
 				if (!is_empty_tuple(element_type)) {
-					new_type.add_element_type(transform_type(element_type));
+					new_type.add_element_type(transform_type(type_table, element_type));
 				}
 			}
-			return TypeInterner::intern(&new_type);
+			const Type* transformed_type = TypeInterner::intern(&new_type);
+			type_table[type] = transformed_type;
+			return transformed_type;
 		}
 		if (type->get_id() == TypeId::ARRAY) {
 			const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
-			return TypeInterner::get_array_type(transform_type(element_type));
+			const Type* transformed_type = TypeInterner::get_array_type(transform_type(type_table, element_type));
+			type_table[type] = transformed_type;
+			return transformed_type;
 		}
+		type_table[type] = type;
 		return type;
 	}
+	const Type* transform_type(const Type* type) {
+		return transform_type(type_table, type);
+	}
 public:
-	Pass3(FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block): function_table(function_table), function(function),  expression_table(expression_table), destination_block(destination_block) {}
-	static void evaluate(FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
-		Pass3 pass3(function_table, function, expression_table, destination_block);
+	Pass3(TypeTable& type_table, FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block): type_table(type_table), function_table(function_table), function(function), expression_table(expression_table), destination_block(destination_block) {}
+	static void evaluate(TypeTable& type_table, FunctionTable& function_table, const Function* function, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
+		Pass3 pass3(type_table, function_table, function, expression_table, destination_block);
 		for (const Expression* expression: source_block) {
 			if (!is_empty_tuple(expression)) {
 				expression_table[expression] = visit(pass3, expression);
 			}
 		}
 	}
-	static void evaluate(FunctionTable& function_table, const Function* function, Block* destination_block, const Block& source_block) {
+	static void evaluate(TypeTable& type_table, FunctionTable& function_table, const Function* function, Block* destination_block, const Block& source_block) {
 		ExpressionTable expression_table;
-		evaluate(function_table, function, expression_table, destination_block, source_block);
+		evaluate(type_table, function_table, function, expression_table, destination_block, source_block);
 	}
 	void evaluate(Block* destination_block, const Block& source_block) {
-		evaluate(function_table, function, expression_table, destination_block, source_block);
+		evaluate(type_table, function_table, function, expression_table, destination_block, source_block);
 	}
 	const Expression* visit_int_literal(const IntLiteral& int_literal) override {
 		return create<IntLiteral>(int_literal.get_value());
@@ -1589,6 +1649,7 @@ public:
 	}
 	static Program run(const Program& program) {
 		Program new_program;
+		TypeTable type_table;
 		FunctionTable function_table;
 		for (const Function* function: program) {
 			if (is_empty_tuple(function->get_return_type())) {
@@ -1597,10 +1658,10 @@ public:
 			std::vector<const Type*> argument_types;
 			for (const Type* type: function->get_argument_types()) {
 				if (!is_empty_tuple(type)) {
-					argument_types.push_back(transform_type(type));
+					argument_types.push_back(transform_type(type_table, type));
 				}
 			}
-			Function* new_function = new Function(argument_types, transform_type(function->get_return_type()));
+			Function* new_function = new Function(argument_types, transform_type(type_table, function->get_return_type()));
 			new_program.add_function(new_function);
 			function_table[function] = new_function;
 		}
@@ -1609,7 +1670,7 @@ public:
 				continue;
 			}
 			Function* new_function = function_table[function];
-			evaluate(function_table, function, new_function->get_block(), function->get_block());
+			evaluate(type_table, function_table, function, new_function->get_block(), function->get_block());
 		}
 		return new_program;
 	}
