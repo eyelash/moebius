@@ -250,6 +250,18 @@ public:
 				return create<StructAccess>(struct_, struct_access.get_field_name(), type);
 			}
 		}
+		if (struct_->get_type_id() == TypeId::REFERENCE) {
+			const Type* type = static_cast<const ReferenceType*>(struct_->get_type())->get_type();
+			if (type->get_id() == TypeId::STRUCT) {
+				const StructType* struct_type = static_cast<const StructType*>(type);
+				if (struct_type->has_field(struct_access.get_field_name())) {
+					const std::size_t index = struct_type->get_index(struct_access.get_field_name());
+					// TODO: constant folding for references
+					const Type* type = struct_type->get_fields()[index].second;
+					return create<StructAccess>(struct_, struct_access.get_field_name(), type);
+				}
+			}
+		}
 		if (struct_->get_type_id() == TypeId::TYPE) {
 			const Type* type = static_cast<const TypeType*>(struct_->get_type())->get_type();
 			if (type->get_id() == TypeId::ENUM) {
@@ -270,12 +282,21 @@ public:
 		const Expression* expression = expression_table[enum_literal.get_expression()];
 		return create<EnumLiteral>(expression, enum_literal.get_index(), enum_literal.get_type());
 	}
+	const EnumType* get_enum_type(const Switch& switch_, const Expression* enum_) {
+		if (enum_->get_type_id() == TypeId::ENUM) {
+			return static_cast<const EnumType*>(enum_->get_type());
+		}
+		if (enum_->get_type_id() == TypeId::REFERENCE) {
+			const Type* type = static_cast<const ReferenceType*>(enum_->get_type())->get_type();
+			if (type->get_id() == TypeId::ENUM) {
+				return static_cast<const EnumType*>(type);
+			}
+		}
+		error(switch_, "switch expression must be an enum");
+	}
 	const Expression* visit_switch(const Switch& switch_) override {
 		const Expression* enum_ = expression_table[switch_.get_enum()];
-		if (enum_->get_type_id() != TypeId::ENUM) {
-			error(switch_, "switch expression must be an enum");
-		}
-		const EnumType* enum_type = static_cast<const EnumType*>(enum_->get_type());
+		const EnumType* enum_type = get_enum_type(switch_, enum_);
 		for (std::size_t i = 0; i < enum_type->get_cases().size(); ++i) {
 			const std::string& case_name = enum_type->get_cases()[i].first;
 			if (i >= switch_.get_cases().size()) {
@@ -602,6 +623,14 @@ public:
 			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
 			return create_intrinsic(intrinsic, TypeInterner::get_string_iterator_type());
 		}
+		else if (intrinsic.name_equals("reference")) {
+			ensure_argument_count(intrinsic, 1);
+			const Type* type = expression_table[intrinsic.get_arguments()[0]]->get_type();
+			if (!(type->get_id() == TypeId::STRUCT || type->get_id() == TypeId::ENUM)) {
+				error(intrinsic, "only references to structs and enums are currently supported");
+			}
+			return create_intrinsic(intrinsic, TypeInterner::get_reference_type(type));
+		}
 		else if (intrinsic.name_equals("typeOf")) {
 			ensure_argument_count(intrinsic, 1);
 			const Expression* expression = expression_table[intrinsic.get_arguments()[0]];
@@ -631,6 +660,15 @@ public:
 				new_tuple_type.add_element_type(static_cast<const TypeType*>(element)->get_type());
 			}
 			return create<TypeLiteral>(TypeInterner::intern(&new_tuple_type));
+		}
+		else if (intrinsic.name_equals("referenceType")) {
+			ensure_argument_count(intrinsic, 1);
+			const Expression* type_expression = expression_table[intrinsic.get_arguments()[0]];
+			if (type_expression->get_type_id() != TypeId::TYPE) {
+				error(intrinsic, "argument of referenceType must be a type");
+			}
+			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
+			return create<TypeLiteral>(TypeInterner::get_reference_type(type));
 		}
 		else if (intrinsic.name_equals("import")) {
 			ensure_argument_count(intrinsic, 1);
@@ -822,6 +860,12 @@ class Lowering: public Visitor<const Expression*> {
 		if (type->get_id() == TypeId::ARRAY) {
 			const Type* element_type = static_cast<const ArrayType*>(type)->get_element_type();
 			const Type* transformed_type = TypeInterner::get_array_type(transform_type(type_table, element_type));
+			type_table[type] = transformed_type;
+			return transformed_type;
+		}
+		if (type->get_id() == TypeId::REFERENCE) {
+			const Type* value_type = static_cast<const ReferenceType*>(type)->get_type();
+			const Type* transformed_type = TypeInterner::get_reference_type(transform_type(type_table, value_type));
 			type_table[type] = transformed_type;
 			return transformed_type;
 		}
@@ -1523,6 +1567,12 @@ class Pass3: public Visitor<const Expression*> {
 			type_table[type] = transformed_type;
 			return transformed_type;
 		}
+		if (type->get_id() == TypeId::REFERENCE) {
+			const Type* value_type = static_cast<const ReferenceType*>(type)->get_type();
+			const Type* transformed_type = TypeInterner::get_reference_type(transform_type(type_table, value_type));
+			type_table[type] = transformed_type;
+			return transformed_type;
+		}
 		type_table[type] = type;
 		return type;
 	}
@@ -1685,7 +1735,7 @@ class Pass4: public Visitor<const Expression*> {
 	};
 	static bool is_managed(const Expression* expression) {
 		const TypeId type_id = expression->get_type_id();
-		return type_id == TypeId::STRUCT || type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
+		return type_id == TypeId::STRUCT || type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR || type_id == TypeId::REFERENCE;
 	}
 	class UsageAnalysis1: public Visitor<void> {
 		UsageTable& usage_table;

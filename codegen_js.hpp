@@ -340,6 +340,10 @@ public:
 			printer.println(format("result: %.iterator.next(),", iterator));
 			printer.println_decreasing("};");
 		}
+		else if (intrinsic.name_equals("reference")) {
+			const Variable value = expression_table[intrinsic.get_arguments()[0]];
+			printer.println(format("const % = %;", result, value));
+		}
 		else if (intrinsic.name_equals("copy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];
 			printer.println(format("const % = %;", result, array));

@@ -19,6 +19,7 @@ enum class TypeId {
 	STRING,
 	STRING_ITERATOR,
 	VOID,
+	REFERENCE,
 	TYPE
 };
 
@@ -183,6 +184,21 @@ public:
 	}
 };
 
+class ReferenceType: public Type {
+	const Type* type;
+public:
+	ReferenceType(const Type* type): type(type) {}
+	TypeId get_id() const override {
+		return TypeId::REFERENCE;
+	}
+	bool operator <(const ReferenceType& rhs) const {
+		return type < rhs.type;
+	}
+	const Type* get_type() const {
+		return type;
+	}
+};
+
 class TypeType: public Type {
 	const Type* type;
 public:
@@ -240,6 +256,7 @@ class TypeInterner {
 	static inline TypePointer<StringType> string_type;
 	static inline TypePointer<StringIteratorType> string_iterator_type;
 	static inline TypePointer<VoidType> void_type;
+	static inline TypeSet<ReferenceType> reference_types;
 	static inline TypeSet<TypeType> type_types;
 	template <class T> static T* get_or_set(TypePointer<T>& type) {
 		if (type == nullptr) {
@@ -290,6 +307,10 @@ public:
 	}
 	static const Type* get_void_type() {
 		return get_or_set(void_type);
+	}
+	static const Type* get_reference_type(const Type* type) {
+		ReferenceType reference_type(type);
+		return get_or_insert(reference_types, &reference_type);
 	}
 	static const Type* get_type_type(const Type* type) {
 		TypeType type_type(type);
@@ -1231,6 +1252,11 @@ public:
 		case TypeId::VOID:
 			p.print("Void");
 			break;
+		case TypeId::REFERENCE:
+			{
+				const Type* value_type = static_cast<const ReferenceType*>(type)->get_type();
+				p.print(format("Reference(%)", PrintType(value_type)));
+			}
 		case TypeId::TYPE:
 			{
 				const Type* type_type = static_cast<const TypeType*>(type)->get_type();

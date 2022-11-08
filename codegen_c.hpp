@@ -49,7 +49,7 @@ class CodegenC: public Visitor<Variable> {
 	}
 	static bool is_managed(const ::Type* type) {
 		const TypeId type_id = type->get_id();
-		return type_id == TypeId::STRUCT || type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR;
+		return type_id == TypeId::STRUCT || type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR || type_id == TypeId::REFERENCE;
 	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
@@ -175,6 +175,17 @@ class CodegenC: public Visitor<Variable> {
 					const std::size_t index = types.size();
 					type_declaration_printer.println(format("typedef void %;", Type(index)));
 					types[type] = index;
+					return index;
+				}
+			case TypeId::REFERENCE:
+				{
+					const Type value_type = get_type(static_cast<const ReferenceType*>(type)->get_type());
+					const std::size_t index = types.size();
+					type_declaration_printer.println_increasing(format("typedef struct % {", Type(index)));
+					type_declaration_printer.println(format("% value;", value_type));
+					type_declaration_printer.println_decreasing(format("} *%;", Type(index)));
+					types[type] = index;
+					generate_reference_functions(type);
 					return index;
 				}
 			default:
@@ -398,6 +409,25 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 			printer.println_decreasing("}");
 		}
+		void generate_reference_functions(const ::Type* type) {
+			const Type reference_type = get_type(type);
+			const Type value_type = get_type(static_cast<const ReferenceType*>(type)->get_type());
+			const Type void_type = get_type(TypeInterner::get_void_type());
+			IndentPrinter& printer = type_declaration_printer;
+
+			// reference_copy
+			printer.println_increasing(format("static % %_copy(% reference) {", reference_type, reference_type, reference_type));
+			printer.println(format("% new_reference = malloc(sizeof(struct %));", reference_type, reference_type));
+			printer.println(format("new_reference->value = %_copy(reference->value);", value_type));
+			printer.println("return new_reference;");
+			printer.println_decreasing("}");
+
+			// reference_free
+			printer.println_increasing(format("static % %_free(% reference) {", void_type, reference_type, reference_type));
+			printer.println(format("%_free(reference->value);", value_type));
+			printer.println("free(reference);");
+			printer.println_decreasing("}");
+		}
 	};
 	FunctionTable& function_table;
 	IndentPrinter& printer;
@@ -529,7 +559,12 @@ public:
 		const Variable result = next_variable();
 		if (struct_access.get_type() != TypeInterner::get_void_type()) {
 			const Type result_type = function_table.get_type(struct_access.get_type());
-			printer.println(format("% % = %.%;", result_type, result, struct_, struct_access.get_field_name()));
+			if (struct_access.get_struct()->get_type_id() == TypeId::REFERENCE) {
+				printer.println(format("% % = %->value.%;", result_type, result, struct_, struct_access.get_field_name()));
+			}
+			else {
+				printer.println(format("% % = %.%;", result_type, result, struct_, struct_access.get_field_name()));
+			}
 		}
 		return result;
 	}
@@ -545,6 +580,18 @@ public:
 		}
 		return result;
 	}
+	static const EnumType* get_enum_type(const Expression* enum_) {
+		if (enum_->get_type_id() == TypeId::ENUM) {
+			return static_cast<const EnumType*>(enum_->get_type());
+		}
+		if (enum_->get_type_id() == TypeId::REFERENCE) {
+			const ::Type* type = static_cast<const ReferenceType*>(enum_->get_type())->get_type();
+			if (type->get_id() == TypeId::ENUM) {
+				return static_cast<const EnumType*>(type);
+			}
+		}
+		return nullptr;
+	}
 	Variable visit_switch(const Switch& switch_) override {
 		const Variable enum_ = expression_table[switch_.get_enum()];
 		const Variable result = next_variable();
@@ -553,13 +600,24 @@ public:
 			const Type result_type = function_table.get_type(switch_.get_type());
 			printer.println(format("% %;", result_type, result));
 		}
-		printer.println_increasing(format("switch (%.tag) {", enum_));
+		if (switch_.get_enum()->get_type_id() == TypeId::REFERENCE) {
+			printer.println_increasing(format("switch (%->value.tag) {", enum_));
+		}
+		else {
+			printer.println_increasing(format("switch (%.tag) {", enum_));
+		}
 		for (std::size_t i = 0; i < switch_.get_cases().size(); ++i) {
 			const Block& case_block = switch_.get_cases()[i].second;
-			const ::Type* case_type = static_cast<const EnumType*>(switch_.get_enum()->get_type())->get_cases()[i].second;
+			const ::Type* case_type = get_enum_type(switch_.get_enum())->get_cases()[i].second;
 			printer.println_increasing(format("case %: {", print_number(i)));
 			if (case_type != TypeInterner::get_void_type()) {
-				printer.println(format("% % = %.value.v%;", function_table.get_type(case_type), case_variable, enum_, print_number(i)));
+				if (switch_.get_enum()->get_type_id() == TypeId::REFERENCE) {
+					printer.println(format("% % = %->value.value.v%;", function_table.get_type(case_type), case_variable, enum_, print_number(i)));
+					printer.println(format("free(%);", enum_));
+				}
+				else {
+					printer.println(format("% % = %.value.v%;", function_table.get_type(case_type), case_variable, enum_, print_number(i)));
+				}
 			}
 			evaluate(case_variable, result, case_block);
 			printer.println("break;");
@@ -689,6 +747,12 @@ public:
 			printer.println(format("% %;", type, result));
 			printer.println(format("%.v0 = %.v0;", result, iterator));
 			printer.println(format("%.v1 = %.v1 + 1;", result, iterator));
+		}
+		else if (intrinsic.name_equals("reference")) {
+			const Variable value = expression_table[intrinsic.get_arguments()[0]];
+			const Type type = function_table.get_type(intrinsic.get_type());
+			printer.println(format("% % = malloc(sizeof(struct %));", type, result, type));
+			printer.println(format("%->value = %;", result, value));
 		}
 		else if (intrinsic.name_equals("copy")) {
 			const Variable array = expression_table[intrinsic.get_arguments()[0]];

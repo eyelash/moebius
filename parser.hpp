@@ -60,9 +60,11 @@ constexpr const char* intrinsics[] = {
 	"stringIteratorIsValid",
 	"stringIteratorGet",
 	"stringIteratorNext",
+	"reference",
 	"typeOf",
 	"arrayType",
 	"tupleType",
+	"referenceType",
 	"import"
 };
 
