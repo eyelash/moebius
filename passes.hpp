@@ -137,6 +137,9 @@ public:
 			error(array_literal, "emtpy arrays are not yet supported");
 		}
 		const Type* element_type = expression_table[array_literal.get_elements()[0]]->get_type();
+		if (element_type->get_id() == TypeId::TYPE) {
+			error(array_literal, "array elements must not be types");
+		}
 		ArrayLiteral* new_array_literal = create<ArrayLiteral>(TypeInterner::get_array_type(element_type));
 		for (const Expression* element: array_literal.get_elements()) {
 			const Expression* new_element = expression_table[element];
@@ -218,6 +221,11 @@ public:
 				const std::string& actual_field_name = struct_literal.get_fields()[i].first;
 				if (actual_field_name != field_name) {
 					error(struct_literal, format("expected field \"%\" instead of \"%\"", field_name, actual_field_name));
+				}
+				const Type* field_type = struct_type->get_fields()[i].second;
+				const Expression* field = expression_table[struct_literal.get_fields()[i].second];
+				if (field->get_type() != field_type) {
+					error(struct_literal, format("field \"%\" must have type %", field_name, print_type(field_type)));
 				}
 			}
 			if (struct_literal.get_fields().size() > struct_type->get_fields().size()) {
@@ -806,7 +814,7 @@ public:
 		Function* new_function = new Function(TypeInterner::get_void_type());
 		new_program.add_function(new_function);
 		function_table[new_key] = new_function;
-		evaluate(&old_program, &new_program, file_table, function_table, new_key, new_function->get_block(), file_table[path]->get_block());
+		evaluate(&old_program, &new_program, file_table, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 		return new_program;
 	}
 	static Program run(Program& program) {
@@ -818,12 +826,12 @@ public:
 		Function* new_function = new Function(main_function->get_return_type());
 		new_program.add_function(new_function);
 		function_table[new_key] = new_function;
-		evaluate(&program, &new_program, file_table, function_table, new_key, new_function->get_block(), main_function->get_block());
+		evaluate(&program, &new_program, file_table, function_table, new_key, new_function->get_block(), new_key.old_function->get_block());
 		return new_program;
 	}
 };
 
-// lower closures and structs to tuples
+// lower closures to tuples
 class Lowering: public Visitor<const Expression*> {
 	using TypeTable = std::map<const Type*, const Type*>;
 	TypeTable& type_table;
@@ -1259,7 +1267,7 @@ public:
 };
 
 // inlining
-class Pass2 {
+class Inlining {
 	struct FunctionTableEntry {
 		const Function* new_function = nullptr;
 		std::size_t expressions = 0;
@@ -1483,7 +1491,7 @@ class Pass2 {
 		}
 	};
 public:
-	Pass2() = delete;
+	Inlining() = delete;
 	static Program run(const Program& program) {
 		const Function* main_function = program.get_main_function();
 		Program new_program;
@@ -1548,7 +1556,9 @@ class Pass3: public Visitor<const Expression*> {
 			StructType* new_type = TypeInterner::create_struct_type();
 			type_table[type] = new_type;
 			for (const auto& field: static_cast<const StructType*>(type)->get_fields()) {
-				new_type->add_field(field.first, transform_type(type_table, field.second));
+				if (!is_empty_tuple(field.second)) {
+					new_type->add_field(field.first, transform_type(type_table, field.second));
+				}
 			}
 			return new_type;
 		}
@@ -1737,7 +1747,7 @@ public:
 };
 
 // memory management
-class Pass4: public Visitor<const Expression*> {
+class MemoryManagement: public Visitor<const Expression*> {
 	struct UsageTable {
 		std::map<const Block*, std::map<const Expression*, std::pair<const Expression*, std::size_t>>> usages;
 		std::map<const Block*, std::vector<const Expression*>> frees;
@@ -1790,18 +1800,6 @@ class Pass4: public Visitor<const Expression*> {
 			propagate_usages(&if_.get_then_block(), &if_);
 			propagate_usages(&if_.get_else_block(), &if_);
 		}
-		void visit_enum_literal(const EnumLiteral& enum_literal) override {
-			add_usage(enum_literal.get_expression(), &enum_literal, 0);
-		}
-		void visit_switch(const Switch& switch_) override {
-			add_usage(switch_.get_enum(), &switch_, 0);
-			for (const auto& case_: switch_.get_cases()) {
-				evaluate(case_.second);
-			}
-			for (const auto& case_: switch_.get_cases()) {
-				propagate_usages(&case_.second, &switch_);
-			}
-		}
 		void visit_tuple_literal(const TupleLiteral& tuple_literal) override {
 			for (std::size_t i = 0; i < tuple_literal.get_elements().size(); ++i) {
 				const Expression* element = tuple_literal.get_elements()[i];
@@ -1819,6 +1817,18 @@ class Pass4: public Visitor<const Expression*> {
 		}
 		void visit_struct_access(const StructAccess& struct_access) override {
 			add_usage(struct_access.get_struct(), &struct_access, 0);
+		}
+		void visit_enum_literal(const EnumLiteral& enum_literal) override {
+			add_usage(enum_literal.get_expression(), &enum_literal, 0);
+		}
+		void visit_switch(const Switch& switch_) override {
+			add_usage(switch_.get_enum(), &switch_, 0);
+			for (const auto& case_: switch_.get_cases()) {
+				evaluate(case_.second);
+			}
+			for (const auto& case_: switch_.get_cases()) {
+				propagate_usages(&case_.second, &switch_);
+			}
 		}
 		void visit_function_call(const FunctionCall& call) override {
 			for (std::size_t i = 0; i < call.get_arguments().size(); ++i) {
@@ -1939,9 +1949,9 @@ class Pass4: public Visitor<const Expression*> {
 		free_intrinsic->add_argument(resource);
 	}
 public:
-	Pass4(FunctionTable& function_table, UsageTable& usage_table, ExpressionTable& expression_table, Block* destination_block, const Block* source_block): function_table(function_table), usage_table(usage_table), expression_table(expression_table), destination_block(destination_block), source_block(source_block) {}
+	MemoryManagement(FunctionTable& function_table, UsageTable& usage_table, ExpressionTable& expression_table, Block* destination_block, const Block* source_block): function_table(function_table), usage_table(usage_table), expression_table(expression_table), destination_block(destination_block), source_block(source_block) {}
 	static void evaluate(FunctionTable& function_table, UsageTable& usage_table, ExpressionTable& expression_table, Block* destination_block, const Block& source_block) {
-		Pass4 pass4(function_table, usage_table, expression_table, destination_block, &source_block);
+		MemoryManagement pass4(function_table, usage_table, expression_table, destination_block, &source_block);
 		for (const Expression* expression: usage_table.frees[&source_block]) {
 			pass4.free(expression_table[expression]);
 		}

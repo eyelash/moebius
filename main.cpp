@@ -29,10 +29,10 @@ int main(int argc, char** argv) {
 	program = Lowering::run(program);
 	program = Pass3::run(program);
 	program = DeadCodeElimination::run(program);
-	program = Pass2::run(program);
+	program = Inlining::run(program);
 	program = Pass1::run(program);
 	program = DeadCodeElimination::run(program);
-	program = Pass4::run(program);
+	program = MemoryManagement::run(program);
 	TailCallData tail_call_data;
 	Pass5::run(program, tail_call_data);
 	arguments.codegen(program, arguments.source_path, tail_call_data);

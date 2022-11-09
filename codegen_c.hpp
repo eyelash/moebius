@@ -119,8 +119,8 @@ class CodegenC: public Visitor<Variable> {
 				{
 					const Type number_type = declare_type(TypeInterner::get_int_type());
 					const std::vector<std::pair<std::string, const ::Type*>>& cases = static_cast<const EnumType*>(type)->get_cases();
-					for (const auto& case_type: cases) {
-						declare_type(case_type.second);
+					for (const auto& case_: cases) {
+						declare_type(case_.second);
 					}
 					const std::size_t index = next_type_index++;
 					type_declaration_printer.println_increasing("typedef struct {");
@@ -265,7 +265,7 @@ class CodegenC: public Visitor<Variable> {
 			IndentPrinter& printer = type_function_printer;
 
 			// struct_copy
-			function_declaration_printer.println(format("static % %_copy(% struct_);", struct_type, struct_type, struct_type));
+			function_declaration_printer.println(format("static % %_copy(%);", struct_type, struct_type, struct_type));
 			printer.println_increasing(format("static % %_copy(% struct_) {", struct_type, struct_type, struct_type));
 			printer.println(format("% new_struct;", struct_type));
 			for (std::size_t i = 0; i < fields.size(); ++i) {
@@ -280,7 +280,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// struct_free
-			function_declaration_printer.println(format("static % %_free(% struct_);", void_type, struct_type, struct_type));
+			function_declaration_printer.println(format("static % %_free(%);", void_type, struct_type, struct_type));
 			printer.println_increasing(format("static % %_free(% struct_) {", void_type, struct_type, struct_type));
 			for (std::size_t i = 0; i < fields.size(); ++i) {
 				if (is_managed(fields[i].second)) {
@@ -291,25 +291,25 @@ class CodegenC: public Visitor<Variable> {
 		}
 		void generate_enum_functions(const ::Type* type) {
 			const Type enum_type = get_type(type);
-			const auto& types = static_cast<const EnumType*>(type)->get_cases();
+			const auto& cases = static_cast<const EnumType*>(type)->get_cases();
 			const Type void_type = get_type(TypeInterner::get_void_type());
-			for (const auto& case_: types) {
+			for (const auto& case_: cases) {
 				get_type(case_.second);
 			}
 			IndentPrinter& printer = type_function_printer;
 
 			// enum_copy
-			function_declaration_printer.println(format("static % %_copy(% enum_);", enum_type, enum_type, enum_type));
+			function_declaration_printer.println(format("static % %_copy(%);", enum_type, enum_type, enum_type));
 			printer.println_increasing(format("static % %_copy(% enum_) {", enum_type, enum_type, enum_type));
 			printer.println(format("% new_enum;", enum_type));
 			printer.println("new_enum.tag = enum_.tag;");
 			printer.println_increasing("switch (enum_.tag) {");
-			for (std::size_t i = 0; i < types.size(); ++i) {
+			for (std::size_t i = 0; i < cases.size(); ++i) {
 				printer.println_increasing(format("case %: {", print_number(i)));
-				if (is_managed(types[i].second)) {
-					printer.println(format("new_enum.value.v% = %_copy(enum_.value.v%);", print_number(i), get_type(types[i].second), print_number(i)));
+				if (is_managed(cases[i].second)) {
+					printer.println(format("new_enum.value.v% = %_copy(enum_.value.v%);", print_number(i), get_type(cases[i].second), print_number(i)));
 				}
-				else if (types[i].second != TypeInterner::get_void_type()) {
+				else if (cases[i].second != TypeInterner::get_void_type()) {
 					printer.println(format("new_enum.value.v% = enum_.value.v%;", print_number(i), print_number(i)));
 				}
 				printer.println("break;");
@@ -320,13 +320,13 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// enum_free
-			function_declaration_printer.println(format("static % %_free(% enum_);", void_type, enum_type, enum_type));
+			function_declaration_printer.println(format("static % %_free(%);", void_type, enum_type, enum_type));
 			printer.println_increasing(format("static % %_free(% enum_) {", void_type, enum_type, enum_type));
 			printer.println_increasing("switch (enum_.tag) {");
-			for (std::size_t i = 0; i < types.size(); ++i) {
+			for (std::size_t i = 0; i < cases.size(); ++i) {
 				printer.println_increasing(format("case %: {", print_number(i)));
-				if (is_managed(types[i].second)) {
-					printer.println(format("%_free(enum_.value.v%);", get_type(types[i].second), print_number(i)));
+				if (is_managed(cases[i].second)) {
+					printer.println(format("%_free(enum_.value.v%);", get_type(cases[i].second), print_number(i)));
 				}
 				printer.println("break;");
 				printer.println_decreasing("}");
@@ -336,19 +336,19 @@ class CodegenC: public Visitor<Variable> {
 		}
 		void generate_tuple_functions(const ::Type* type) {
 			const Type tuple_type = get_type(type);
-			const std::vector<const ::Type*>& types = static_cast<const TupleType*>(type)->get_element_types();
+			const std::vector<const ::Type*>& element_types = static_cast<const TupleType*>(type)->get_element_types();
 			const Type void_type = get_type(TypeInterner::get_void_type());
 			IndentPrinter& printer = type_function_printer;
 
 			// tuple_copy
-			function_declaration_printer.println(format("static % %_copy(% tuple);", tuple_type, tuple_type, tuple_type));
+			function_declaration_printer.println(format("static % %_copy(%);", tuple_type, tuple_type, tuple_type));
 			printer.println_increasing(format("static % %_copy(% tuple) {", tuple_type, tuple_type, tuple_type));
 			printer.println(format("% new_tuple;", tuple_type));
-			for (std::size_t i = 0; i < types.size(); ++i) {
-				if (is_managed(types[i])) {
-					printer.println(format("new_tuple.v% = %_copy(tuple.v%);", print_number(i), get_type(types[i]), print_number(i)));
+			for (std::size_t i = 0; i < element_types.size(); ++i) {
+				if (is_managed(element_types[i])) {
+					printer.println(format("new_tuple.v% = %_copy(tuple.v%);", print_number(i), get_type(element_types[i]), print_number(i)));
 				}
-				else if (types[i] != TypeInterner::get_void_type()) {
+				else if (element_types[i] != TypeInterner::get_void_type()) {
 					printer.println(format("new_tuple.v% = tuple.v%;", print_number(i), print_number(i)));
 				}
 			}
@@ -356,11 +356,11 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// tuple_free
-			function_declaration_printer.println(format("static % %_free(% tuple);", void_type, tuple_type, tuple_type));
+			function_declaration_printer.println(format("static % %_free(%);", void_type, tuple_type, tuple_type));
 			printer.println_increasing(format("static % %_free(% tuple) {", void_type, tuple_type, tuple_type));
-			for (std::size_t i = 0; i < types.size(); ++i) {
-				if (is_managed(types[i])) {
-					printer.println(format("%_free(tuple.v%);", get_type(types[i]), print_number(i)));
+			for (std::size_t i = 0; i < element_types.size(); ++i) {
+				if (is_managed(element_types[i])) {
+					printer.println(format("%_free(tuple.v%);", get_type(element_types[i]), print_number(i)));
 				}
 			}
 			printer.println_decreasing("}");
@@ -392,7 +392,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// array_copy
-			function_declaration_printer.println(format("static % %_copy(% array);", array_type, array_type, array_type));
+			function_declaration_printer.println(format("static % %_copy(%);", array_type, array_type, array_type));
 			printer.println_increasing(format("static % %_copy(% array) {", array_type, array_type, array_type));
 			if (null_terminated) {
 				printer.println(format("% new_array = malloc(sizeof(struct %) + (array->length + 1) * sizeof(%));", array_type, array_type, element_type));
@@ -417,7 +417,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// array_free
-			function_declaration_printer.println(format("static % %_free(% array);", void_type, array_type, array_type));
+			function_declaration_printer.println(format("static % %_free(%);", void_type, array_type, array_type));
 			printer.println_increasing(format("static % %_free(% array) {", void_type, array_type, array_type));
 			if (is_managed(get_element_type(type))) {
 				printer.println_increasing(format("for (% i = 0; i < array->length; i++) {", number_type));
@@ -493,7 +493,7 @@ class CodegenC: public Visitor<Variable> {
 			IndentPrinter& printer = type_function_printer;
 
 			// reference_copy
-			function_declaration_printer.println(format("static % %_copy(% reference);", reference_type, reference_type, reference_type));
+			function_declaration_printer.println(format("static % %_copy(%);", reference_type, reference_type, reference_type));
 			printer.println_increasing(format("static % %_copy(% reference) {", reference_type, reference_type, reference_type));
 			printer.println(format("% new_reference = malloc(sizeof(struct %));", reference_type, reference_type));
 			printer.println(format("new_reference->value = %_copy(reference->value);", value_type));
@@ -501,7 +501,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// reference_free
-			function_declaration_printer.println(format("static % %_free(% reference);", void_type, reference_type, reference_type));
+			function_declaration_printer.println(format("static % %_free(%);", void_type, reference_type, reference_type));
 			printer.println_increasing(format("static % %_free(% reference) {", void_type, reference_type, reference_type));
 			printer.println(format("%_free(reference->value);", value_type));
 			printer.println("free(reference);");
@@ -692,11 +692,13 @@ public:
 			if (case_type != TypeInterner::get_void_type()) {
 				if (switch_.get_enum()->get_type_id() == TypeId::REFERENCE) {
 					printer.println(format("% % = %->value.value.v%;", function_table.get_type(case_type), case_variable, enum_, print_number(i)));
-					printer.println(format("free(%);", enum_));
 				}
 				else {
 					printer.println(format("% % = %.value.v%;", function_table.get_type(case_type), case_variable, enum_, print_number(i)));
 				}
+			}
+			if (switch_.get_enum()->get_type_id() == TypeId::REFERENCE) {
+				printer.println(format("free(%);", enum_));
 			}
 			evaluate(case_variable, result, case_block);
 			printer.println("break;");
@@ -885,7 +887,7 @@ public:
 		type_declaration_printer.println("#include <stdint.h>");
 		type_declaration_printer.println("#include <stdio.h>");
 		{
-			printer.println_increasing("int main(int argc, char** argv) {");
+			printer.println_increasing("int main(int argc, char **argv) {");
 			const std::size_t index = function_table.look_up(program.get_main_function());
 			printer.println(format("f%();", print_number(index)));
 			printer.println("return 0;");
