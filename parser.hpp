@@ -386,9 +386,10 @@ class MoebiusParser: private Parser {
 				return expression;
 			}
 			else {
-				StructTypeLiteral* struct_type_literal = new StructTypeLiteral();
-				StructLiteral* struct_literal = new StructLiteral(struct_type_literal);
-				struct_type_literal->set_position(position);
+				StructTypeDeclaration* struct_type_declaration = current_scope->create<StructTypeDeclaration>();
+				StructTypeDefinition* struct_type_definition = new StructTypeDefinition(struct_type_declaration);
+				StructLiteral* struct_literal = new StructLiteral(struct_type_definition);
+				struct_type_definition->set_position(position);
 				struct_literal->set_position(position);
 				while (parse_not("}")) {
 					const StringView field_name = parse_identifier();
@@ -407,7 +408,7 @@ class MoebiusParser: private Parser {
 					}
 					Intrinsic* field_type = current_scope->create<Intrinsic>("typeOf");
 					field_type->add_argument(field);
-					struct_type_literal->add_field(field_name, field_type);
+					struct_type_definition->add_field(field_name, field_type);
 					struct_literal->add_field(field_name, field);
 					if (!parse(",")) {
 						break;
@@ -415,7 +416,7 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 				}
 				expect("}");
-				current_scope->add_expression(struct_type_literal);
+				current_scope->add_expression(struct_type_definition);
 				current_scope->add_expression(struct_literal);
 				return struct_literal;
 			}
@@ -549,15 +550,16 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			expect("{");
 			parse_white_space();
-			StructTypeLiteral* struct_type_literal = new StructTypeLiteral();
-			struct_type_literal->set_position(position);
+			StructTypeDeclaration* struct_type_declaration = current_scope->create<StructTypeDeclaration>();
+			StructTypeDefinition* struct_type_definition = new StructTypeDefinition(struct_type_declaration);
+			struct_type_definition->set_position(position);
 			while (parse_not("}")) {
 				const StringView field_name = parse_identifier();
 				parse_white_space();
 				expect(":");
 				parse_white_space();
 				const Expression* field_type = parse_expression();
-				struct_type_literal->add_field(field_name, field_type);
+				struct_type_definition->add_field(field_name, field_type);
 				parse_white_space();
 				if (!parse(",")) {
 					break;
@@ -565,15 +567,16 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 			}
 			expect("}");
-			current_scope->add_expression(struct_type_literal);
-			return struct_type_literal;
+			current_scope->add_expression(struct_type_definition);
+			return struct_type_definition;
 		}
 		else if (parse("enum", alphanumeric)) {
 			parse_white_space();
 			expect("{");
 			parse_white_space();
-			EnumTypeLiteral* enum_type_literal = new EnumTypeLiteral();
-			enum_type_literal->set_position(position);
+			EnumTypeDeclaration* enum_type_declaration = current_scope->create<EnumTypeDeclaration>();
+			EnumTypeDefinition* enum_type_definition = new EnumTypeDefinition(enum_type_declaration);
+			enum_type_definition->set_position(position);
 			while (parse_not("}")) {
 				const StringView case_name = parse_identifier();
 				parse_white_space();
@@ -581,11 +584,11 @@ class MoebiusParser: private Parser {
 					parse_white_space();
 					const Expression* case_type = parse_expression();
 					parse_white_space();
-					enum_type_literal->add_case(case_name, case_type);
+					enum_type_definition->add_case(case_name, case_type);
 				}
 				else {
 					const Expression* case_type = current_scope->create<TypeLiteral>(TypeInterner::get_void_type());
-					enum_type_literal->add_case(case_name, case_type);
+					enum_type_definition->add_case(case_name, case_type);
 				}
 				if (!parse(",")) {
 					break;
@@ -593,8 +596,8 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 			}
 			expect("}");
-			current_scope->add_expression(enum_type_literal);
-			return enum_type_literal;
+			current_scope->add_expression(enum_type_definition);
+			return enum_type_definition;
 		}
 		else if (parse("\"")) {
 			const Expression* left = parse_string_segment();
@@ -936,15 +939,17 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				expect("{");
 				parse_white_space();
-				StructTypeLiteral* struct_type_literal = new StructTypeLiteral();
-				struct_type_literal->set_position(position);
+				StructTypeDeclaration* struct_type_declaration = current_scope->create<StructTypeDeclaration>();
+				current_scope->add_variable(name, struct_type_declaration);
+				StructTypeDefinition* struct_type_definition = new StructTypeDefinition(struct_type_declaration);
+				struct_type_definition->set_position(position);
 				while (parse_not("}")) {
 					const StringView field_name = parse_identifier();
 					parse_white_space();
 					expect(":");
 					parse_white_space();
 					const Expression* field_type = parse_expression();
-					struct_type_literal->add_field(field_name, field_type);
+					struct_type_definition->add_field(field_name, field_type);
 					parse_white_space();
 					if (!parse(",")) {
 						break;
@@ -953,8 +958,7 @@ class MoebiusParser: private Parser {
 				}
 				expect("}");
 				parse_white_space();
-				current_scope->add_expression(struct_type_literal);
-				current_scope->add_variable(name, struct_type_literal);
+				current_scope->add_expression(struct_type_definition);
 			}
 			else if (parse("enum", alphanumeric)) {
 				parse_white_space();
@@ -962,8 +966,10 @@ class MoebiusParser: private Parser {
 				parse_white_space();
 				expect("{");
 				parse_white_space();
-				EnumTypeLiteral* enum_type_literal = new EnumTypeLiteral();
-				enum_type_literal->set_position(position);
+				EnumTypeDeclaration* enum_type_declaration = current_scope->create<EnumTypeDeclaration>();
+				current_scope->add_variable(name, enum_type_declaration);
+				EnumTypeDefinition* enum_type_definition = new EnumTypeDefinition(enum_type_declaration);
+				enum_type_definition->set_position(position);
 				while (parse_not("}")) {
 					const StringView case_name = parse_identifier();
 					parse_white_space();
@@ -971,11 +977,11 @@ class MoebiusParser: private Parser {
 						parse_white_space();
 						const Expression* case_type = parse_expression();
 						parse_white_space();
-						enum_type_literal->add_case(case_name, case_type);
+						enum_type_definition->add_case(case_name, case_type);
 					}
 					else {
 						const Expression* case_type = current_scope->create<TypeLiteral>(TypeInterner::get_void_type());
-						enum_type_literal->add_case(case_name, case_type);
+						enum_type_definition->add_case(case_name, case_type);
 					}
 					if (!parse(",")) {
 						break;
@@ -984,8 +990,7 @@ class MoebiusParser: private Parser {
 				}
 				expect("}");
 				parse_white_space();
-				current_scope->add_expression(enum_type_literal);
-				current_scope->add_variable(name, enum_type_literal);
+				current_scope->add_expression(enum_type_definition);
 			}
 			else {
 				break;

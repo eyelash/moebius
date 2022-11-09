@@ -341,8 +341,10 @@ class VoidLiteral;
 class Bind;
 class Return;
 class TypeLiteral;
-class StructTypeLiteral;
-class EnumTypeLiteral;
+class StructTypeDeclaration;
+class StructTypeDefinition;
+class EnumTypeDeclaration;
+class EnumTypeDefinition;
 class TypeAssert;
 class ReturnType;
 
@@ -417,10 +419,16 @@ public:
 	virtual T visit_type_literal(const TypeLiteral&) {
 		return T();
 	}
-	virtual T visit_struct_type_literal(const StructTypeLiteral&) {
+	virtual T visit_struct_type_declaration(const StructTypeDeclaration&) {
 		return T();
 	}
-	virtual T visit_enum_type_literal(const EnumTypeLiteral&) {
+	virtual T visit_struct_type_definition(const StructTypeDefinition&) {
+		return T();
+	}
+	virtual T visit_enum_type_declaration(const EnumTypeDeclaration&) {
+		return T();
+	}
+	virtual T visit_enum_type_definition(const EnumTypeDefinition&) {
 		return T();
 	}
 	virtual T visit_type_assert(const TypeAssert&) {
@@ -531,11 +539,17 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		void visit_type_literal(const TypeLiteral& type_literal) override {
 			result = visitor.visit_type_literal(type_literal);
 		}
-		void visit_struct_type_literal(const StructTypeLiteral& struct_type_literal) override {
-			result = visitor.visit_struct_type_literal(struct_type_literal);
+		void visit_struct_type_declaration(const StructTypeDeclaration& struct_type_declaration) override {
+			result = visitor.visit_struct_type_declaration(struct_type_declaration);
 		}
-		void visit_enum_type_literal(const EnumTypeLiteral& enum_type_literal) override {
-			result = visitor.visit_enum_type_literal(enum_type_literal);
+		void visit_struct_type_definition(const StructTypeDefinition& struct_type_definition) override {
+			result = visitor.visit_struct_type_definition(struct_type_definition);
+		}
+		void visit_enum_type_declaration(const EnumTypeDeclaration& enum_type_declaration) override {
+			result = visitor.visit_enum_type_declaration(enum_type_declaration);
+		}
+		void visit_enum_type_definition(const EnumTypeDefinition& enum_type_definition) override {
+			result = visitor.visit_enum_type_definition(enum_type_definition);
 		}
 		void visit_type_assert(const TypeAssert& type_assert) override {
 			result = visitor.visit_type_assert(type_assert);
@@ -1055,11 +1069,29 @@ public:
 	}
 };
 
-class StructTypeLiteral: public Expression {
+class StructTypeDeclaration: public Expression {
+	StructType* struct_type;
+public:
+	StructTypeDeclaration(): Expression(nullptr), struct_type(nullptr) {}
+	StructTypeDeclaration(StructType* struct_type): Expression(TypeInterner::get_type_type(struct_type)), struct_type(struct_type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_struct_type_declaration(*this);
+	}
+	StructType* get_struct_type() const {
+		return struct_type;
+	}
+};
+
+class StructTypeDefinition: public Expression {
+	const StructTypeDeclaration* declaration;
 	std::vector<std::pair<std::string, const Expression*>> fields;
 public:
+	StructTypeDefinition(const StructTypeDeclaration* declaration): declaration(declaration) {}
 	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_struct_type_literal(*this);
+		visitor.visit_struct_type_definition(*this);
+	}
+	const StructTypeDeclaration* get_declaration() const {
+		return declaration;
 	}
 	void add_field(const StringView& field_name, const Expression* field) {
 		fields.emplace_back(std::string(field_name.begin(), field_name.end()), field);
@@ -1069,11 +1101,29 @@ public:
 	}
 };
 
-class EnumTypeLiteral: public Expression {
+class EnumTypeDeclaration: public Expression {
+	EnumType* enum_type;
+public:
+	EnumTypeDeclaration(): Expression(nullptr), enum_type(nullptr) {}
+	EnumTypeDeclaration(EnumType* enum_type): Expression(TypeInterner::get_type_type(enum_type)), enum_type(enum_type) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_enum_type_declaration(*this);
+	}
+	EnumType* get_enum_type() const {
+		return enum_type;
+	}
+};
+
+class EnumTypeDefinition: public Expression {
+	const EnumTypeDeclaration* declaration;
 	std::vector<std::pair<std::string, const Expression*>> cases;
 public:
+	EnumTypeDefinition(const EnumTypeDeclaration* declaration): declaration(declaration) {}
 	void accept(Visitor<void>& visitor) const override {
-		visitor.visit_enum_type_literal(*this);
+		visitor.visit_enum_type_definition(*this);
+	}
+	const EnumTypeDeclaration* get_declaration() const {
+		return declaration;
 	}
 	void add_case(const StringView& case_name, const Expression* case_) {
 		cases.emplace_back(std::string(case_name.begin(), case_name.end()), case_);

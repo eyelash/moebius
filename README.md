@@ -46,7 +46,7 @@ examples/HelloWorld.moeb.exe
   - [x] arrays
   - [x] strings
   - [ ] interfaces
-  - [ ] recursive types
+  - [x] recursive types
   - [x] first-class types
 - operators
   - [x] arithmetic (`+`, `-`, `*`, `/`, and `%`)

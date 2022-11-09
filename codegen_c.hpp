@@ -51,12 +51,21 @@ class CodegenC: public Visitor<Variable> {
 		const TypeId type_id = type->get_id();
 		return type_id == TypeId::STRUCT || type_id == TypeId::ENUM || type_id == TypeId::TUPLE || type_id == TypeId::ARRAY || type_id == TypeId::STRING || type_id == TypeId::STRING_ITERATOR || type_id == TypeId::REFERENCE;
 	}
+	struct TypeTableEntry {
+		std::size_t index;
+		bool is_declared = false;
+		bool is_defined = false;
+		bool functions_generated = false;
+	};
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
-		std::map<const ::Type*, std::size_t> types;
+		std::map<const ::Type*, TypeTableEntry> types;
+		std::size_t next_type_index = 0;
 		IndentPrinter& type_declaration_printer;
+		IndentPrinter& function_declaration_printer;
+		IndentPrinter& type_function_printer;
 	public:
-		FunctionTable(IndentPrinter& type_declaration_printer): type_declaration_printer(type_declaration_printer) {}
+		FunctionTable(IndentPrinter& type_declaration_printer, IndentPrinter& function_declaration_printer, IndentPrinter& type_function_printer): type_declaration_printer(type_declaration_printer), function_declaration_printer(function_declaration_printer), type_function_printer(type_function_printer) {}
 		std::size_t look_up(const Function* function) {
 			auto iterator = functions.find(function);
 			if (iterator != functions.end()) {
@@ -66,97 +75,101 @@ class CodegenC: public Visitor<Variable> {
 			functions[function] = index;
 			return index;
 		}
-		Type get_type(const ::Type* type) {
-			auto iterator = types.find(type);
-			if (iterator != types.end()) {
-				return iterator->second;
+		std::size_t declare_type(const ::Type* type) {
+			if (types[type].is_declared) {
+				return types[type].index;
 			}
 			switch (type->get_id()) {
 			case TypeId::INT:
 				{
-					const std::size_t index = types.size();
+					const std::size_t index = next_type_index++;
 					type_declaration_printer.println(format("typedef int32_t %;", Type(index)));
-					types[type] = index;
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::CHAR:
 				{
-					const std::size_t index = types.size();
+					const std::size_t index = next_type_index++;
 					type_declaration_printer.println(format("typedef char %;", Type(index)));
-					types[type] = index;
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::STRUCT:
 				{
 					const std::vector<std::pair<std::string, const ::Type*>>& fields = static_cast<const StructType*>(type)->get_fields();
 					for (const auto& field: fields) {
-						get_type(field.second);
+						declare_type(field.second);
 					}
-					const std::size_t index = types.size();
+					const std::size_t index = next_type_index++;
 					type_declaration_printer.println_increasing("typedef struct {");
 					for (std::size_t i = 0; i < fields.size(); ++i) {
 						if (fields[i].second != TypeInterner::get_void_type()) {
-							type_declaration_printer.println(format("% %;", get_type(fields[i].second), fields[i].first));
+							const Type field_type = declare_type(fields[i].second);
+							type_declaration_printer.println(format("% %;", field_type, fields[i].first));
 						}
 					}
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
-					types[type] = index;
-					generate_struct_functions(type);
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::ENUM:
 				{
-					const Type number_type = get_type(TypeInterner::get_int_type());
+					const Type number_type = declare_type(TypeInterner::get_int_type());
 					const std::vector<std::pair<std::string, const ::Type*>>& cases = static_cast<const EnumType*>(type)->get_cases();
 					for (const auto& case_type: cases) {
-						get_type(case_type.second);
+						declare_type(case_type.second);
 					}
-					const std::size_t index = types.size();
+					const std::size_t index = next_type_index++;
 					type_declaration_printer.println_increasing("typedef struct {");
 					type_declaration_printer.println(format("% tag;", number_type));
 					type_declaration_printer.println_increasing("union {");
 					for (std::size_t i = 0; i < cases.size(); ++i) {
 						if (cases[i].second != TypeInterner::get_void_type()) {
-							type_declaration_printer.println(format("% v%;", get_type(cases[i].second), print_number(i)));
+							const Type case_type = declare_type(cases[i].second);
+							type_declaration_printer.println(format("% v%;", case_type, print_number(i)));
 						}
 					}
 					type_declaration_printer.println_decreasing("} value;");
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
-					types[type] = index;
-					generate_enum_functions(type);
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::TUPLE:
 				{
 					const std::vector<const ::Type*>& element_types = static_cast<const TupleType*>(type)->get_element_types();
 					for (const ::Type* element_type: element_types) {
-						get_type(element_type);
+						declare_type(element_type);
 					}
-					const std::size_t index = types.size();
+					const std::size_t index = next_type_index++;
 					type_declaration_printer.println_increasing("typedef struct {");
 					for (std::size_t i = 0; i < element_types.size(); ++i) {
 						if (element_types[i] != TypeInterner::get_void_type()) {
-							type_declaration_printer.println(format("% v%;", get_type(element_types[i]), print_number(i)));
+							const Type element_type = declare_type(element_types[i]);
+							type_declaration_printer.println(format("% v%;", element_type, print_number(i)));
 						}
 					}
 					type_declaration_printer.println_decreasing(format("} %;", Type(index)));
-					types[type] = index;
-					generate_tuple_functions(type);
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::ARRAY:
 			case TypeId::STRING:
 				{
-					const Type element_type = get_type(get_element_type(type));
-					const Type number_type = get_type(TypeInterner::get_int_type());
-					const std::size_t index = types.size();
+					const Type element_type = declare_type(get_element_type(type));
+					const Type number_type = declare_type(TypeInterner::get_int_type());
+					const std::size_t index = next_type_index++;
 					type_declaration_printer.println_increasing(format("typedef struct % {", Type(index)));
 					type_declaration_printer.println(format("% length;", number_type));
 					type_declaration_printer.println(format("% capacity;", number_type));
 					type_declaration_printer.println(format("% elements[];", element_type));
 					type_declaration_printer.println_decreasing(format("} *%;", Type(index)));
-					types[type] = index;
-					generate_array_functions(type, type->get_id() == TypeId::STRING);
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::STRING_ITERATOR:
@@ -165,40 +178,94 @@ class CodegenC: public Visitor<Variable> {
 					tuple_type.add_element_type(TypeInterner::get_string_type());
 					tuple_type.add_element_type(TypeInterner::get_int_type());
 					const ::Type* interned_tuple_type = TypeInterner::intern(&tuple_type);
-					get_type(interned_tuple_type);
-					const std::size_t index = types[interned_tuple_type];
-					types[type] = index;
+					const std::size_t index = declare_type(interned_tuple_type);
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::VOID:
 				{
-					const std::size_t index = types.size();
+					const std::size_t index = next_type_index++;
 					type_declaration_printer.println(format("typedef void %;", Type(index)));
-					types[type] = index;
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			case TypeId::REFERENCE:
 				{
-					const Type value_type = get_type(static_cast<const ReferenceType*>(type)->get_type());
-					const std::size_t index = types.size();
-					type_declaration_printer.println_increasing(format("typedef struct % {", Type(index)));
-					type_declaration_printer.println(format("% value;", value_type));
-					type_declaration_printer.println_decreasing(format("} *%;", Type(index)));
-					types[type] = index;
-					generate_reference_functions(type);
+					const std::size_t index = next_type_index++;
+					type_declaration_printer.println(format("typedef struct % *%;", Type(index), Type(index)));
+					types[type].index = index;
+					types[type].is_declared = true;
 					return index;
 				}
 			default:
+				types[type].is_declared = true;
 				return 0;
 			}
+		}
+		std::size_t define_type(const ::Type* type) {
+			if (types[type].is_defined) {
+				return types[type].index;
+			}
+			const std::size_t index = declare_type(type);
+			switch (type->get_id()) {
+			case TypeId::REFERENCE:
+				{
+					const Type value_type = declare_type(static_cast<const ReferenceType*>(type)->get_type());
+					type_declaration_printer.println_increasing(format("struct % {", Type(index)));
+					type_declaration_printer.println(format("% value;", value_type));
+					type_declaration_printer.println_decreasing(format("};"));
+					types[type].is_defined = true;
+					return index;
+				}
+			default:
+				types[type].is_defined = true;
+				return index;
+			}
+		}
+		void generate_functions(const ::Type* type) {
+			if (types[type].functions_generated) {
+				return;
+			}
+			types[type].functions_generated = true;
+			switch (type->get_id()) {
+			case TypeId::STRUCT:
+				generate_struct_functions(type);
+				return;
+			case TypeId::ENUM:
+				generate_enum_functions(type);
+				return;
+			case TypeId::TUPLE:
+				generate_tuple_functions(type);
+				return;
+			case TypeId::ARRAY:
+			case TypeId::STRING:
+				generate_array_functions(type, type->get_id() == TypeId::STRING);
+				return;
+			case TypeId::REFERENCE:
+				generate_reference_functions(type);
+				return;
+			default:
+				return;
+			}
+		}
+		Type get_type(const ::Type* type) {
+			const std::size_t index = define_type(type);
+			generate_functions(type);
+			return index;
 		}
 		void generate_struct_functions(const ::Type* type) {
 			const Type struct_type = get_type(type);
 			const auto& fields = static_cast<const StructType*>(type)->get_fields();
 			const Type void_type = get_type(TypeInterner::get_void_type());
-			IndentPrinter& printer = type_declaration_printer;
+			for (const auto& field: fields) {
+				get_type(field.second);
+			}
+			IndentPrinter& printer = type_function_printer;
 
 			// struct_copy
+			function_declaration_printer.println(format("static % %_copy(% struct_);", struct_type, struct_type, struct_type));
 			printer.println_increasing(format("static % %_copy(% struct_) {", struct_type, struct_type, struct_type));
 			printer.println(format("% new_struct;", struct_type));
 			for (std::size_t i = 0; i < fields.size(); ++i) {
@@ -213,6 +280,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// struct_free
+			function_declaration_printer.println(format("static % %_free(% struct_);", void_type, struct_type, struct_type));
 			printer.println_increasing(format("static % %_free(% struct_) {", void_type, struct_type, struct_type));
 			for (std::size_t i = 0; i < fields.size(); ++i) {
 				if (is_managed(fields[i].second)) {
@@ -225,9 +293,13 @@ class CodegenC: public Visitor<Variable> {
 			const Type enum_type = get_type(type);
 			const auto& types = static_cast<const EnumType*>(type)->get_cases();
 			const Type void_type = get_type(TypeInterner::get_void_type());
-			IndentPrinter& printer = type_declaration_printer;
+			for (const auto& case_: types) {
+				get_type(case_.second);
+			}
+			IndentPrinter& printer = type_function_printer;
 
 			// enum_copy
+			function_declaration_printer.println(format("static % %_copy(% enum_);", enum_type, enum_type, enum_type));
 			printer.println_increasing(format("static % %_copy(% enum_) {", enum_type, enum_type, enum_type));
 			printer.println(format("% new_enum;", enum_type));
 			printer.println("new_enum.tag = enum_.tag;");
@@ -248,6 +320,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// enum_free
+			function_declaration_printer.println(format("static % %_free(% enum_);", void_type, enum_type, enum_type));
 			printer.println_increasing(format("static % %_free(% enum_) {", void_type, enum_type, enum_type));
 			printer.println_increasing("switch (enum_.tag) {");
 			for (std::size_t i = 0; i < types.size(); ++i) {
@@ -265,9 +338,10 @@ class CodegenC: public Visitor<Variable> {
 			const Type tuple_type = get_type(type);
 			const std::vector<const ::Type*>& types = static_cast<const TupleType*>(type)->get_element_types();
 			const Type void_type = get_type(TypeInterner::get_void_type());
-			IndentPrinter& printer = type_declaration_printer;
+			IndentPrinter& printer = type_function_printer;
 
 			// tuple_copy
+			function_declaration_printer.println(format("static % %_copy(% tuple);", tuple_type, tuple_type, tuple_type));
 			printer.println_increasing(format("static % %_copy(% tuple) {", tuple_type, tuple_type, tuple_type));
 			printer.println(format("% new_tuple;", tuple_type));
 			for (std::size_t i = 0; i < types.size(); ++i) {
@@ -282,6 +356,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// tuple_free
+			function_declaration_printer.println(format("static % %_free(% tuple);", void_type, tuple_type, tuple_type));
 			printer.println_increasing(format("static % %_free(% tuple) {", void_type, tuple_type, tuple_type));
 			for (std::size_t i = 0; i < types.size(); ++i) {
 				if (is_managed(types[i])) {
@@ -295,7 +370,7 @@ class CodegenC: public Visitor<Variable> {
 			const Type element_type = get_type(get_element_type(type));
 			const Type number_type = get_type(TypeInterner::get_int_type());
 			const Type void_type = get_type(TypeInterner::get_void_type());
-			IndentPrinter& printer = type_declaration_printer;
+			IndentPrinter& printer = type_function_printer;
 
 			// array_new
 			printer.println_increasing(format("static % %_new(%* elements, % length) {", array_type, array_type, element_type, number_type));
@@ -317,6 +392,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// array_copy
+			function_declaration_printer.println(format("static % %_copy(% array);", array_type, array_type, array_type));
 			printer.println_increasing(format("static % %_copy(% array) {", array_type, array_type, array_type));
 			if (null_terminated) {
 				printer.println(format("% new_array = malloc(sizeof(struct %) + (array->length + 1) * sizeof(%));", array_type, array_type, element_type));
@@ -341,6 +417,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// array_free
+			function_declaration_printer.println(format("static % %_free(% array);", void_type, array_type, array_type));
 			printer.println_increasing(format("static % %_free(% array) {", void_type, array_type, array_type));
 			if (is_managed(get_element_type(type))) {
 				printer.println_increasing(format("for (% i = 0; i < array->length; i++) {", number_type));
@@ -413,9 +490,10 @@ class CodegenC: public Visitor<Variable> {
 			const Type reference_type = get_type(type);
 			const Type value_type = get_type(static_cast<const ReferenceType*>(type)->get_type());
 			const Type void_type = get_type(TypeInterner::get_void_type());
-			IndentPrinter& printer = type_declaration_printer;
+			IndentPrinter& printer = type_function_printer;
 
 			// reference_copy
+			function_declaration_printer.println(format("static % %_copy(% reference);", reference_type, reference_type, reference_type));
 			printer.println_increasing(format("static % %_copy(% reference) {", reference_type, reference_type, reference_type));
 			printer.println(format("% new_reference = malloc(sizeof(struct %));", reference_type, reference_type));
 			printer.println(format("new_reference->value = %_copy(reference->value);", value_type));
@@ -423,6 +501,7 @@ class CodegenC: public Visitor<Variable> {
 			printer.println_decreasing("}");
 
 			// reference_free
+			function_declaration_printer.println(format("static % %_free(% reference);", void_type, reference_type, reference_type));
 			printer.println_increasing(format("static % %_free(% reference) {", void_type, reference_type, reference_type));
 			printer.println(format("%_free(reference->value);", value_type));
 			printer.println("free(reference);");
@@ -795,11 +874,13 @@ public:
 	static void codegen(const Program& program, const char* source_path, const TailCallData& tail_call_data) {
 		std::ostringstream type_declarations;
 		std::ostringstream function_declarations;
+		std::ostringstream type_functions;
 		std::ostringstream functions;
 		IndentPrinter type_declaration_printer(type_declarations);
 		IndentPrinter function_declaration_printer(function_declarations);
+		IndentPrinter type_function_printer(type_functions);
 		IndentPrinter printer(functions);
-		FunctionTable function_table(type_declaration_printer);
+		FunctionTable function_table(type_declaration_printer, function_declaration_printer, type_function_printer);
 		type_declaration_printer.println("#include <stdlib.h>");
 		type_declaration_printer.println("#include <stdint.h>");
 		type_declaration_printer.println("#include <stdio.h>");
@@ -865,6 +946,7 @@ public:
 			std::ofstream file(c_path);
 			file << type_declarations.str();
 			file << function_declarations.str();
+			file << type_functions.str();
 			file << functions.str();
 		}
 		Printer status_printer(std::cerr);

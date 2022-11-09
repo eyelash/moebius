@@ -732,32 +732,42 @@ public:
 		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
 		return create<TypeLiteral>(type);
 	}
-	const Expression* visit_struct_type_literal(const StructTypeLiteral& struct_type_literal) override {
+	const Expression* visit_struct_type_declaration(const StructTypeDeclaration& struct_type_declaration) override {
 		StructType* new_struct_type = TypeInterner::create_struct_type();
-		for (const auto& field: struct_type_literal.get_fields()) {
+		return create<StructTypeDeclaration>(new_struct_type);
+	}
+	const Expression* visit_struct_type_definition(const StructTypeDefinition& struct_type_definition) override {
+		const Expression* declaration = expression_table[struct_type_definition.get_declaration()];
+		StructType* new_struct_type = static_cast<const StructTypeDeclaration*>(declaration)->get_struct_type();
+		for (const auto& field: struct_type_definition.get_fields()) {
 			const std::string& field_name = field.first;
 			if (new_struct_type->has_field(field_name)) {
-				error(struct_type_literal, format("duplicate field \"%\"", field_name));
+				error(struct_type_definition, format("duplicate field \"%\"", field_name));
 			}
 			const Expression* type_expression = expression_table[field.second];
 			if (type_expression->get_type_id() != TypeId::TYPE) {
-				error(struct_type_literal, "struct fields must be types");
+				error(struct_type_definition, "struct fields must be types");
 			}
 			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 			new_struct_type->add_field(field_name, type);
 		}
 		return create<TypeLiteral>(new_struct_type);
 	}
-	const Expression* visit_enum_type_literal(const EnumTypeLiteral& enum_type_literal) override {
+	const Expression* visit_enum_type_declaration(const EnumTypeDeclaration& enum_type_declaration) override {
 		EnumType* new_enum_type = TypeInterner::create_enum_type();
-		for (const auto& case_: enum_type_literal.get_cases()) {
+		return create<EnumTypeDeclaration>(new_enum_type);
+	}
+	const Expression* visit_enum_type_definition(const EnumTypeDefinition& enum_type_definition) override {
+		const Expression* declaration = expression_table[enum_type_definition.get_declaration()];
+		EnumType* new_enum_type = static_cast<const EnumTypeDeclaration*>(declaration)->get_enum_type();
+		for (const auto& case_: enum_type_definition.get_cases()) {
 			const std::string& case_name = case_.first;
 			if (new_enum_type->has_case(case_name)) {
-				error(enum_type_literal, format("duplicate case \"%\"", case_name));
+				error(enum_type_definition, format("duplicate case \"%\"", case_name));
 			}
 			const Expression* type_expression = expression_table[case_.second];
 			if (type_expression->get_type_id() != TypeId::TYPE) {
-				error(enum_type_literal, "enum cases must be types");
+				error(enum_type_definition, "enum cases must be types");
 			}
 			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 			new_enum_type->add_case(case_name, type);
@@ -843,18 +853,18 @@ class Lowering: public Visitor<const Expression*> {
 		}
 		if (type->get_id() == TypeId::STRUCT) {
 			StructType* struct_type = TypeInterner::create_struct_type();
+			type_table[type] = struct_type;
 			for (const auto& field: static_cast<const StructType*>(type)->get_fields()) {
 				struct_type->add_field(field.first, transform_type(type_table, field.second));
 			}
-			type_table[type] = struct_type;
 			return struct_type;
 		}
 		if (type->get_id() == TypeId::ENUM) {
 			EnumType* enum_type = TypeInterner::create_enum_type();
+			type_table[type] = enum_type;
 			for (const auto& case_: static_cast<const EnumType*>(type)->get_cases()) {
 				enum_type->add_case(case_.first, transform_type(type_table, case_.second));
 			}
-			type_table[type] = enum_type;
 			return enum_type;
 		}
 		if (type->get_id() == TypeId::ARRAY) {
@@ -1536,18 +1546,18 @@ class Pass3: public Visitor<const Expression*> {
 		}
 		if (type->get_id() == TypeId::STRUCT) {
 			StructType* new_type = TypeInterner::create_struct_type();
+			type_table[type] = new_type;
 			for (const auto& field: static_cast<const StructType*>(type)->get_fields()) {
 				new_type->add_field(field.first, transform_type(type_table, field.second));
 			}
-			type_table[type] = new_type;
 			return new_type;
 		}
 		if (type->get_id() == TypeId::ENUM) {
 			EnumType* new_type = TypeInterner::create_enum_type();
+			type_table[type] = new_type;
 			for (const auto& case_: static_cast<const EnumType*>(type)->get_cases()) {
 				new_type->add_case(case_.first, transform_type(type_table, case_.second));
 			}
-			type_table[type] = new_type;
 			return new_type;
 		}
 		if (type->get_id() == TypeId::TUPLE) {
