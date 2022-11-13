@@ -244,10 +244,21 @@ public:
 		}
 		return new_struct_literal;
 	}
+	const StructType* get_struct_type(const Expression* struct_) {
+		if (struct_->get_type_id() == TypeId::STRUCT) {
+			return static_cast<const StructType*>(struct_->get_type());
+		}
+		if (struct_->get_type_id() == TypeId::REFERENCE) {
+			const Type* type = static_cast<const ReferenceType*>(struct_->get_type())->get_type();
+			if (type->get_id() == TypeId::STRUCT) {
+				return static_cast<const StructType*>(type);
+			}
+		}
+		return nullptr;
+	}
 	const Expression* visit_struct_access(const StructAccess& struct_access) override {
 		const Expression* struct_ = expression_table[struct_access.get_struct()];
-		if (struct_->get_type_id() == TypeId::STRUCT) {
-			const StructType* struct_type = static_cast<const StructType*>(struct_->get_type());
+		if (const StructType* struct_type = get_struct_type(struct_)) {
 			if (struct_type->has_field(struct_access.get_field_name())) {
 				const std::size_t index = struct_type->get_index(struct_access.get_field_name());
 				GetTupleElement get_tuple_element(index);
@@ -256,18 +267,6 @@ public:
 				}
 				const Type* type = struct_type->get_fields()[index].second;
 				return create<StructAccess>(struct_, struct_access.get_field_name(), type);
-			}
-		}
-		if (struct_->get_type_id() == TypeId::REFERENCE) {
-			const Type* type = static_cast<const ReferenceType*>(struct_->get_type())->get_type();
-			if (type->get_id() == TypeId::STRUCT) {
-				const StructType* struct_type = static_cast<const StructType*>(type);
-				if (struct_type->has_field(struct_access.get_field_name())) {
-					const std::size_t index = struct_type->get_index(struct_access.get_field_name());
-					// TODO: constant folding for references
-					const Type* type = struct_type->get_fields()[index].second;
-					return create<StructAccess>(struct_, struct_access.get_field_name(), type);
-				}
 			}
 		}
 		if (struct_->get_type_id() == TypeId::TYPE) {

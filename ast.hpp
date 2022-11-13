@@ -1248,12 +1248,24 @@ public:
 	const Expression* visit_struct_literal(const StructLiteral& struct_literal) override {
 		return struct_literal.get_fields()[index].second;
 	}
+	const Expression* visit_intrinsic(const Intrinsic& intrinsic) override {
+		if (intrinsic.name_equals("reference")) {
+			return visit(*this, intrinsic.get_arguments()[0]);
+		}
+		return nullptr;
+	}
 };
 
 class GetEnum: public Visitor<const EnumLiteral*> {
 public:
 	const EnumLiteral* visit_enum_literal(const EnumLiteral& enum_literal) override {
 		return &enum_literal;
+	}
+	const EnumLiteral* visit_intrinsic(const Intrinsic& intrinsic) override {
+		if (intrinsic.name_equals("reference")) {
+			return visit(*this, intrinsic.get_arguments()[0]);
+		}
+		return nullptr;
 	}
 };
 
