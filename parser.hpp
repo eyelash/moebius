@@ -65,6 +65,7 @@ constexpr const char* intrinsics[] = {
 	"arrayType",
 	"tupleType",
 	"referenceType",
+	"error",
 	"import"
 };
 

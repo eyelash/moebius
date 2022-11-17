@@ -677,6 +677,14 @@ public:
 			const Type* type = static_cast<const TypeType*>(type_expression->get_type())->get_type();
 			return create<TypeLiteral>(TypeInterner::get_reference_type(type));
 		}
+		else if (intrinsic.name_equals("error")) {
+			ensure_argument_count(intrinsic, 1);
+			const StringLiteral* error_message = get_string_literal(expression_table[intrinsic.get_arguments()[0]]);
+			if (error_message == nullptr) {
+				error(intrinsic, "error message must be a compile-time string");
+			}
+			error(intrinsic, error_message->get_value());
+		}
 		else if (intrinsic.name_equals("import")) {
 			ensure_argument_count(intrinsic, 1);
 			const Expression* path_expression = expression_table[intrinsic.get_arguments()[0]];
