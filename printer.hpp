@@ -25,6 +25,9 @@ public:
 	constexpr char operator [](std::size_t i) const {
 		return string[i];
 	}
+	constexpr operator bool() const {
+		return string != nullptr;
+	}
 	constexpr std::size_t get_length() const {
 		return length;
 	}
