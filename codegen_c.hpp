@@ -41,6 +41,9 @@ class CodegenC: public Visitor<Variable> {
 			return StringView();
 		}
 	}
+	static constexpr bool is_printable_character(std::int32_t c) {
+		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == ' ' || c == '-' || c == '.' || c == ',' || c == ':' || c == ';' || c == '!' || c == '?';
+	}
 	static const ::Type* get_element_type(const ::Type* type) {
 		if (type->get_id() == TypeId::STRING) {
 			return TypeInterner::get_char_type();
@@ -243,6 +246,16 @@ class CodegenC: public Visitor<Variable> {
 			case TypeId::STRING:
 				generate_array_functions(type, type->get_id() == TypeId::STRING);
 				return;
+			case TypeId::STRING_ITERATOR:
+				{
+					TupleType tuple_type;
+					tuple_type.add_element_type(TypeInterner::get_string_type());
+					tuple_type.add_element_type(TypeInterner::get_int_type());
+					const ::Type* interned_tuple_type = TypeInterner::intern(&tuple_type);
+					generate_functions(interned_tuple_type);
+					generate_string_iterator_functions(type);
+					return;
+				}
 			case TypeId::REFERENCE:
 				generate_reference_functions(type);
 				return;
@@ -485,6 +498,88 @@ class CodegenC: public Visitor<Variable> {
 			printer.println("return array;");
 			printer.println_decreasing("}");
 			printer.println_decreasing("}");
+
+			// from_codepoint
+			if (get_element_type(type) == TypeInterner::get_char_type()) {
+				printer.println_increasing(format("static % from_codepoint(% codepoint, %* s) {", number_type, number_type, element_type));
+				printer.println_increasing("if (codepoint < (1 << 7)) {");
+				printer.println("s[0] = codepoint;");
+				printer.println("return 1;");
+				printer.println_decreasing("}");
+				printer.println_increasing("else if (codepoint < (1 << 11)) {");
+				printer.println("s[0] = 0xC0 | codepoint >> 6;");
+				printer.println("s[1] = 0x80 | codepoint & 0x3F;");
+				printer.println("return 2;");
+				printer.println_decreasing("}");
+				printer.println_increasing("else if (codepoint < (1 << 16)) {");
+				printer.println("s[0] = 0xE0 | codepoint >> 12;");
+				printer.println("s[1] = 0x80 | codepoint >> 6 & 0x3F;");
+				printer.println("s[2] = 0x80 | codepoint & 0x3F;");
+				printer.println("return 3;");
+				printer.println_decreasing("}");
+				printer.println_increasing("else if (codepoint < (1 << 21)) {");
+				printer.println("s[0] = 0xF0 | codepoint >> 18;");
+				printer.println("s[1] = 0x80 | codepoint >> 12 & 0x3F;");
+				printer.println("s[2] = 0x80 | codepoint >> 6 & 0x3F;");
+				printer.println("s[3] = 0x80 | codepoint & 0x3F;");
+				printer.println("return 4;");
+				printer.println_decreasing("}");
+				printer.println_decreasing("}");
+			}
+		}
+		void generate_string_iterator_functions(const ::Type* type) {
+			const Type string_iterator_type = get_type(type);
+			const Type number_type = get_type(TypeInterner::get_int_type());
+			const Type char_type = get_type(TypeInterner::get_char_type());
+			IndentPrinter& printer = type_function_printer;
+
+			// string_iterator_get_next
+			TupleType iteration_result_type_tuple;
+			iteration_result_type_tuple.add_element_type(type);
+			iteration_result_type_tuple.add_element_type(TypeInterner::get_int_type());
+			iteration_result_type_tuple.add_element_type(TypeInterner::get_int_type());
+			const Type iteration_result_type = get_type(TypeInterner::intern(&iteration_result_type_tuple));
+			function_declaration_printer.println(format("static % string_iterator_get_next(%);", iteration_result_type, string_iterator_type));
+			printer.println_increasing(format("static % string_iterator_get_next(% string_iterator) {", iteration_result_type, string_iterator_type));
+			printer.println(format("%* s = string_iterator.v0->elements + string_iterator.v1;", char_type));
+			printer.println(format("% size = string_iterator.v0->length - string_iterator.v1;", number_type));
+			printer.println(format("% result;", iteration_result_type));
+			printer.println("result.v0.v0 = string_iterator.v0;");
+			printer.println_increasing("if (size >= 1 && (s[0] & 0x80) == 0x00) {");
+			printer.println("result.v0.v1 = string_iterator.v1 + 1;");
+			printer.println("result.v1 = 1;");
+			printer.println("result.v2 = s[0];");
+			printer.println_decreasing("}");
+			printer.println_increasing("else if (size >= 2 && (s[0] & 0xE0) == 0xC0) {");
+			printer.println("result.v0.v1 = string_iterator.v1 + 2;");
+			printer.println("result.v1 = 1;");
+			printer.println("result.v2 = 0;");
+			printer.println("result.v2 |= (s[0] & 0x1F) << 6;");
+			printer.println("result.v2 |= (s[1] & 0x3F);");
+			printer.println_decreasing("}");
+			printer.println_increasing("else if (size >= 3 && (s[0] & 0xF0) == 0xE0) {");
+			printer.println("result.v0.v1 = string_iterator.v1 + 3;");
+			printer.println("result.v1 = 1;");
+			printer.println("result.v2 = 0;");
+			printer.println("result.v2 |= (s[0] & 0x0F) << 12;");
+			printer.println("result.v2 |= (s[1] & 0x3F) << 6;");
+			printer.println("result.v2 |= (s[2] & 0x3F);");
+			printer.println_decreasing("}");
+			printer.println_increasing("else if (size >= 4 && (s[0] & 0xF8) == 0xF0) {");
+			printer.println("result.v0.v1 = string_iterator.v1 + 4;");
+			printer.println("result.v1 = 1;");
+			printer.println("result.v2 = 0;");
+			printer.println("result.v2 |= (s[0] & 0x07) << 18;");
+			printer.println("result.v2 |= (s[1] & 0x3F) << 12;");
+			printer.println("result.v2 |= (s[2] & 0x3F) << 6;");
+			printer.println("result.v2 |= (s[3] & 0x3F);");
+			printer.println_decreasing("}");
+			printer.println_increasing("else {");
+			printer.println("result.v0.v1 = string_iterator.v1;");
+			printer.println("result.v1 = 0;");
+			printer.println_decreasing("}");
+			printer.println("return result;");
+			printer.println_decreasing("}");
 		}
 		void generate_reference_functions(const ::Type* type) {
 			const Type reference_type = get_type(type);
@@ -573,15 +668,20 @@ public:
 	Variable visit_string_literal(const StringLiteral& string_literal) override {
 		const Variable result = next_variable();
 		const Type type = function_table.get_type(string_literal.get_type());
-		const Type element_type = function_table.get_type(get_element_type(string_literal.get_type()));
-		const std::size_t size = string_literal.get_value().size();
 		printer.println(print_functor([&](auto& printer) {
-			printer.print(format("% % = %_new((%[]){", type, result, type, element_type));
-			for (std::size_t i = 0; i < size; ++i) {
-				if (i > 0) printer.print(", ");
-				printer.print(print_number(string_literal.get_value()[i]));
+			std::size_t size = 0;
+			printer.print(format("% % = %_new(\"", type, result, type));
+			for (std::int32_t codepoint: code_points(string_literal.get_value())) {
+				if (is_printable_character(codepoint)) {
+					printer.print(static_cast<char>(codepoint));
+					++size;
+				}
+				else for (char c: from_codepoint(codepoint)) {
+					printer.print(format("\\%", print_octal(static_cast<unsigned char>(c), 3)));
+					++size;
+				}
 			}
-			printer.print(format("}, %);", print_number(size)));
+			printer.print(format("\", %);", print_number(size)));
 		}));
 		return result;
 	}
@@ -794,6 +894,7 @@ public:
 		else if (intrinsic.name_equals("stringPush")) {
 			const Type type = function_table.get_type(intrinsic.get_type());
 			const Type element_type = function_table.get_type(get_element_type(intrinsic.get_type()));
+			const Type number_type = function_table.get_type(TypeInterner::get_int_type());
 			const Variable string = expression_table[intrinsic.get_arguments()[0]];
 			const Variable argument = expression_table[intrinsic.get_arguments()[1]];
 			if (intrinsic.get_arguments()[1]->get_type() == intrinsic.get_type()) {
@@ -801,8 +902,11 @@ public:
 				printer.println(format("free(%);", argument));
 			}
 			else {
-				// TODO: Unicode support
-				printer.println(format("% % = %_splice(%, %->length, 0, (%[]){%}, 1);", type, result, type, string, string, element_type, argument));
+				const Variable elements = next_variable();
+				const Variable length = next_variable();
+				printer.println(format("% %[4];", element_type, elements));
+				printer.println(format("% % = from_codepoint(%, %);", number_type, length, argument, elements));
+				printer.println(format("% % = %_splice(%, %->length, 0, %, %);", type, result, type, string, string, elements, length));
 			}
 		}
 		else if (intrinsic.name_equals("stringIterator")) {
@@ -815,17 +919,7 @@ public:
 		else if (intrinsic.name_equals("stringIteratorGetNext")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% %;", type, result));
-			printer.println(format("%.v0.v0 = %.v0;", result, iterator));
-			printer.println_increasing(format("if (%.v1 < %.v0->length) {", iterator, iterator));
-			printer.println(format("%.v0.v1 = %.v1 + 1;", result, iterator));
-			printer.println(format("%.v1 = 1;", result));
-			printer.println(format("%.v2 = %.v0->elements[%.v1];", result, iterator, iterator));
-			printer.println_decreasing("}");
-			printer.println_increasing("else {");
-			printer.println(format("%.v0.v1 = %.v1;", result, iterator));
-			printer.println(format("%.v1 = 0;", result));
-			printer.println_decreasing("}");
+			printer.println(format("% % = string_iterator_get_next(%);", type, result, iterator));
 		}
 		else if (intrinsic.name_equals("reference")) {
 			const Variable value = expression_table[intrinsic.get_arguments()[0]];

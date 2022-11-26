@@ -31,25 +31,8 @@ class CodegenJS: public Visitor<Variable> {
 			return StringView();
 		}
 	}
-	static const char* escape_character(char c) {
-		switch (c) {
-		case '\n':
-			return "\\n";
-		case '\r':
-			return "\\r";
-		case '\t':
-			return "\\t";
-		case '\v':
-			return "\\v";
-		case '\'':
-			return "\\\'";
-		case '\"':
-			return "\\\"";
-		case '\\':
-			return "\\\\";
-		default:
-			return nullptr;
-		}
+	static constexpr bool is_printable_character(std::int32_t c) {
+		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == ' ' || c == '-' || c == '.' || c == ',' || c == ':' || c == ';' || c == '!' || c == '?';
 	}
 	class FunctionTable {
 		std::map<const Function*, std::size_t> functions;
@@ -121,12 +104,12 @@ public:
 		const Variable result = next_variable();
 		printer.println(print_functor([&](auto& printer) {
 			printer.print(format("const % = '", result));
-			for (char c: string_literal.get_value()) {
-				if (const char* escaped = escape_character(c)) {
-					printer.print(escaped);
+			for (std::int32_t codepoint: code_points(string_literal.get_value())) {
+				if (is_printable_character(codepoint)) {
+					printer.print(static_cast<char>(codepoint));
 				}
 				else {
-					printer.print(c);
+					printer.print(format("\\u{%}", print_hexadecimal(codepoint)));
 				}
 			}
 			printer.print("';");

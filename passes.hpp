@@ -601,8 +601,7 @@ public:
 					return create<StringLiteral>(string_literal->get_value() + argument_literal->get_value());
 				}
 				else if (const IntLiteral* argument_literal = get_int_literal(argument)) {
-					// TODO: Unicode support
-					return create<StringLiteral>(string_literal->get_value() + static_cast<char>(argument_literal->get_value()));
+					return create<StringLiteral>(string_literal->get_value() + from_codepoint(argument_literal->get_value()));
 				}
 			}
 			if (string->get_type() != TypeInterner::get_string_type()) {
