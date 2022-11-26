@@ -6,7 +6,7 @@ let length = std.length
 let get = std.get
 let set = std.set
 let push = std.push
-let putStrLn = std.putStrLn
+let print = std.print
 
 func swap(a, i, j) => {
 	let tmp = a.get(i)
@@ -43,4 +43,4 @@ func quicksort(a: Array(Int), lo: Int, hi: Int): Array(Int) =>
 let a = [3, 14, 15, 92, 65, 35, 89, 79, 32, 38, 46]
 let hi = a.length()
 let a = quicksort(a, 0, hi)
-return putStrLn("$a")
+return print(a)

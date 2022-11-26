@@ -357,6 +357,9 @@ public:
 	}
 	Parser(const SourceFile* file): cursor(file) {}
 	Parser(const Cursor& cursor): cursor(cursor) {}
+	const char* get_path() const {
+		return cursor.get_path();
+	}
 	std::size_t get_position() const {
 		return cursor.get_position();
 	}
@@ -370,7 +373,7 @@ class MoebiusParser: private Parser {
 		return sequence(s, not_(alphanumeric));
 	}
 	template <class T> [[noreturn]] void error(std::size_t position, const T& t) {
-		print_error(Printer(std::cerr), cursor.get_path(), position, t);
+		print_error(Printer(std::cerr), get_path(), position, t);
 		std::exit(EXIT_FAILURE);
 	}
 	template <class T> [[noreturn]] void error(const T& t) {
@@ -463,7 +466,7 @@ class MoebiusParser: private Parser {
 	}
 	StringView parse_identifier() {
 		if (!parse(peek(alphabetic))) {
-			error("expected alphabetic character");
+			error("expected an identifier");
 		}
 		return parse(zero_or_more(alphanumeric));
 	}
@@ -624,7 +627,7 @@ class MoebiusParser: private Parser {
 			expect("(");
 			parse_white_space();
 			Function* function = new Function();
-			function->set_path(cursor.get_path());
+			function->set_path(get_path());
 			program->add_function(function);
 			Closure* closure = new Closure(function);
 			closure->set_position(position);
@@ -826,7 +829,7 @@ class MoebiusParser: private Parser {
 			return intrinsic;
 		}
 		else {
-			error("unexpected character");
+			error("expected an expression");
 		}
 	}
 	const Expression* parse_expression(const OperatorLevel* level = operators.begin()) {
@@ -1008,7 +1011,7 @@ class MoebiusParser: private Parser {
 				expect("(");
 				parse_white_space();
 				Function* function = new Function();
-				function->set_path(cursor.get_path());
+				function->set_path(get_path());
 				program->add_function(function);
 				Closure* closure = new Closure(function);
 				closure->set_position(position);
@@ -1122,7 +1125,7 @@ public:
 	const Function* parse_program() {
 		parse_white_space();
 		Function* main_function = new Function();
-		main_function->set_path(cursor.get_path());
+		main_function->set_path(get_path());
 		program->add_function(main_function);
 		Scope scope(current_scope, main_function->get_block());
 		const Expression* expression = parse_scope();

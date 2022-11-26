@@ -42,6 +42,8 @@ func toString(x) => {
 			arrayToString(x, 0, "[")
 }
 
+func print(x) => putStrLn(toString(x))
+
 return {
 	Array,
 	Tuple,
@@ -54,4 +56,5 @@ return {
 	set,
 	push,
 	toString,
+	print,
 }

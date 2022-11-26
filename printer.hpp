@@ -28,9 +28,6 @@ public:
 	constexpr operator bool() const {
 		return string != nullptr;
 	}
-	constexpr std::size_t get_length() const {
-		return length;
-	}
 	constexpr std::size_t size() const {
 		return length;
 	}

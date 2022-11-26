@@ -371,14 +371,20 @@ public:
 		const Type* type = key.argument_types[argument_index];
 		return create<Argument>(argument_index, type);
 	}
-	const Expression* visit_call(const Expression& call, const Expression* closure, const Expression* object, const std::vector<const Expression*>& arguments) {
+	const Expression* visit_call(const Expression& call, const Function* function, const Expression* closure, const Expression* object, const std::vector<const Expression*>& arguments) {
 		FunctionCall* new_call = create<FunctionCall>();
 		FunctionTableKey new_key;
-		if (closure->get_type_id() != TypeId::CLOSURE) {
-			error(call, "call to a value that is not a function");
+		if (closure) {
+			if (closure->get_type_id() != TypeId::CLOSURE) {
+				error(call, "call to a value that is not a function");
+			}
+			new_key.old_function = static_cast<const ClosureType*>(closure->get_type())->get_function();
+			new_call->add_argument(closure);
+			new_key.argument_types.push_back(closure->get_type());
 		}
-		new_call->add_argument(closure);
-		new_key.argument_types.push_back(closure->get_type());
+		else {
+			new_key.old_function = function;
+		}
 		if (object) {
 			const Expression* new_argument = expression_table[object];
 			new_call->add_argument(new_argument);
@@ -389,7 +395,6 @@ public:
 			new_call->add_argument(new_argument);
 			new_key.argument_types.push_back(new_argument->get_type());
 		}
-		new_key.old_function = static_cast<const ClosureType*>(closure->get_type())->get_function();
 		if (new_key.argument_types.size() != new_key.old_function->get_arguments()) {
 			std::size_t expected_arguments = new_key.old_function->get_arguments() - 1;
 			if (object) {
@@ -399,7 +404,7 @@ public:
 		}
 
 		if (function_table[new_key] == nullptr) {
-			Function* new_function = new Function(new_key.argument_types, nullptr);
+			Function* new_function = new Function(new_key.argument_types, new_key.old_function->get_return_type());
 			program->add_function(new_function);
 			function_table[new_key] = new_function;
 			const Expression* new_expression = evaluate(new_key, new_function->get_block(), new_key.old_function->get_block());
@@ -420,7 +425,7 @@ public:
 	}
 	const Expression* visit_closure_call(const ClosureCall& call) override {
 		const Expression* closure = expression_table[call.get_closure()];
-		return visit_call(call, closure, nullptr, call.get_arguments());
+		return visit_call(call, nullptr, closure, nullptr, call.get_arguments());
 	}
 	const Expression* visit_method_call(const MethodCall& call) override {
 		const Expression* object = expression_table[call.get_object()];
@@ -437,7 +442,7 @@ public:
 					const Type* type = struct_type->get_fields()[index].second;
 					closure = create<StructAccess>(object, call.get_method_name(), type);
 				}
-				return visit_call(call, closure, nullptr, call.get_arguments());
+				return visit_call(call, nullptr, closure, nullptr, call.get_arguments());
 			}
 		}
 		if (object->get_type_id() == TypeId::TYPE) {
@@ -460,30 +465,13 @@ public:
 		if (call.get_method()) {
 			const Expression* closure = expression_table[call.get_method()];
 			if (closure->get_type_id() == TypeId::CLOSURE) {
-				return visit_call(call, closure, call.get_object(), call.get_arguments());
+				return visit_call(call, nullptr, closure, call.get_object(), call.get_arguments());
 			}
 		}
 		error(call, "invalid method call");
 	}
 	const Expression* visit_function_call(const FunctionCall& call) override {
-		FunctionCall* new_call = create<FunctionCall>();
-		FunctionTableKey new_key;
-		for (const Expression* argument: call.get_arguments()) {
-			const Expression* new_argument = expression_table[argument];
-			new_call->add_argument(new_argument);
-			new_key.argument_types.push_back(new_argument->get_type());
-		}
-		new_key.old_function = call.get_function();
-
-		if (function_table[new_key] == nullptr) {
-			Function* new_function = new Function(new_key.argument_types, new_key.old_function->get_return_type());
-			program->add_function(new_function);
-			function_table[new_key] = new_function;
-			evaluate(new_key, new_function->get_block(), new_key.old_function->get_block());
-		}
-		new_call->set_type(function_table[new_key]->get_return_type());
-		new_call->set_function(function_table[new_key]);
-		return new_call;
+		return visit_call(call, call.get_function(), nullptr, nullptr, call.get_arguments());
 	}
 	void ensure_argument_count(const Intrinsic& intrinsic, std::size_t argument_count) {
 		if (intrinsic.get_arguments().size() != argument_count) {
@@ -1018,7 +1006,13 @@ public:
 	}
 	const Expression* visit_type_literal(const TypeLiteral& type_literal) override {
 		const Type* type = static_cast<const TypeType*>(type_literal.get_type())->get_type();
-		return create<TypeLiteral>(type);
+		return create<TypeLiteral>(transform_type(type));
+	}
+	const Expression* visit_struct_type_declaration(const StructTypeDeclaration& struct_type_declaration) override {
+		return create<TypeLiteral>(transform_type(struct_type_declaration.get_type()));
+	}
+	const Expression* visit_enum_type_declaration(const EnumTypeDeclaration& enum_type_declaration) override {
+		return create<TypeLiteral>(transform_type(enum_type_declaration.get_type()));
 	}
 	static Program run(const Program& program) {
 		Program new_program;
