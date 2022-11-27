@@ -812,22 +812,20 @@ public:
 			printer.println(format("%.v0 = %;", result, string));
 			printer.println(format("%.v1 = 0;", result));
 		}
-		else if (intrinsic.name_equals("stringIteratorIsValid")) {
-			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
-			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %.v1 < %.v0->length;", type, result, iterator, iterator));
-		}
-		else if (intrinsic.name_equals("stringIteratorGet")) {
-			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
-			const Type type = function_table.get_type(intrinsic.get_type());
-			printer.println(format("% % = %.v0->elements[%.v1];", type, result, iterator, iterator));
-		}
-		else if (intrinsic.name_equals("stringIteratorNext")) {
+		else if (intrinsic.name_equals("stringIteratorGetNext")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
 			const Type type = function_table.get_type(intrinsic.get_type());
 			printer.println(format("% %;", type, result));
-			printer.println(format("%.v0 = %.v0;", result, iterator));
-			printer.println(format("%.v1 = %.v1 + 1;", result, iterator));
+			printer.println(format("%.v0.v0 = %.v0;", result, iterator));
+			printer.println_increasing(format("if (%.v1 < %.v0->length) {", iterator, iterator));
+			printer.println(format("%.v0.v1 = %.v1 + 1;", result, iterator));
+			printer.println(format("%.v1 = 1;", result));
+			printer.println(format("%.v2 = %.v0->elements[%.v1];", result, iterator, iterator));
+			printer.println_decreasing("}");
+			printer.println_increasing("else {");
+			printer.println(format("%.v0.v1 = %.v1;", result, iterator));
+			printer.println(format("%.v1 = 0;", result));
+			printer.println_decreasing("}");
 		}
 		else if (intrinsic.name_equals("reference")) {
 			const Variable value = expression_table[intrinsic.get_arguments()[0]];

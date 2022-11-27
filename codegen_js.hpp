@@ -318,27 +318,13 @@ public:
 		}
 		else if (intrinsic.name_equals("stringIterator")) {
 			const Variable string = expression_table[intrinsic.get_arguments()[0]];
-			const Variable iterator = next_variable();
-			printer.println(format("const % = %[Symbol.iterator]();", iterator, string));
-			printer.println_increasing(format("const % = {", result));
-			printer.println(format("iterator: %,", iterator));
-			printer.println(format("result: %.next(),", iterator));
-			printer.println_decreasing("};");
+			printer.println(format("const % = %[Symbol.iterator]();", result, string));
 		}
-		else if (intrinsic.name_equals("stringIteratorIsValid")) {
+		else if (intrinsic.name_equals("stringIteratorGetNext")) {
 			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("const % = !%.result.done;", result, iterator));
-		}
-		else if (intrinsic.name_equals("stringIteratorGet")) {
-			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
-			printer.println(format("const % = %.result.value.codePointAt(0);", result, iterator));
-		}
-		else if (intrinsic.name_equals("stringIteratorNext")) {
-			const Variable iterator = expression_table[intrinsic.get_arguments()[0]];
-			printer.println_increasing(format("const % = {", result));
-			printer.println(format("iterator: %.iterator,", iterator));
-			printer.println(format("result: %.iterator.next(),", iterator));
-			printer.println_decreasing("};");
+			const Variable iterator_result = next_variable();
+			printer.println(format("const % = %.next();", iterator_result, iterator));
+			printer.println(format("const % = [%, !%.done, %.value?.codePointAt(0)];", result, iterator, iterator_result, iterator_result));
 		}
 		else if (intrinsic.name_equals("reference")) {
 			const Variable value = expression_table[intrinsic.get_arguments()[0]];

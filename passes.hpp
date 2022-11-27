@@ -618,17 +618,13 @@ public:
 			ensure_argument_types(intrinsic, {TypeInterner::get_string_type()});
 			return create_intrinsic(intrinsic, TypeInterner::get_string_iterator_type());
 		}
-		else if (intrinsic.name_equals("stringIteratorIsValid")) {
+		else if (intrinsic.name_equals("stringIteratorGetNext")) {
 			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
-			return create_intrinsic(intrinsic, TypeInterner::get_int_type());
-		}
-		else if (intrinsic.name_equals("stringIteratorGet")) {
-			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
-			return create_intrinsic(intrinsic, TypeInterner::get_int_type());
-		}
-		else if (intrinsic.name_equals("stringIteratorNext")) {
-			ensure_argument_types(intrinsic, {TypeInterner::get_string_iterator_type()});
-			return create_intrinsic(intrinsic, TypeInterner::get_string_iterator_type());
+			TupleType type;
+			type.add_element_type(TypeInterner::get_string_iterator_type());
+			type.add_element_type(TypeInterner::get_int_type());
+			type.add_element_type(TypeInterner::get_int_type());
+			return create_intrinsic(intrinsic, TypeInterner::intern(&type));
 		}
 		else if (intrinsic.name_equals("reference")) {
 			ensure_argument_count(intrinsic, 1);
@@ -1944,7 +1940,7 @@ class MemoryManagement: public Visitor<const Expression*> {
 		return usage_table.usages[source_block].count(resource) == 0;
 	}
 	bool is_borrowed(const Intrinsic& intrinsic) {
-		return intrinsic.name_equals("putStr") || intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength") || intrinsic.name_equals("stringIteratorIsValid") || intrinsic.name_equals("stringIteratorGet");
+		return intrinsic.name_equals("putStr") || intrinsic.name_equals("arrayGet") || intrinsic.name_equals("arrayLength");
 	}
 	const Expression* copy(const Expression* resource) {
 		Intrinsic* copy_intrinsic = create<Intrinsic>("copy", resource->get_type());
