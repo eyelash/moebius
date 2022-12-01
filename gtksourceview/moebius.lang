@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language id="moebius" name="Moebius" version="2.0" _section="Source">
+	<metadata>
+		<property name="mimetypes">text/x-moebius</property>
+		<property name="globs">*.moebius;*.moeb</property>
+		<property name="line-comment-start">//</property>
+		<property name="block-comment-start">/*</property>
+		<property name="block-comment-end">*/</property>
+	</metadata>
+
+	<styles>
+		<style id="keyword"    name="Keyword"	        map-to="def:keyword"/>
+		<style id="escape"     name="Escaped Character" map-to="def:special-char"/>
+		<style id="string"     name="String"            map-to="def:string"/>
+		<style id="character"  name="Character"         map-to="def:character"/>
+		<style id="number"     name="Number"            map-to="def:number"/>
+		<style id="boolean"    name="Boolean"           map-to="def:boolean"/>
+		<style id="void"       name="Void"              map-to="def:special-constant"/>
+		<style id="type"       name="Type"              map-to="def:type"/>
+		<style id="builtin"    name="Builtin"           map-to="def:builtin"/>
+		<style id="identifier" name="Identifier"/>
+	</styles>
+
+	<definitions>
+
+		<context id="keywords" style-ref="keyword">
+			<keyword>else</keyword>
+			<keyword>enum</keyword>
+			<keyword>func</keyword>
+			<keyword>if</keyword>
+			<keyword>let</keyword>
+			<keyword>return</keyword>
+			<keyword>struct</keyword>
+			<keyword>switch</keyword>
+		</context>
+
+		<context id="escape" style-ref="escape">
+			<match>\\(n|r|t|v|'|"|\\|\$)</match>
+		</context>
+
+		<context id="string" style-ref="string" class="string" class-disabled="no-spell-check">
+			<start>"</start>
+			<end>"</end>
+			<include>
+				<context ref="escape"/>
+			</include>
+		</context>
+
+		<context id="character" style-ref="character">
+			<start>'</start>
+			<end>'</end>
+			<include>
+				<context ref="escape"/>
+			</include>
+		</context>
+
+		<context id="number" style-ref="number">
+			<match>[0-9]+</match>
+		</context>
+
+		<context id="boolean" style-ref="boolean">
+			<keyword>false</keyword>
+			<keyword>true</keyword>
+		</context>
+
+		<context id="void" style-ref="void">
+			<keyword>void</keyword>
+		</context>
+
+		<context id="type" style-ref="type">
+			<keyword>Int</keyword>
+			<keyword>String</keyword>
+			<keyword>StringIterator</keyword>
+			<keyword>Void</keyword>
+		</context>
+
+		<context id="builtins" style-ref="builtin">
+			<match>@[a-zA-Z]+</match>
+		</context>
+
+		<!--<context id="functions" style-ref="function">
+			<keyword>getChar</keyword>
+			<keyword>putChar</keyword>
+		</context>-->
+
+		<context id="identifier" style-ref="identifier">
+			<match>[a-zA-Z_][a-zA-Z_0-9]*</match>
+		</context>
+
+		<context id="moebius" class="no-spell-check">
+			<include>
+				<context ref="def:c-like-comment"/>
+				<context ref="def:c-like-comment-multiline"/>
+				<context ref="def:c-like-close-comment-outside-comment"/>
+				<context ref="keywords"/>
+				<context ref="string"/>
+				<context ref="character"/>
+				<context ref="number"/>
+				<context ref="boolean"/>
+				<context ref="void"/>
+				<context ref="type"/>
+				<context ref="builtins"/>
+				<context ref="identifier"/>
+			</include>
+		</context>
+
+	</definitions>
+</language>
