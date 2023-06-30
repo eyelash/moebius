@@ -262,8 +262,8 @@ template <class F, class = bool> struct is_char_class: std::false_type {};
 template <class F> struct is_char_class<F, decltype(std::declval<F>()(std::declval<char>()))>: std::true_type {};
 
 class Parser {
-public:
 	Cursor cursor;
+public:
 	static constexpr auto get_parser(char c) {
 		return CharParser([c](char c2) {
 			return c == c2;
@@ -328,32 +328,14 @@ public:
 	static constexpr bool operator_char(char c) {
 		return StringView("+-*/%=<>!&|~^?:").contains(c);
 	}
-	template <class P> std::enable_if_t<is_parser<P>::value, StringView> parse(P p) {
+	template <class P> StringView parse(P p) {
 		const Cursor start = cursor;
-		if (p.parse(cursor)) {
+		if (get_parser(p).parse(cursor)) {
 			return cursor - start;
 		}
 		else {
 			return StringView();
 		}
-	}
-	template <class F> std::enable_if_t<is_char_class<F>::value, StringView> parse(F f) {
-		return parse(get_parser(f));
-	}
-	bool parse(char c) {
-		return parse(get_parser(c));
-	}
-	bool parse(const StringView& s) {
-		return parse(get_parser(s));
-	}
-	bool parse(const char* s) {
-		return parse(get_parser(s));
-	}
-	template <class F> bool parse_not(F f) {
-		return parse(sequence(not_(f), peek(any_char)));
-	}
-	template <class F> StringView parse_all(F f) {
-		return parse(zero_or_more(f));
 	}
 	Parser(const SourceFile* file): cursor(file) {}
 	Parser(const Cursor& cursor): cursor(cursor) {}
@@ -408,21 +390,31 @@ class MoebiusParser: private Parser {
 		}
 	}
 	char parse_character() {
-		if (parse("\\")) {
-			if (!parse(peek(any_char))) {
-				error("unexpected end");
+		if (parse('\\')) {
+			if (parse('n')) {
+				return '\n';
 			}
-			char c = parse(any_char)[0];
-			if (c == 'n') c = '\n';
-			else if (c == 'r') c = '\r';
-			else if (c == 't') c = '\t';
-			else if (c == 'v') c = '\v';
-			else if (c == '\'' || c == '\"' || c == '\\' || c == '$') c = c;
-			else error("invalid escape");
-			return c;
+			else if (parse('r')) {
+				return '\r';
+			}
+			else if (parse('t')) {
+				return '\t';
+			}
+			else if (parse('v')) {
+				return '\v';
+			}
+			else if (StringView s = parse(choice('\'', '\"', '\\', '$'))) {
+				return *s;
+			}
+			else {
+				error("invalid escape");
+			}
+		}
+		else if (StringView s = parse(any_char)) {
+			return *s;
 		}
 		else {
-			return parse(any_char)[0];
+			error("unexpected end");
 		}
 	}
 	const Expression* parse_string_segment() {
@@ -430,7 +422,7 @@ class MoebiusParser: private Parser {
 		constexpr auto string_segment_end_char = [](char c) constexpr {
 			return c == '"' || c == '$';
 		};
-		if (parse("$")) {
+		if (parse('$')) {
 			const Expression* expression;
 			if (parse("{")) {
 				parse_white_space();
@@ -732,9 +724,6 @@ class MoebiusParser: private Parser {
 			return left;
 		}
 		else if (parse("'")) {
-			if (!parse(peek(any_char))) {
-				error("unexpected end");
-			}
 			IntLiteral* int_literal = current_scope->create<IntLiteral>(parse_character());
 			int_literal->set_position(position);
 			expect("'");

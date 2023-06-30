@@ -25,6 +25,9 @@ public:
 	constexpr char operator [](std::size_t i) const {
 		return string[i];
 	}
+	constexpr char operator *() const {
+		return *string;
+	}
 	constexpr operator bool() const {
 		return string != nullptr;
 	}
