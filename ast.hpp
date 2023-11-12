@@ -2,13 +2,17 @@
 
 class IntLiteral;
 class BinaryExpression;
+class If;
 
 template <class T> class Visitor {
 public:
 	virtual T visit_int_literal(const IntLiteral&) {
 		return T();
 	}
-	virtual T visit_binary_expression(const BinaryExpression &) {
+	virtual T visit_binary_expression(const BinaryExpression&) {
+		return T();
+	}
+	virtual T visit_if(const If&) {
 		return T();
 	}
 };
@@ -30,6 +34,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		}
 		void visit_binary_expression(const BinaryExpression& binary_expression) override {
 			result = visitor.visit_binary_expression(binary_expression);
+		}
+		void visit_if(const If& if_) override {
+			result = visitor.visit_if(if_);
 		}
 	};
 	VoidVisitor void_visitor(visitor);
@@ -87,5 +94,25 @@ public:
 	}
 	template <BinaryOperation operation> static Expression* create(const Expression* left, const Expression* right) {
 		return new BinaryExpression(operation, left, right);
+	}
+};
+
+class If: public Expression {
+	const Expression* condition;
+	const Expression* then_expression;
+	const Expression* else_expression;
+public:
+	If(const Expression* condition, const Expression* then_expression, const Expression* else_expression): condition(condition), then_expression(then_expression), else_expression(else_expression) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_if(*this);
+	}
+	const Expression* get_condition() const {
+		return condition;
+	}
+	const Expression* get_then_expression() const {
+		return then_expression;
+	}
+	const Expression* get_else_expression() const {
+		return else_expression;
 	}
 };

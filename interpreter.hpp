@@ -37,6 +37,15 @@ public:
 			return 0;
 		}
 	}
+	std::int32_t visit_if(const If& if_) override {
+		const std::int32_t condition = visit(*this, if_.get_condition());
+		if (condition) {
+			return visit(*this, if_.get_then_expression());
+		}
+		else {
+			return visit(*this, if_.get_else_expression());
+		}
+	}
 	static void interpret_program(const Expression* program) {
 		Interpreter interpreter;
 		const std::int32_t result = visit(interpreter, program);

@@ -283,6 +283,11 @@ class MoebiusParser: private Parser {
 			error(format("expected \"%\"", s));
 		}
 	}
+	void expect_keyword(const StringView& s) {
+		if (!parse(keyword(s))) {
+			error(format("expected \"%\"", s));
+		}
+	}
 	bool parse_comment() {
 		if (parse("//")) {
 			parse(zero_or_more(sequence(not_("\n"), any_char)));
@@ -310,7 +315,22 @@ class MoebiusParser: private Parser {
 		return nullptr;
 	}
 	const Expression* parse_expression_last() {
-		if (parse(keyword("false"))) {
+		if (parse(keyword("if"))) {
+			parse_white_space();
+			expect("(");
+			parse_white_space();
+			const Expression* condition = parse_expression();
+			parse_white_space();
+			expect(")");
+			parse_white_space();
+			const Expression* then_expression = parse_expression();
+			parse_white_space();
+			expect_keyword("else");
+			parse_white_space();
+			const Expression* else_expression = parse_expression();
+			return new If(condition, then_expression, else_expression);
+		}
+		else if (parse(keyword("false"))) {
 			return new IntLiteral(0);
 		}
 		else if (parse(keyword("true"))) {
