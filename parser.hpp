@@ -1,10 +1,9 @@
 #pragma once
 
 #include "printer.hpp"
+#include "ast.hpp"
 #include <map>
 #include <cstdlib>
-
-class Expression;
 
 struct BinaryOperator {
 	const char* string;
@@ -245,5 +244,73 @@ public:
 	}
 	std::size_t get_position() const {
 		return cursor.get_position();
+	}
+};
+
+class MoebiusParser: private Parser {
+	template <class T> [[noreturn]] void error(std::size_t position, const T& t) {
+		print_error(Printer(std::cerr), get_path(), position, t);
+		std::exit(EXIT_FAILURE);
+	}
+	template <class T> [[noreturn]] void error(const T& t) {
+		error(get_position(), t);
+	}
+	void expect(const StringView& s) {
+		if (!parse(s)) {
+			error(format("expected \"%\"", s));
+		}
+	}
+	bool parse_comment() {
+		if (parse("//")) {
+			parse(zero_or_more(sequence(not_("\n"), any_char)));
+			return true;
+		}
+		if (parse("/*")) {
+			parse(zero_or_more(sequence(not_("*/"), any_char)));
+			expect("*/");
+			return true;
+		}
+		return false;
+	}
+	void parse_white_space() {
+		parse(zero_or_more(white_space));
+		while (parse_comment()) {
+			parse(zero_or_more(white_space));
+		}
+	}
+	const Expression* parse_expression_last() {
+		if (parse(peek(numeric))) {
+			std::int32_t number = 0;
+			for (char c: parse(zero_or_more(numeric))) {
+				number *= 10;
+				number += c - '0';
+			}
+			return new IntLiteral(number);
+		}
+		else {
+			error("expected an expression");
+		}
+	}
+	const Expression* parse_expression(const OperatorLevel* level = operators.begin()) {
+		if (level == operators.end()) {
+			return parse_expression_last();
+		}
+		return parse_expression(level + 1);
+	}
+	const Expression* parse_program() {
+		parse_white_space();
+		const Expression* expression = parse_expression();
+		parse_white_space();
+		if (parse(peek(any_char))) {
+			error("unexpected character at end of program");
+		}
+		return expression;
+	}
+	MoebiusParser(const SourceFile* file): Parser(file) {}
+public:
+	static const Expression* parse_program(const char* path) {
+		SourceFile file(path);
+		MoebiusParser parser(&file);
+		return parser.parse_program();
 	}
 };
