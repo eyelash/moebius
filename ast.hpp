@@ -58,7 +58,13 @@ enum class BinaryOperation {
 	SUB,
 	MUL,
 	DIV,
-	REM
+	REM,
+	EQ,
+	NE,
+	LT,
+	LE,
+	GT,
+	GE
 };
 
 class BinaryExpression: public Expression {

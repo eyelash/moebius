@@ -16,6 +16,16 @@ using OperatorLevel = std::initializer_list<BinaryOperator>;
 
 constexpr std::initializer_list<OperatorLevel> operators = {
 	{
+		BinaryOperator("==", BinaryExpression::create<BinaryOperation::EQ>),
+		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
+	},
+	{
+		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>),
+		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
+		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>),
+		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>)
+	},
+	{
 		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
 		BinaryOperator("-", BinaryExpression::create<BinaryOperation::SUB>)
 	},
@@ -258,6 +268,9 @@ public:
 };
 
 class MoebiusParser: private Parser {
+	static constexpr auto keyword(const StringView& s) {
+		return sequence(s, not_(alphanumeric));
+	}
 	template <class T> [[noreturn]] void error(std::size_t position, const T& t) {
 		print_error(Printer(std::cerr), get_path(), position, t);
 		std::exit(EXIT_FAILURE);
@@ -297,7 +310,13 @@ class MoebiusParser: private Parser {
 		return nullptr;
 	}
 	const Expression* parse_expression_last() {
-		if (parse(peek(numeric))) {
+		if (parse(keyword("false"))) {
+			return new IntLiteral(0);
+		}
+		else if (parse(keyword("true"))) {
+			return new IntLiteral(1);
+		}
+		else if (parse(peek(numeric))) {
 			std::int32_t number = 0;
 			for (char c: parse(zero_or_more(numeric))) {
 				number *= 10;

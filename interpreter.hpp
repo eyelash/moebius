@@ -21,6 +21,18 @@ public:
 			return left / right;
 		case BinaryOperation::REM:
 			return left % right;
+		case BinaryOperation::EQ:
+			return left == right;
+		case BinaryOperation::NE:
+			return left != right;
+		case BinaryOperation::LT:
+			return left < right;
+		case BinaryOperation::LE:
+			return left <= right;
+		case BinaryOperation::GT:
+			return left > right;
+		case BinaryOperation::GE:
+			return left >= right;
 		default:
 			return 0;
 		}
