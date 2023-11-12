@@ -1,10 +1,14 @@
 #pragma once
 
 class IntLiteral;
+class BinaryExpression;
 
 template <class T> class Visitor {
 public:
 	virtual T visit_int_literal(const IntLiteral&) {
+		return T();
+	}
+	virtual T visit_binary_expression(const BinaryExpression &) {
 		return T();
 	}
 };
@@ -23,6 +27,9 @@ template <class T> T visit(Visitor<T>& visitor, const Expression* expression) {
 		VoidVisitor(Visitor<T>& visitor): visitor(visitor) {}
 		void visit_int_literal(const IntLiteral& int_literal) override {
 			result = visitor.visit_int_literal(int_literal);
+		}
+		void visit_binary_expression(const BinaryExpression& binary_expression) override {
+			result = visitor.visit_binary_expression(binary_expression);
 		}
 	};
 	VoidVisitor void_visitor(visitor);
@@ -43,5 +50,36 @@ public:
 	}
 	std::int32_t get_value() const {
 		return value;
+	}
+};
+
+enum class BinaryOperation {
+	ADD,
+	SUB,
+	MUL,
+	DIV,
+	REM
+};
+
+class BinaryExpression: public Expression {
+	BinaryOperation operation;
+	const Expression* left;
+	const Expression* right;
+public:
+	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): operation(operation), left(left), right(right) {}
+	void accept(Visitor<void>& visitor) const override {
+		visitor.visit_binary_expression(*this);
+	}
+	BinaryOperation get_operation() const {
+		return operation;
+	}
+	const Expression* get_left() const {
+		return left;
+	}
+	const Expression* get_right() const {
+		return right;
+	}
+	template <BinaryOperation operation> static Expression* create(const Expression* left, const Expression* right) {
+		return new BinaryExpression(operation, left, right);
 	}
 };

@@ -14,7 +14,17 @@ struct BinaryOperator {
 
 using OperatorLevel = std::initializer_list<BinaryOperator>;
 
-constexpr std::initializer_list<OperatorLevel> operators = {};
+constexpr std::initializer_list<OperatorLevel> operators = {
+	{
+		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
+		BinaryOperator("-", BinaryExpression::create<BinaryOperation::SUB>)
+	},
+	{
+		BinaryOperator("*", BinaryExpression::create<BinaryOperation::MUL>),
+		BinaryOperator("/", BinaryExpression::create<BinaryOperation::DIV>),
+		BinaryOperator("%", BinaryExpression::create<BinaryOperation::REM>)
+	}
+};
 
 struct UnaryOperator {
 	const char* string;
@@ -278,6 +288,14 @@ class MoebiusParser: private Parser {
 			parse(zero_or_more(white_space));
 		}
 	}
+	const BinaryOperator* parse_binary_operator(const OperatorLevel* level) {
+		for (const BinaryOperator& op: *level) {
+			if (parse(sequence(op.string, not_(operator_char)))) {
+				return &op;
+			}
+		}
+		return nullptr;
+	}
 	const Expression* parse_expression_last() {
 		if (parse(peek(numeric))) {
 			std::int32_t number = 0;
@@ -295,7 +313,15 @@ class MoebiusParser: private Parser {
 		if (level == operators.end()) {
 			return parse_expression_last();
 		}
-		return parse_expression(level + 1);
+		const Expression* left = parse_expression(level + 1);
+		parse_white_space();
+		while (const BinaryOperator* op = parse_binary_operator(level)) {
+			parse_white_space();
+			const Expression* right = parse_expression(level + 1);
+			left = op->create(left, right);
+			parse_white_space();
+		}
+		return left;
 	}
 	const Expression* parse_program() {
 		parse_white_space();
