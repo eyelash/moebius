@@ -1,11 +1,7 @@
-*.moeb.c
-*.moeb.exe
-*.moeb.html
-
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
 build.ninja
 rules.ninja
-moebc
+moebius
