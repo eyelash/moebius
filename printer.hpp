@@ -9,14 +9,14 @@
 class StringView {
 	const char* string;
 	std::size_t length;
-	static constexpr std::size_t strlen(const char* s, std::size_t i = 0) {
-		return *s == '\0' ? i : strlen(s + 1, i + 1);
-	}
 	static constexpr int strncmp(const char* s0, const char* s1, std::size_t n) {
 		return n == 0 ? 0 : *s0 != *s1 ? *s0 - *s1 : strncmp(s0 + 1, s1 + 1, n - 1);
 	}
 	static constexpr const char* strchr(const char* s, char c) {
 		return *s == c ? s : *s == '\0' ? nullptr : strchr(s + 1, c);
+	}
+	static constexpr std::size_t strlen(const char* s) {
+		return strchr(s, '\0') - s;
 	}
 public:
 	constexpr StringView(): string(nullptr), length(0) {}
@@ -33,6 +33,12 @@ public:
 	}
 	constexpr std::size_t size() const {
 		return length;
+	}
+	constexpr const char* data() const {
+		return string;
+	}
+	constexpr bool empty() const {
+		return length == 0;
 	}
 	constexpr bool operator ==(const StringView& s) const {
 		return length != s.length ? false : strncmp(string, s.string, length) == 0;
