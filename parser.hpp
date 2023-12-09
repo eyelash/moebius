@@ -5,46 +5,6 @@
 #include <map>
 #include <cstdlib>
 
-struct BinaryOperator {
-	const char* string;
-	using Create = Expression* (*)(const Expression* left, const Expression* right);
-	Create create;
-	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
-};
-
-using OperatorLevel = std::initializer_list<BinaryOperator>;
-
-constexpr std::initializer_list<OperatorLevel> operators = {
-	{
-		BinaryOperator("==", BinaryExpression::create<BinaryOperation::EQ>),
-		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
-	},
-	{
-		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>),
-		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
-		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>),
-		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>)
-	},
-	{
-		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
-		BinaryOperator("-", BinaryExpression::create<BinaryOperation::SUB>)
-	},
-	{
-		BinaryOperator("*", BinaryExpression::create<BinaryOperation::MUL>),
-		BinaryOperator("/", BinaryExpression::create<BinaryOperation::DIV>),
-		BinaryOperator("%", BinaryExpression::create<BinaryOperation::REM>)
-	}
-};
-
-struct UnaryOperator {
-	const char* string;
-	using Create = Expression* (*)(const Expression* expression);
-	Create create;
-	constexpr UnaryOperator(const char* string, Create create): string(string), create(create) {}
-};
-
-constexpr std::initializer_list<UnaryOperator> unary_operators = {};
-
 class Cursor {
 	const SourceFile* file;
 	const char* position;
@@ -266,6 +226,46 @@ public:
 		return cursor.get_position();
 	}
 };
+
+struct BinaryOperator {
+	const char* string;
+	using Create = Expression* (*)(const Expression* left, const Expression* right);
+	Create create;
+	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
+};
+
+struct UnaryOperator {
+	const char* string;
+	using Create = Expression* (*)(const Expression* expression);
+	Create create;
+	constexpr UnaryOperator(const char* string, Create create): string(string), create(create) {}
+};
+
+using OperatorLevel = std::initializer_list<BinaryOperator>;
+
+constexpr std::initializer_list<OperatorLevel> operators = {
+	{
+		BinaryOperator("==", BinaryExpression::create<BinaryOperation::EQ>),
+		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
+	},
+	{
+		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>),
+		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
+		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>),
+		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>)
+	},
+	{
+		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
+		BinaryOperator("-", BinaryExpression::create<BinaryOperation::SUB>)
+	},
+	{
+		BinaryOperator("*", BinaryExpression::create<BinaryOperation::MUL>),
+		BinaryOperator("/", BinaryExpression::create<BinaryOperation::DIV>),
+		BinaryOperator("%", BinaryExpression::create<BinaryOperation::REM>)
+	}
+};
+
+constexpr std::initializer_list<UnaryOperator> unary_operators = {};
 
 class MoebiusParser: private Parser {
 	static constexpr auto keyword(const StringView& s) {
