@@ -239,18 +239,20 @@ public:
 	}
 };
 
-struct BinaryOperator {
-	const char* string;
-	using Create = Expression* (*)(const Expression* left, const Expression* right);
-	Create create;
-	constexpr BinaryOperator(const char* string, Create create): string(string), create(create) {}
+using BinaryCreate = Expression* (*)(const Expression* left, const Expression* right);
+
+template <class P> struct BinaryOperator {
+	P p;
+	BinaryCreate create;
+	constexpr BinaryOperator(P p, BinaryCreate create): p(p), create(create) {}
 };
 
-struct UnaryOperator {
-	const char* string;
-	using Create = Expression* (*)(const Expression* expression);
-	Create create;
-	constexpr UnaryOperator(const char* string, Create create): string(string), create(create) {}
+using UnaryCreate = Expression* (*)(const Expression* expression);
+
+template <class P> struct UnaryOperator {
+	P p;
+	UnaryCreate create;
+	constexpr UnaryOperator(P p, UnaryCreate create): p(p), create(create) {}
 };
 
 template <class... T> struct BinaryLeftToRight {
@@ -258,36 +260,29 @@ template <class... T> struct BinaryLeftToRight {
 	constexpr BinaryLeftToRight(T... tuple): tuple(tuple...) {}
 };
 
-template <class... T> struct Operators {
+template <class... T> struct OperatorLevels {
 	Tuple<T...> tuple;
-	constexpr Operators(T... tuple): tuple(tuple...) {}
-};
-
-constexpr auto operators = Operators {
-	BinaryLeftToRight {
-		BinaryOperator("==", BinaryExpression::create<BinaryOperation::EQ>),
-		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
-	},
-	BinaryLeftToRight {
-		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>),
-		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
-		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>),
-		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>)
-	},
-	BinaryLeftToRight {
-		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
-		BinaryOperator("-", BinaryExpression::create<BinaryOperation::SUB>)
-	},
-	BinaryLeftToRight {
-		BinaryOperator("*", BinaryExpression::create<BinaryOperation::MUL>),
-		BinaryOperator("/", BinaryExpression::create<BinaryOperation::DIV>),
-		BinaryOperator("%", BinaryExpression::create<BinaryOperation::REM>)
-	}
+	constexpr OperatorLevels(T... tuple): tuple(tuple...) {}
 };
 
 class MoebiusParser: private Parser {
 	static constexpr auto keyword(const StringView& s) {
 		return sequence(s, not_(alphanumeric));
+	}
+	static constexpr auto operator_(const StringView& s) {
+		return sequence(s, not_(operator_char));
+	}
+	template <class P> static constexpr auto binary_operator(P p, BinaryCreate create) {
+		return BinaryOperator(get_parser(p), create);
+	}
+	template <class P> static constexpr auto unary_operator(P p, UnaryCreate create) {
+		return UnaryOperator(get_parser(p), create);
+	}
+	template <class... T> static constexpr auto binary_left_to_right(T... t) {
+		return BinaryLeftToRight(t...);
+	}
+	template <class... T> static constexpr auto operator_levels(T... t) {
+		return OperatorLevels(t...);
 	}
 	template <class T> [[noreturn]] void error(std::size_t position, const T& t) {
 		print_error(Printer(std::cerr), get_path(), position, t);
@@ -324,18 +319,14 @@ class MoebiusParser: private Parser {
 			parse(zero_or_more(white_space));
 		}
 	}
-	const BinaryOperator* parse_binary_left_to_right(const Tuple<>& tuple) {
+	std::nullptr_t parse_binary_operator(const Tuple<>& tuple) {
 		return nullptr;
 	}
-	template <class T0, class... T> const BinaryOperator* parse_binary_left_to_right(const Tuple<T0, T...>& tuple) {
-		const BinaryOperator& op = tuple.head;
-		if (parse(sequence(op.string, not_(operator_char)))) {
-			return &op;
+	template <class T0, class... T> auto parse_binary_operator(const Tuple<T0, T...>& tuple) -> decltype(tuple.head.create) {
+		if (parse(tuple.head.p)) {
+			return tuple.head.create;
 		}
-		return parse_binary_left_to_right(tuple.tail);
-	}
-	template <class... T> const BinaryOperator* parse_binary_operator(const BinaryLeftToRight<T...>& level) {
-		return parse_binary_left_to_right(level.tuple);
+		return parse_binary_operator(tuple.tail);
 	}
 	const Expression* parse_expression_last() {
 		if (parse(keyword("if"))) {
@@ -374,18 +365,42 @@ class MoebiusParser: private Parser {
 	const Expression* parse_expression(const Tuple<>& tuple) {
 		return parse_expression_last();
 	}
-	template <class T0, class... T> const Expression* parse_expression(const Tuple<T0, T...>& tuple) {
-		const Expression* left = parse_expression(tuple.tail);
+	template <class... T0, class... T> const Expression* parse_expression(const BinaryLeftToRight<T0...>& level, const Tuple<T...>& next_levels) {
+		const Expression* left = parse_expression(next_levels);
 		parse_white_space();
-		while (const BinaryOperator* op = parse_binary_operator(tuple.head)) {
+		while (auto create = parse_binary_operator(level.tuple)) {
 			parse_white_space();
-			const Expression* right = parse_expression(tuple.tail);
-			left = op->create(left, right);
+			const Expression* right = parse_expression(next_levels);
+			left = create(left, right);
 			parse_white_space();
 		}
 		return left;
 	}
+	template <class T0, class... T> const Expression* parse_expression(const Tuple<T0, T...>& tuple) {
+		return parse_expression(tuple.head, tuple.tail);
+	}
 	const Expression* parse_expression() {
+		constexpr auto operators = operator_levels(
+			binary_left_to_right(
+				binary_operator(operator_("=="), BinaryExpression::create<BinaryOperation::EQ>),
+				binary_operator(operator_("!="), BinaryExpression::create<BinaryOperation::NE>)
+			),
+			binary_left_to_right(
+				binary_operator(operator_("<"), BinaryExpression::create<BinaryOperation::LT>),
+				binary_operator(operator_("<="), BinaryExpression::create<BinaryOperation::LE>),
+				binary_operator(operator_(">"), BinaryExpression::create<BinaryOperation::GT>),
+				binary_operator(operator_(">="), BinaryExpression::create<BinaryOperation::GE>)
+			),
+			binary_left_to_right(
+				binary_operator(operator_("+"), BinaryExpression::create<BinaryOperation::ADD>),
+				binary_operator(operator_("-"), BinaryExpression::create<BinaryOperation::SUB>)
+			),
+			binary_left_to_right(
+				binary_operator(operator_("*"), BinaryExpression::create<BinaryOperation::MUL>),
+				binary_operator(operator_("/"), BinaryExpression::create<BinaryOperation::DIV>),
+				binary_operator(operator_("%"), BinaryExpression::create<BinaryOperation::REM>)
+			)
+		);
 		return parse_expression(operators.tuple);
 	}
 	const Expression* parse_program() {
