@@ -47,108 +47,51 @@ public:
 	}
 };
 
-template <class F> class CharParser {
+template <class F> struct CharParser {
 	F f;
-public:
 	constexpr CharParser(F f): f(f) {}
-	template <class C> bool parse(C& cursor) {
-		if (cursor && f(*cursor)) {
-			++cursor;
-			return true;
-		}
-		return false;
-	}
 };
 
-class StringParser {
+struct StringParser {
 	StringView s;
-public:
 	constexpr StringParser(const StringView& s): s(s) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
-		for (char c: s) {
-			if (!(copy && *copy == c)) {
-				return false;
-			}
-			++copy;
-		}
-		cursor = copy;
-		return true;
-	}
 };
 
-template <class P0, class P1> class SequenceParser {
+template <class P0, class P1> struct SequenceParser {
 	P0 p0;
 	P1 p1;
-public:
 	constexpr SequenceParser(P0 p0, P1 p1): p0(p0), p1(p1) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
-		if (!p0.parse(copy)) {
-			return false;
-		}
-		if (!p1.parse(copy)) {
-			return false;
-		}
-		cursor = copy;
-		return true;
-	}
 };
 
-template <class P0, class P1> class ChoiceParser {
+template <class P0, class P1> struct ChoiceParser {
 	P0 p0;
 	P1 p1;
-public:
 	constexpr ChoiceParser(P0 p0, P1 p1): p0(p0), p1(p1) {}
-	template <class C> bool parse(C& cursor) {
-		if (p0.parse(cursor)) {
-			return true;
-		}
-		if (p1.parse(cursor)) {
-			return true;
-		}
-		return false;
-	}
 };
 
-template <class P> class RepeatParser {
+template <class P> struct RepeatParser {
 	P p;
-public:
 	constexpr RepeatParser(P p): p(p) {}
-	template <class C> bool parse(C& cursor) {
-		while (p.parse(cursor)) {}
-		return true;
-	}
 };
 
-template <class P> class NotParser {
+template <class P> struct NotParser {
 	P p;
-public:
 	constexpr NotParser(P p): p(p) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
-		if (p.parse(copy)) {
-			return false;
-		}
-		return true;
-	}
 };
 
-template <class P> class PeekParser {
+template <class P> struct PeekParser {
 	P p;
-public:
 	constexpr PeekParser(P p): p(p) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
-		if (p.parse(copy)) {
-			return true;
-		}
-		return false;
-	}
 };
 
-template <class P, class = bool> struct is_parser: std::false_type {};
-template <class P> struct is_parser<P, decltype(std::declval<P>().parse(std::declval<Cursor&>()))>: std::true_type {};
+template <class P> struct is_parser: std::false_type {};
+template <class F> struct is_parser<CharParser<F>>: std::true_type {};
+template <> struct is_parser<StringParser>: std::true_type {};
+template <class P0, class P1> struct is_parser<SequenceParser<P0, P1>>: std::true_type {};
+template <class P0, class P1> struct is_parser<ChoiceParser<P0, P1>>: std::true_type {};
+template <class P> struct is_parser<RepeatParser<P>>: std::true_type {};
+template <class P> struct is_parser<NotParser<P>>: std::true_type {};
+template <class P> struct is_parser<PeekParser<P>>: std::true_type {};
 
 template <class F, class = bool> struct is_char_class: std::false_type {};
 template <class F> struct is_char_class<F, decltype(std::declval<F>()(std::declval<char>()))>: std::true_type {};
@@ -220,9 +163,65 @@ public:
 	static constexpr bool operator_char(char c) {
 		return StringView("+-*/%=<>!&|~^?:").contains(c);
 	}
+	template <class F> static bool parse(const CharParser<F>& p, Cursor& cursor) {
+		if (cursor && p.f(*cursor)) {
+			++cursor;
+			return true;
+		}
+		return false;
+	}
+	static bool parse(const StringParser& p, Cursor& cursor) {
+		Cursor copy = cursor;
+		for (char c: p.s) {
+			if (!(copy && *copy == c)) {
+				return false;
+			}
+			++copy;
+		}
+		cursor = copy;
+		return true;
+	}
+	template <class P0, class P1> static bool parse(const SequenceParser<P0, P1>& p, Cursor& cursor) {
+		Cursor copy = cursor;
+		if (!parse(p.p0, copy)) {
+			return false;
+		}
+		if (!parse(p.p1, copy)) {
+			return false;
+		}
+		cursor = copy;
+		return true;
+	}
+	template <class P0, class P1> static bool parse(const ChoiceParser<P0, P1>& p, Cursor& cursor) {
+		if (parse(p.p0, cursor)) {
+			return true;
+		}
+		if (parse(p.p1, cursor)) {
+			return true;
+		}
+		return false;
+	}
+	template <class P> static bool parse(const RepeatParser<P>& p, Cursor& cursor) {
+		while (parse(p.p, cursor)) {}
+		return true;
+	}
+	template <class P> static bool parse(const NotParser<P>& p, Cursor& cursor) {
+		Cursor copy = cursor;
+		if (parse(p.p, copy)) {
+			return false;
+		}
+		return true;
+	}
+	template <class P> static bool parse(const PeekParser<P>& p, Cursor& cursor) {
+		Cursor copy = cursor;
+		if (parse(p.p, copy)) {
+			return true;
+		}
+		return false;
+	}
 	template <class P> StringView parse(P p) {
 		const Cursor start = cursor;
-		if (get_parser(p).parse(cursor)) {
+		if (parse(get_parser(p), cursor)) {
 			return cursor - start;
 		}
 		else {
