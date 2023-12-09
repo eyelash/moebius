@@ -5,6 +5,18 @@
 #include <map>
 #include <cstdlib>
 
+template <class... T> class Tuple;
+template <> class Tuple<> {
+public:
+	constexpr Tuple() {}
+};
+template <class T0, class... T> class Tuple<T0, T...> {
+public:
+	T0 head;
+	Tuple<T...> tail;
+	constexpr Tuple(T0 head, T... tail): head(head), tail(tail...) {}
+};
+
 class Cursor {
 	const SourceFile* file;
 	const char* position;
@@ -241,31 +253,37 @@ struct UnaryOperator {
 	constexpr UnaryOperator(const char* string, Create create): string(string), create(create) {}
 };
 
-using OperatorLevel = std::initializer_list<BinaryOperator>;
+template <class... T> struct BinaryLeftToRight {
+	Tuple<T...> tuple;
+	constexpr BinaryLeftToRight(T... tuple): tuple(tuple...) {}
+};
 
-constexpr std::initializer_list<OperatorLevel> operators = {
-	{
+template <class... T> struct Operators {
+	Tuple<T...> tuple;
+	constexpr Operators(T... tuple): tuple(tuple...) {}
+};
+
+constexpr auto operators = Operators {
+	BinaryLeftToRight {
 		BinaryOperator("==", BinaryExpression::create<BinaryOperation::EQ>),
 		BinaryOperator("!=", BinaryExpression::create<BinaryOperation::NE>)
 	},
-	{
+	BinaryLeftToRight {
 		BinaryOperator("<", BinaryExpression::create<BinaryOperation::LT>),
 		BinaryOperator("<=", BinaryExpression::create<BinaryOperation::LE>),
 		BinaryOperator(">", BinaryExpression::create<BinaryOperation::GT>),
 		BinaryOperator(">=", BinaryExpression::create<BinaryOperation::GE>)
 	},
-	{
+	BinaryLeftToRight {
 		BinaryOperator("+", BinaryExpression::create<BinaryOperation::ADD>),
 		BinaryOperator("-", BinaryExpression::create<BinaryOperation::SUB>)
 	},
-	{
+	BinaryLeftToRight {
 		BinaryOperator("*", BinaryExpression::create<BinaryOperation::MUL>),
 		BinaryOperator("/", BinaryExpression::create<BinaryOperation::DIV>),
 		BinaryOperator("%", BinaryExpression::create<BinaryOperation::REM>)
 	}
 };
-
-constexpr std::initializer_list<UnaryOperator> unary_operators = {};
 
 class MoebiusParser: private Parser {
 	static constexpr auto keyword(const StringView& s) {
@@ -306,13 +324,18 @@ class MoebiusParser: private Parser {
 			parse(zero_or_more(white_space));
 		}
 	}
-	const BinaryOperator* parse_binary_operator(const OperatorLevel* level) {
-		for (const BinaryOperator& op: *level) {
-			if (parse(sequence(op.string, not_(operator_char)))) {
-				return &op;
-			}
-		}
+	const BinaryOperator* parse_binary_left_to_right(const Tuple<>& tuple) {
 		return nullptr;
+	}
+	template <class T0, class... T> const BinaryOperator* parse_binary_left_to_right(const Tuple<T0, T...>& tuple) {
+		const BinaryOperator& op = tuple.head;
+		if (parse(sequence(op.string, not_(operator_char)))) {
+			return &op;
+		}
+		return parse_binary_left_to_right(tuple.tail);
+	}
+	template <class... T> const BinaryOperator* parse_binary_operator(const BinaryLeftToRight<T...>& level) {
+		return parse_binary_left_to_right(level.tuple);
 	}
 	const Expression* parse_expression_last() {
 		if (parse(keyword("if"))) {
@@ -348,19 +371,22 @@ class MoebiusParser: private Parser {
 			error("expected an expression");
 		}
 	}
-	const Expression* parse_expression(const OperatorLevel* level = operators.begin()) {
-		if (level == operators.end()) {
-			return parse_expression_last();
-		}
-		const Expression* left = parse_expression(level + 1);
+	const Expression* parse_expression(const Tuple<>& tuple) {
+		return parse_expression_last();
+	}
+	template <class T0, class... T> const Expression* parse_expression(const Tuple<T0, T...>& tuple) {
+		const Expression* left = parse_expression(tuple.tail);
 		parse_white_space();
-		while (const BinaryOperator* op = parse_binary_operator(level)) {
+		while (const BinaryOperator* op = parse_binary_operator(tuple.head)) {
 			parse_white_space();
-			const Expression* right = parse_expression(level + 1);
+			const Expression* right = parse_expression(tuple.tail);
 			left = op->create(left, right);
 			parse_white_space();
 		}
 		return left;
+	}
+	const Expression* parse_expression() {
+		return parse_expression(operators.tuple);
 	}
 	const Expression* parse_program() {
 		parse_white_space();
