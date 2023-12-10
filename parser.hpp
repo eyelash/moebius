@@ -84,66 +84,40 @@ template <class P> struct PeekParser {
 	constexpr PeekParser(P p): p(p) {}
 };
 
-template <class P> struct is_parser: std::false_type {};
-template <class F> struct is_parser<CharParser<F>>: std::true_type {};
-template <> struct is_parser<StringParser>: std::true_type {};
-template <class P0, class P1> struct is_parser<SequenceParser<P0, P1>>: std::true_type {};
-template <class P0, class P1> struct is_parser<ChoiceParser<P0, P1>>: std::true_type {};
-template <class P> struct is_parser<RepeatParser<P>>: std::true_type {};
-template <class P> struct is_parser<NotParser<P>>: std::true_type {};
-template <class P> struct is_parser<PeekParser<P>>: std::true_type {};
-
 template <class F, class = bool> struct is_char_class: std::false_type {};
 template <class F> struct is_char_class<F, decltype(std::declval<F>()(std::declval<char>()))>: std::true_type {};
 
 class Parser {
 	Cursor cursor;
 public:
-	static constexpr auto get_parser(char c) {
-		return CharParser([c](char c2) {
-			return c == c2;
-		});
-	}
-	static constexpr StringParser get_parser(const StringView& s) {
-		return StringParser(s);
-	}
-	static constexpr StringParser get_parser(const char* s) {
-		return StringParser(s);
-	}
-	template <class P> static constexpr std::enable_if_t<is_parser<P>::value, P> get_parser(P p) {
-		return p;
-	}
-	template <class F> static constexpr std::enable_if_t<is_char_class<F>::value, CharParser<F>> get_parser(F f) {
-		return CharParser(f);
-	}
 	static constexpr auto range(char first, char last) {
 		return CharParser([first, last](char c) {
 			return c >= first && c <= last;
 		});
 	}
 	template <class P0, class P1> static constexpr auto sequence(P0 p0, P1 p1) {
-		return SequenceParser(get_parser(p0), get_parser(p1));
+		return SequenceParser(p0, p1);
 	}
 	template <class P0, class P1, class P2, class... P> static constexpr auto sequence(P0 p0, P1 p1, P2 p2, P... p) {
 		return sequence(sequence(p0, p1), p2, p...);
 	}
 	template <class P0, class P1> static constexpr auto choice(P0 p0, P1 p1) {
-		return ChoiceParser(get_parser(p0), get_parser(p1));
+		return ChoiceParser(p0, p1);
 	}
 	template <class P0, class P1, class P2, class... P> static constexpr auto choice(P0 p0, P1 p1, P2 p2, P... p) {
 		return choice(choice(p0, p1), p2, p...);
 	}
 	template <class P> static constexpr auto zero_or_more(P p) {
-		return RepeatParser(get_parser(p));
+		return RepeatParser(p);
 	}
 	template <class P> static constexpr auto one_or_more(P p) {
 		return sequence(p, zero_or_more(p));
 	}
 	template <class P> static constexpr auto not_(P p) {
-		return NotParser(get_parser(p));
+		return NotParser(p);
 	}
 	template <class P> static constexpr auto peek(P p) {
-		return PeekParser(get_parser(p));
+		return PeekParser(p);
 	}
 	static constexpr bool any_char(char c) {
 		return true;
@@ -170,6 +144,15 @@ public:
 		}
 		return false;
 	}
+	static bool parse(char c, Cursor& cursor) {
+		const auto p = CharParser([c](char c2) {
+			return c == c2;
+		});
+		return parse(p, cursor);
+	}
+	template <class F> static std::enable_if_t<is_char_class<F>::value, bool> parse(F f, Cursor& cursor) {
+		return parse(CharParser(f), cursor);
+	}
 	static bool parse(const StringParser& p, Cursor& cursor) {
 		Cursor copy = cursor;
 		for (char c: p.s) {
@@ -180,6 +163,12 @@ public:
 		}
 		cursor = copy;
 		return true;
+	}
+	static bool parse(const StringView& s, Cursor& cursor) {
+		return parse(StringParser(s), cursor);
+	}
+	static bool parse(const char* s, Cursor& cursor) {
+		return parse(StringParser(s), cursor);
 	}
 	template <class P0, class P1> static bool parse(const SequenceParser<P0, P1>& p, Cursor& cursor) {
 		Cursor copy = cursor;
@@ -219,9 +208,9 @@ public:
 		}
 		return false;
 	}
-	template <class P> StringView parse(P p) {
+	template <class P> StringView parse(const P& p) {
 		const Cursor start = cursor;
-		if (parse(get_parser(p), cursor)) {
+		if (parse(p, cursor)) {
 			return cursor - start;
 		}
 		else {
@@ -272,10 +261,10 @@ class MoebiusParser: private Parser {
 		return sequence(s, not_(operator_char));
 	}
 	template <class P> static constexpr auto binary_operator(P p, BinaryCreate create) {
-		return BinaryOperator(get_parser(p), create);
+		return BinaryOperator(p, create);
 	}
 	template <class P> static constexpr auto unary_operator(P p, UnaryCreate create) {
-		return UnaryOperator(get_parser(p), create);
+		return UnaryOperator(p, create);
 	}
 	template <class... T> static constexpr auto binary_left_to_right(T... t) {
 		return BinaryLeftToRight(t...);
