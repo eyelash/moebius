@@ -1,21 +1,5 @@
 #pragma once
 
-template <class T> class Reference {
-	T* pointer;
-public:
-	Reference(T* pointer = nullptr): pointer(pointer) {}
-	Reference(const Reference&) = delete;
-	~Reference() {
-		if (pointer) {
-			delete pointer;
-		}
-	}
-	Reference& operator =(const Reference&) = delete;
-	operator T*() const {
-		return pointer;
-	}
-};
-
 class IntLiteral;
 class BinaryExpression;
 class If;
