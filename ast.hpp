@@ -1,5 +1,21 @@
 #pragma once
 
+template <class T> class Reference {
+	T* pointer;
+public:
+	Reference(T* pointer = nullptr): pointer(pointer) {}
+	Reference(const Reference&) = delete;
+	~Reference() {
+		if (pointer) {
+			delete pointer;
+		}
+	}
+	Reference& operator =(const Reference&) = delete;
+	operator T*() const {
+		return pointer;
+	}
+};
+
 class IntLiteral;
 class BinaryExpression;
 class If;
@@ -76,8 +92,8 @@ enum class BinaryOperation {
 
 class BinaryExpression: public Expression {
 	BinaryOperation operation;
-	const Expression* left;
-	const Expression* right;
+	Reference<const Expression> left;
+	Reference<const Expression> right;
 public:
 	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): operation(operation), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
@@ -98,9 +114,9 @@ public:
 };
 
 class If: public Expression {
-	const Expression* condition;
-	const Expression* then_expression;
-	const Expression* else_expression;
+	Reference<const Expression> condition;
+	Reference<const Expression> then_expression;
+	Reference<const Expression> else_expression;
 public:
 	If(const Expression* condition, const Expression* then_expression, const Expression* else_expression): condition(condition), then_expression(then_expression), else_expression(else_expression) {}
 	void accept(Visitor<void>& visitor) const override {
