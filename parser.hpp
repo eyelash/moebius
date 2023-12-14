@@ -314,7 +314,14 @@ class MoebiusParser: private Parser {
 		return parse_binary_operator(tuple.tail);
 	}
 	const Expression* parse_expression_last() {
-		if (parse(keyword("if"))) {
+		if (parse('(')) {
+			parse_white_space();
+			const Expression* expression = parse_expression();
+			parse_white_space();
+			expect(")");
+			return expression;
+		}
+		else if (parse(keyword("if"))) {
 			parse_white_space();
 			expect("(");
 			parse_white_space();
