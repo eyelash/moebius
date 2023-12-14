@@ -237,6 +237,11 @@ template <class... T> struct BinaryLeftToRight {
 	constexpr BinaryLeftToRight(T... tuple): tuple(tuple...) {}
 };
 
+template <class... T> struct BinaryRightToLeft {
+	Tuple<T...> tuple;
+	constexpr BinaryRightToLeft(T... tuple): tuple(tuple...) {}
+};
+
 template <class... T> struct OperatorLevels {
 	Tuple<T...> tuple;
 	constexpr OperatorLevels(T... tuple): tuple(tuple...) {}
@@ -257,6 +262,9 @@ class MoebiusParser: private Parser {
 	}
 	template <class... T> static constexpr auto binary_left_to_right(T... t) {
 		return BinaryLeftToRight(t...);
+	}
+	template <class... T> static constexpr auto binary_right_to_left(T... t) {
+		return BinaryRightToLeft(t...);
 	}
 	template <class... T> static constexpr auto operator_levels(T... t) {
 		return OperatorLevels(t...);
@@ -350,6 +358,16 @@ class MoebiusParser: private Parser {
 			const Expression* right = parse_expression(next_levels);
 			left = create(left, right);
 			parse_white_space();
+		}
+		return left;
+	}
+	template <class... T0, class... T> const Expression* parse_expression(const BinaryRightToLeft<T0...>& level, const Tuple<T...>& next_levels) {
+		const Expression* left = parse_expression(next_levels);
+		parse_white_space();
+		if (auto create = parse_binary_operator(level.tuple)) {
+			parse_white_space();
+			const Expression* right = parse_expression(level, next_levels);
+			left = create(left, right);
 		}
 		return left;
 	}
