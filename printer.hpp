@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ast.hpp"
 #include <cstddef>
 #include <iostream>
 #include <vector>
@@ -8,19 +9,35 @@
 
 class Printer {
 	std::ostream& ostream;
+	mutable unsigned int indentation = 0;
+	mutable bool is_at_bol = true;
 public:
 	Printer(std::ostream& ostream = std::cout): ostream(ostream) {}
 	void print(char c) const {
-		ostream.put(c);
+		if (c == '\n') {
+			ostream.put('\n');
+			is_at_bol = true;
+		}
+		else {
+			if (is_at_bol) {
+				for (unsigned int i = 0; i < indentation; ++i) {
+					ostream.put('\t');
+				}
+				is_at_bol = false;
+			}
+			ostream.put(c);
+		}
 	}
 	void print(const StringView& s) const {
-		ostream.write(s.begin(), s.size());
+		for (char c: s) {
+			print(c);
+		}
 	}
 	void print(const char* s) const {
 		print(StringView(s));
 	}
 	void print(const std::string& s) const {
-		ostream.write(s.data(), s.size());
+		print(StringView(s.data(), s.size()));
 	}
 	template <class T> void print(const T& t) const {
 		t.print(*this);
@@ -28,6 +45,11 @@ public:
 	template <class T> void println(const T& t) const {
 		print(t);
 		print('\n');
+	}
+	template <class T> void println_indented(const T& t) const {
+		++indentation;
+		println(t);
+		--indentation;
 	}
 };
 
@@ -178,27 +200,6 @@ constexpr PrintPlural print_plural(const char* word, unsigned int count) {
 	return PrintPlural(word, count);
 }
 
-class IndentPrinter {
-	Printer printer;
-	unsigned int indentation = 0;
-public:
-	IndentPrinter(std::ostream& ostream): printer(ostream) {}
-	template <class T> void println(const T& t) const {
-		for (unsigned int i = 0; i < indentation; ++i) {
-			printer.print('\t');
-		}
-		printer.println(t);
-	}
-	template <class T> void println_increasing(const T& t) {
-		println(t);
-		indentation += 1;
-	}
-	template <class T> void println_decreasing(const T& t) {
-		indentation -= 1;
-		println(t);
-	}
-};
-
 class SourceFile {
 	const char* path;
 	std::vector<char> content;
@@ -279,5 +280,60 @@ public:
 	Variable() {}
 	void print(const Printer& printer) const {
 		printer.print(format("v%", print_number(index)));
+	}
+};
+
+class PrintExpression {
+	const Expression* expression;
+public:
+	PrintExpression(const Expression* expression): expression(expression) {}
+	void print(const Printer& p) const {
+		class PrintExpressionVisitor: public Visitor<void> {
+			const Printer& p;
+			static const char* print_operation(BinaryOperation operation) {
+				switch (operation) {
+				case BinaryOperation::ADD:
+					return "+";
+				case BinaryOperation::SUB:
+					return "-";
+				case BinaryOperation::MUL:
+					return "*";
+				case BinaryOperation::DIV:
+					return "/";
+				case BinaryOperation::REM:
+					return "%";
+				case BinaryOperation::EQ:
+					return "==";
+				case BinaryOperation::NE:
+					return "!=";
+				case BinaryOperation::LT:
+					return "<";
+				case BinaryOperation::LE:
+					return "<=";
+				case BinaryOperation::GT:
+					return ">";
+				case BinaryOperation::GE:
+					return ">=";
+				default:
+					return "";
+				}
+			}
+		public:
+			PrintExpressionVisitor(const Printer& p): p(p) {}
+			void visit_int_literal(const IntLiteral& int_literal) override {
+				p.print(print_number(int_literal.get_value()));
+			}
+			void visit_binary_expression(const BinaryExpression& binary_expression) override {
+				p.print(format("(% % %)", PrintExpression(binary_expression.get_left()), print_operation(binary_expression.get_operation()), PrintExpression(binary_expression.get_right())));
+			}
+			void visit_if(const If& if_) override {
+				p.println(format("if (%)", PrintExpression(if_.get_condition())));
+				p.println_indented(PrintExpression(if_.get_then_expression()));
+				p.println("else");
+				p.println_indented(PrintExpression(if_.get_else_expression()));
+			}
+		};
+		PrintExpressionVisitor visitor(p);
+		expression->accept(visitor);
 	}
 };
