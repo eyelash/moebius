@@ -242,6 +242,16 @@ template <class... T> struct BinaryRightToLeft {
 	constexpr BinaryRightToLeft(T... tuple): tuple(tuple...) {}
 };
 
+template <class... T> struct UnaryPrefix {
+	Tuple<T...> tuple;
+	constexpr UnaryPrefix(T... tuple): tuple(tuple...) {}
+};
+
+template <class... T> struct UnaryPostfix {
+	Tuple<T...> tuple;
+	constexpr UnaryPostfix(T... tuple): tuple(tuple...) {}
+};
+
 template <class... T> struct OperatorLevels {
 	Tuple<T...> tuple;
 	constexpr OperatorLevels(T... tuple): tuple(tuple...) {}
@@ -265,6 +275,12 @@ class MoebiusParser: private Parser {
 	}
 	template <class... T> static constexpr auto binary_right_to_left(T... t) {
 		return BinaryRightToLeft(t...);
+	}
+	template <class... T> static constexpr auto unary_prefix(T... t) {
+		return UnaryPrefix(t...);
+	}
+	template <class... T> static constexpr auto unary_postfix(T... t) {
+		return UnaryPostfix(t...);
 	}
 	template <class... T> static constexpr auto operator_levels(T... t) {
 		return OperatorLevels(t...);
@@ -304,14 +320,14 @@ class MoebiusParser: private Parser {
 			parse(zero_or_more(white_space));
 		}
 	}
-	std::nullptr_t parse_binary_operator(const Tuple<>& tuple) {
+	std::nullptr_t parse_operator(const Tuple<>& tuple) {
 		return nullptr;
 	}
-	template <class T0, class... T> auto parse_binary_operator(const Tuple<T0, T...>& tuple) -> decltype(tuple.head.create) {
+	template <class T0, class... T> auto parse_operator(const Tuple<T0, T...>& tuple) -> decltype(tuple.head.create) {
 		if (parse(tuple.head.p)) {
 			return tuple.head.create;
 		}
-		return parse_binary_operator(tuple.tail);
+		return parse_operator(tuple.tail);
 	}
 	const Expression* parse_expression_last() {
 		if (parse('(')) {
@@ -360,7 +376,7 @@ class MoebiusParser: private Parser {
 	template <class... T0, class... T> const Expression* parse_expression(const BinaryLeftToRight<T0...>& level, const Tuple<T...>& next_levels) {
 		const Expression* left = parse_expression(next_levels);
 		parse_white_space();
-		while (auto create = parse_binary_operator(level.tuple)) {
+		while (auto create = parse_operator(level.tuple)) {
 			parse_white_space();
 			const Expression* right = parse_expression(next_levels);
 			left = create(left, right);
@@ -371,12 +387,31 @@ class MoebiusParser: private Parser {
 	template <class... T0, class... T> const Expression* parse_expression(const BinaryRightToLeft<T0...>& level, const Tuple<T...>& next_levels) {
 		const Expression* left = parse_expression(next_levels);
 		parse_white_space();
-		if (auto create = parse_binary_operator(level.tuple)) {
+		if (auto create = parse_operator(level.tuple)) {
 			parse_white_space();
 			const Expression* right = parse_expression(level, next_levels);
 			left = create(left, right);
 		}
 		return left;
+	}
+	template <class... T0, class... T> const Expression* parse_expression(const UnaryPrefix<T0...>& level, const Tuple<T...>& next_levels) {
+		if (auto create = parse_operator(level.tuple)) {
+			parse_white_space();
+			const Expression* expression = parse_expression(level, next_levels);
+			return create(expression);
+		}
+		else {
+			return parse_expression(next_levels);
+		}
+	}
+	template <class... T0, class... T> const Expression* parse_expression(const UnaryPostfix<T0...>& level, const Tuple<T...>& next_levels) {
+		const Expression* expression = parse_expression(next_levels);
+		parse_white_space();
+		while (auto create = parse_operator(level.tuple)) {
+			expression = create(expression);
+			parse_white_space();
+		}
+		return expression;
 	}
 	template <class T0, class... T> const Expression* parse_expression(const Tuple<T0, T...>& tuple) {
 		return parse_expression(tuple.head, tuple.tail);
