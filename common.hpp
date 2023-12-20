@@ -92,8 +92,8 @@ public:
 	}
 };
 
-inline std::int32_t next_codepoint(StringView& s) {
-	std::int32_t codepoint = 0;
+inline std::uint32_t next_codepoint(StringView& s) {
+	std::uint32_t codepoint = 0;
 	if (s.size() >= 1 && (s[0] & 0b1000'0000) == 0b0000'0000) {
 		codepoint = s[0];
 		s = s.substr(1);
@@ -119,7 +119,7 @@ inline std::int32_t next_codepoint(StringView& s) {
 	return codepoint;
 }
 
-inline std::string from_codepoint(std::int32_t codepoint) {
+inline std::string from_codepoint(std::uint32_t codepoint) {
 	std::string s;
 	if (codepoint < 0b1000'0000) {
 		s.push_back(codepoint);
@@ -147,14 +147,14 @@ class CodePoints {
 public:
 	class Iterator {
 		StringView s;
-		std::int32_t codepoint;
+		std::uint32_t codepoint;
 	public:
 		Iterator(const StringView& s): s(s), codepoint(next_codepoint(this->s)) {}
 		Iterator(): s(), codepoint(0) {}
 		bool operator !=(const Iterator& rhs) const {
 			return codepoint != rhs.codepoint;
 		}
-		std::int32_t operator *() const {
+		std::uint32_t operator *() const {
 			return codepoint;
 		}
 		Iterator& operator ++() {
@@ -170,7 +170,7 @@ public:
 		return Iterator();
 	}
 };
-inline CodePoints code_points(const StringView& s) {
+constexpr CodePoints code_points(const StringView& s) {
 	return CodePoints(s);
 }
 inline CodePoints code_points(const std::string& s) {

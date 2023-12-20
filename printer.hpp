@@ -284,40 +284,40 @@ public:
 };
 
 class PrintExpression {
+	static const char* print_operation(BinaryOperation operation) {
+		switch (operation) {
+		case BinaryOperation::ADD:
+			return "+";
+		case BinaryOperation::SUB:
+			return "-";
+		case BinaryOperation::MUL:
+			return "*";
+		case BinaryOperation::DIV:
+			return "/";
+		case BinaryOperation::REM:
+			return "%";
+		case BinaryOperation::EQ:
+			return "==";
+		case BinaryOperation::NE:
+			return "!=";
+		case BinaryOperation::LT:
+			return "<";
+		case BinaryOperation::LE:
+			return "<=";
+		case BinaryOperation::GT:
+			return ">";
+		case BinaryOperation::GE:
+			return ">=";
+		default:
+			return "";
+		}
+	}
 	const Expression* expression;
 public:
 	PrintExpression(const Expression* expression): expression(expression) {}
 	void print(const Printer& p) const {
 		class PrintExpressionVisitor: public Visitor<void> {
 			const Printer& p;
-			static const char* print_operation(BinaryOperation operation) {
-				switch (operation) {
-				case BinaryOperation::ADD:
-					return "+";
-				case BinaryOperation::SUB:
-					return "-";
-				case BinaryOperation::MUL:
-					return "*";
-				case BinaryOperation::DIV:
-					return "/";
-				case BinaryOperation::REM:
-					return "%";
-				case BinaryOperation::EQ:
-					return "==";
-				case BinaryOperation::NE:
-					return "!=";
-				case BinaryOperation::LT:
-					return "<";
-				case BinaryOperation::LE:
-					return "<=";
-				case BinaryOperation::GT:
-					return ">";
-				case BinaryOperation::GE:
-					return ">=";
-				default:
-					return "";
-				}
-			}
 		public:
 			PrintExpressionVisitor(const Printer& p): p(p) {}
 			void visit_int_literal(const IntLiteral& int_literal) override {

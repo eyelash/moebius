@@ -216,7 +216,7 @@ public:
 	}
 };
 
-using BinaryCreate = Expression* (*)(const Expression* left, const Expression* right);
+using BinaryCreate = Expression* (*)(Expression* left, Expression* right);
 
 template <class P> struct BinaryOperator {
 	P p;
@@ -224,7 +224,7 @@ template <class P> struct BinaryOperator {
 	constexpr BinaryOperator(P p, BinaryCreate create): p(p), create(create) {}
 };
 
-using UnaryCreate = Expression* (*)(const Expression* expression);
+using UnaryCreate = Expression* (*)(Expression* expression);
 
 template <class P> struct UnaryOperator {
 	P p;
@@ -329,10 +329,10 @@ class MoebiusParser: private Parser {
 		}
 		return parse_operator(tuple.tail);
 	}
-	const Expression* parse_expression_last() {
+	Expression* parse_expression_last() {
 		if (parse('(')) {
 			parse_white_space();
-			const Expression* expression = parse_expression();
+			Expression* expression = parse_expression();
 			parse_white_space();
 			expect(")");
 			return expression;
@@ -341,15 +341,15 @@ class MoebiusParser: private Parser {
 			parse_white_space();
 			expect("(");
 			parse_white_space();
-			const Expression* condition = parse_expression();
+			Expression* condition = parse_expression();
 			parse_white_space();
 			expect(")");
 			parse_white_space();
-			const Expression* then_expression = parse_expression();
+			Expression* then_expression = parse_expression();
 			parse_white_space();
 			expect_keyword("else");
 			parse_white_space();
-			const Expression* else_expression = parse_expression();
+			Expression* else_expression = parse_expression();
 			return new If(condition, then_expression, else_expression);
 		}
 		else if (parse(keyword("false"))) {
@@ -370,53 +370,50 @@ class MoebiusParser: private Parser {
 			error("expected an expression");
 		}
 	}
-	const Expression* parse_expression(const Tuple<>& tuple) {
+	Expression* parse_expression(const Tuple<>& tuple) {
 		return parse_expression_last();
 	}
-	template <class... T0, class... T> const Expression* parse_expression(const BinaryLeftToRight<T0...>& level, const Tuple<T...>& next_levels) {
-		const Expression* left = parse_expression(next_levels);
+	template <class... T0, class... T> Expression* parse_expression(const Tuple<BinaryLeftToRight<T0...>, T...>& tuple) {
+		Expression* left = parse_expression(tuple.tail);
 		parse_white_space();
-		while (auto create = parse_operator(level.tuple)) {
+		while (auto create = parse_operator(tuple.head.tuple)) {
 			parse_white_space();
-			const Expression* right = parse_expression(next_levels);
+			Expression* right = parse_expression(tuple.tail);
 			left = create(left, right);
 			parse_white_space();
 		}
 		return left;
 	}
-	template <class... T0, class... T> const Expression* parse_expression(const BinaryRightToLeft<T0...>& level, const Tuple<T...>& next_levels) {
-		const Expression* left = parse_expression(next_levels);
+	template <class... T0, class... T> Expression* parse_expression(const Tuple<BinaryRightToLeft<T0...>, T...>& tuple) {
+		Expression* left = parse_expression(tuple.tail);
 		parse_white_space();
-		if (auto create = parse_operator(level.tuple)) {
+		if (auto create = parse_operator(tuple.head.tuple)) {
 			parse_white_space();
-			const Expression* right = parse_expression(level, next_levels);
+			Expression* right = parse_expression(tuple);
 			left = create(left, right);
 		}
 		return left;
 	}
-	template <class... T0, class... T> const Expression* parse_expression(const UnaryPrefix<T0...>& level, const Tuple<T...>& next_levels) {
-		if (auto create = parse_operator(level.tuple)) {
+	template <class... T0, class... T> Expression* parse_expression(const Tuple<UnaryPrefix<T0...>, T...>& tuple) {
+		if (auto create = parse_operator(tuple.head.tuple)) {
 			parse_white_space();
-			const Expression* expression = parse_expression(level, next_levels);
+			Expression* expression = parse_expression(tuple);
 			return create(expression);
 		}
 		else {
-			return parse_expression(next_levels);
+			return parse_expression(tuple.tail);
 		}
 	}
-	template <class... T0, class... T> const Expression* parse_expression(const UnaryPostfix<T0...>& level, const Tuple<T...>& next_levels) {
-		const Expression* expression = parse_expression(next_levels);
+	template <class... T0, class... T> Expression* parse_expression(const Tuple<UnaryPostfix<T0...>, T...>& tuple) {
+		Expression* expression = parse_expression(tuple.tail);
 		parse_white_space();
-		while (auto create = parse_operator(level.tuple)) {
+		while (auto create = parse_operator(tuple.head.tuple)) {
 			expression = create(expression);
 			parse_white_space();
 		}
 		return expression;
 	}
-	template <class T0, class... T> const Expression* parse_expression(const Tuple<T0, T...>& tuple) {
-		return parse_expression(tuple.head, tuple.tail);
-	}
-	const Expression* parse_expression() {
+	Expression* parse_expression() {
 		constexpr auto operators = operator_levels(
 			binary_left_to_right(
 				binary_operator(operator_("=="), BinaryExpression::create<BinaryOperation::EQ>),
@@ -440,9 +437,9 @@ class MoebiusParser: private Parser {
 		);
 		return parse_expression(operators.tuple);
 	}
-	const Expression* parse_program() {
+	Expression* parse_program() {
 		parse_white_space();
-		const Expression* expression = parse_expression();
+		Expression* expression = parse_expression();
 		parse_white_space();
 		if (parse(peek(any_char))) {
 			error("unexpected character at end of program");
@@ -451,7 +448,7 @@ class MoebiusParser: private Parser {
 	}
 	MoebiusParser(const SourceFile* file): Parser(file) {}
 public:
-	static const Expression* parse_program(const char* path) {
+	static Expression* parse_program(const char* path) {
 		SourceFile file(path);
 		MoebiusParser parser(&file);
 		return parser.parse_program();

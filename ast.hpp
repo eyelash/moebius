@@ -48,7 +48,7 @@ inline void visit(Visitor<void>& visitor, const Expression* expression) {
 	expression->accept(visitor);
 }
 
-class IntLiteral: public Expression {
+class IntLiteral final: public Expression {
 	std::int32_t value;
 public:
 	IntLiteral(std::int32_t value): value(value) {}
@@ -74,12 +74,12 @@ enum class BinaryOperation {
 	GE
 };
 
-class BinaryExpression: public Expression {
+class BinaryExpression final: public Expression {
 	BinaryOperation operation;
-	Reference<const Expression> left;
-	Reference<const Expression> right;
+	Reference<Expression> left;
+	Reference<Expression> right;
 public:
-	BinaryExpression(BinaryOperation operation, const Expression* left, const Expression* right): operation(operation), left(left), right(right) {}
+	BinaryExpression(BinaryOperation operation, Expression* left, Expression* right): operation(operation), left(left), right(right) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_binary_expression(*this);
 	}
@@ -92,17 +92,17 @@ public:
 	const Expression* get_right() const {
 		return right;
 	}
-	template <BinaryOperation operation> static Expression* create(const Expression* left, const Expression* right) {
+	template <BinaryOperation operation> static Expression* create(Expression* left, Expression* right) {
 		return new BinaryExpression(operation, left, right);
 	}
 };
 
-class If: public Expression {
-	Reference<const Expression> condition;
-	Reference<const Expression> then_expression;
-	Reference<const Expression> else_expression;
+class If final: public Expression {
+	Reference<Expression> condition;
+	Reference<Expression> then_expression;
+	Reference<Expression> else_expression;
 public:
-	If(const Expression* condition, const Expression* then_expression, const Expression* else_expression): condition(condition), then_expression(then_expression), else_expression(else_expression) {}
+	If(Expression* condition, Expression* then_expression, Expression* else_expression): condition(condition), then_expression(then_expression), else_expression(else_expression) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_if(*this);
 	}
