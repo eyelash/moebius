@@ -6,26 +6,26 @@
 #include <map>
 #include <cstdlib>
 
-class Cursor {
+class ParseContext {
 	const SourceFile* file;
 	const char* position;
 public:
-	Cursor(const SourceFile* file): file(file), position(file->begin()) {}
-	constexpr Cursor(const SourceFile* file, const char* position): file(file), position(position) {}
+	ParseContext(const SourceFile* file): file(file), position(file->begin()) {}
+	constexpr ParseContext(const SourceFile* file, const char* position): file(file), position(position) {}
 	operator bool() const {
 		return position < file->end();
 	}
-	constexpr bool operator <(const Cursor& rhs) const {
+	constexpr bool operator <(const ParseContext& rhs) const {
 		return position < rhs.position;
 	}
 	constexpr char operator *() const {
 		return *position;
 	}
-	Cursor& operator ++() {
+	ParseContext& operator ++() {
 		++position;
 		return *this;
 	}
-	constexpr StringView operator -(const Cursor& start) const {
+	constexpr StringView operator -(const ParseContext& start) const {
 		return StringView(start.position, position - start.position);
 	}
 	const char* get_path() const {
@@ -40,9 +40,9 @@ template <class F> class CharParser {
 	F f;
 public:
 	constexpr CharParser(F f): f(f) {}
-	template <class C> bool parse(C& cursor) {
-		if (cursor && f(*cursor)) {
-			++cursor;
+	bool parse(ParseContext& context) const {
+		if (context && f(*context)) {
+			++context;
 			return true;
 		}
 		return false;
@@ -53,15 +53,15 @@ class StringParser {
 	StringView s;
 public:
 	constexpr StringParser(const StringView& s): s(s) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
+	bool parse(ParseContext& context) const {
+		ParseContext copy = context;
 		for (char c: s) {
 			if (!(copy && *copy == c)) {
 				return false;
 			}
 			++copy;
 		}
-		cursor = copy;
+		context = copy;
 		return true;
 	}
 };
@@ -71,15 +71,15 @@ template <class P0, class P1> class SequenceParser {
 	P1 p1;
 public:
 	constexpr SequenceParser(P0 p0, P1 p1): p0(p0), p1(p1) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
+	bool parse(ParseContext& context) const {
+		ParseContext copy = context;
 		if (!p0.parse(copy)) {
 			return false;
 		}
 		if (!p1.parse(copy)) {
 			return false;
 		}
-		cursor = copy;
+		context = copy;
 		return true;
 	}
 };
@@ -89,11 +89,11 @@ template <class P0, class P1> class ChoiceParser {
 	P1 p1;
 public:
 	constexpr ChoiceParser(P0 p0, P1 p1): p0(p0), p1(p1) {}
-	template <class C> bool parse(C& cursor) {
-		if (p0.parse(cursor)) {
+	bool parse(ParseContext& context) const {
+		if (p0.parse(context)) {
 			return true;
 		}
-		if (p1.parse(cursor)) {
+		if (p1.parse(context)) {
 			return true;
 		}
 		return false;
@@ -104,8 +104,8 @@ template <class P> class RepeatParser {
 	P p;
 public:
 	constexpr RepeatParser(P p): p(p) {}
-	template <class C> bool parse(C& cursor) {
-		while (p.parse(cursor)) {}
+	bool parse(ParseContext& context) const {
+		while (p.parse(context)) {}
 		return true;
 	}
 };
@@ -114,8 +114,8 @@ template <class P> class NotParser {
 	P p;
 public:
 	constexpr NotParser(P p): p(p) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
+	bool parse(ParseContext& context) const {
+		ParseContext copy = context;
 		if (p.parse(copy)) {
 			return false;
 		}
@@ -127,8 +127,8 @@ template <class P> class PeekParser {
 	P p;
 public:
 	constexpr PeekParser(P p): p(p) {}
-	template <class C> bool parse(C& cursor) {
-		C copy = cursor;
+	bool parse(ParseContext& context) const {
+		ParseContext copy = context;
 		if (p.parse(copy)) {
 			return true;
 		}
@@ -137,13 +137,13 @@ public:
 };
 
 template <class P, class = bool> struct is_parser: std::false_type {};
-template <class P> struct is_parser<P, decltype(std::declval<P>().parse(std::declval<Cursor&>()))>: std::true_type {};
+template <class P> struct is_parser<P, decltype(std::declval<P>().parse(std::declval<ParseContext&>()))>: std::true_type {};
 
 template <class F, class = bool> struct is_char_class: std::false_type {};
 template <class F> struct is_char_class<F, decltype(std::declval<F>()(std::declval<char>()))>: std::true_type {};
 
 class Parser {
-	Cursor cursor;
+	ParseContext context;
 public:
 	static constexpr auto get_parser(char c) {
 		return CharParser([c](char c2) {
@@ -210,21 +210,21 @@ public:
 		return StringView("+-*/%=<>!&|~^?:").contains(c);
 	}
 	template <class P> StringView parse(P p) {
-		const Cursor start = cursor;
-		if (get_parser(p).parse(cursor)) {
-			return cursor - start;
+		const ParseContext start = context;
+		if (get_parser(p).parse(context)) {
+			return context - start;
 		}
 		else {
 			return StringView();
 		}
 	}
-	Parser(const SourceFile* file): cursor(file) {}
-	Parser(const Cursor& cursor): cursor(cursor) {}
+	Parser(const SourceFile* file): context(file) {}
+	Parser(const ParseContext& context): context(context) {}
 	const char* get_path() const {
-		return cursor.get_path();
+		return context.get_path();
 	}
 	std::size_t get_position() const {
-		return cursor.get_position();
+		return context.get_position();
 	}
 };
 

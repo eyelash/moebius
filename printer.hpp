@@ -7,13 +7,13 @@
 #include <fstream>
 #include <iterator>
 
-class Printer {
+class PrintContext {
 	std::ostream& ostream;
-	mutable unsigned int indentation = 0;
-	mutable bool is_at_bol = true;
+	unsigned int indentation = 0;
+	bool is_at_bol = true;
 public:
-	Printer(std::ostream& ostream = std::cout): ostream(ostream) {}
-	void print(char c) const {
+	PrintContext(std::ostream& ostream = std::cout): ostream(ostream) {}
+	void print(char c) {
 		if (c == '\n') {
 			ostream.put('\n');
 			is_at_bol = true;
@@ -28,91 +28,164 @@ public:
 			ostream.put(c);
 		}
 	}
-	void print(const StringView& s) const {
+	void increase_indentation() {
+		++indentation;
+	}
+	void decrease_indentation() {
+		--indentation;
+	}
+};
+
+class CharPrinter {
+	char c;
+public:
+	constexpr CharPrinter(char c): c(c) {}
+	void print(PrintContext& context) const {
+		context.print(c);
+	}
+};
+
+class StringPrinter {
+	StringView s;
+public:
+	constexpr StringPrinter(const StringView& s): s(s) {}
+	constexpr StringPrinter(const char* s): s(s) {}
+	StringPrinter(const std::string& s): s(s.data(), s.size()) {}
+	void print(PrintContext& context) const {
 		for (char c: s) {
-			print(c);
+			context.print(c);
 		}
 	}
-	void print(const char* s) const {
-		print(StringView(s));
-	}
-	void print(const std::string& s) const {
-		print(StringView(s.data(), s.size()));
-	}
+};
+
+template <class P, class = void> struct is_printer: std::false_type {};
+template <class P> struct is_printer<P, decltype(std::declval<P>().print(std::declval<PrintContext&>()))>: std::true_type {};
+
+constexpr CharPrinter get_printer(char c) {
+	return CharPrinter(c);
+}
+constexpr StringPrinter get_printer(const StringView& s) {
+	return StringPrinter(s);
+}
+constexpr StringPrinter get_printer(const char* s) {
+	return StringPrinter(s);
+}
+StringPrinter get_printer(const std::string& s) {
+	return StringPrinter(s);
+}
+template <class P> constexpr std::enable_if_t<is_printer<P>::value, P> get_printer(P p) {
+	return p;
+}
+
+class Printer {
+	mutable PrintContext context;
+public:
+	Printer(std::ostream& ostream = std::cout): context(ostream) {}
 	template <class T> void print(const T& t) const {
-		t.print(*this);
+		get_printer(t).print(context);
 	}
 	template <class T> void println(const T& t) const {
 		print(t);
 		print('\n');
 	}
 	template <class T> void println_indented(const T& t) const {
-		++indentation;
+		context.increase_indentation();
 		println(t);
-		--indentation;
+		context.decrease_indentation();
 	}
 };
+
+template <class P> class LnPrinter {
+	P p;
+public:
+	constexpr LnPrinter(P p): p(p) {}
+	void print(PrintContext& context) const {
+		p.print(context);
+		context.print('\n');
+	}
+};
+template <class P> constexpr auto ln(P p) {
+	return LnPrinter(get_printer(p));
+}
+constexpr CharPrinter ln() {
+	return CharPrinter('\n');
+}
+
+template <class P> class IndentPrinter {
+	P p;
+public:
+	constexpr IndentPrinter(P p): p(p) {}
+	void print(PrintContext& c) const {
+		c.increase_indentation();
+		p.print(c);
+		c.decrease_indentation();
+	}
+};
+template <class P> constexpr auto indented(P p) {
+	return IndentPrinter(get_printer(p));
+}
 
 template <class F> class PrintFunctor {
 	F f;
 public:
 	constexpr PrintFunctor(F f): f(f) {}
-	void print(const Printer& p) const {
-		f(p);
+	void print(PrintContext& context) const {
+		f(context);
 	}
 };
 template <class F> constexpr PrintFunctor<F> print_functor(F f) {
-	return PrintFunctor<F>(f);
+	return PrintFunctor(f);
 }
 
 template <class... T> class PrintTuple;
 template <> class PrintTuple<> {
 public:
 	constexpr PrintTuple() {}
-	void print(const Printer& p) const {}
-	void print_formatted(const Printer& p, const char* s) const {
-		p.print(s);
+	void print(PrintContext& context) const {}
+	void print_formatted(PrintContext& context, const char* s) const {
+		get_printer(s).print(context);
 	}
 };
 template <class T0, class... T> class PrintTuple<T0, T...> {
-	const T0& t0;
+	T0 t0;
 	PrintTuple<T...> t;
 public:
-	constexpr PrintTuple(const T0& t0, const T&... t): t0(t0), t(t...) {}
-	void print(const Printer& p) const {
-		p.print(t0);
-		p.print(t);
+	constexpr PrintTuple(T0 t0, T... t): t0(t0), t(t...) {}
+	void print(PrintContext& context) const {
+		t0.print(context);
+		t.print(context);
 	}
-	void print_formatted(const Printer& p, const char* s) const {
+	void print_formatted(PrintContext& context, const char* s) const {
 		while (*s) {
 			if (*s == '%') {
 				++s;
 				if (*s != '%') {
-					p.print(t0);
-					t.print_formatted(p, s);
+					t0.print(context);
+					t.print_formatted(context, s);
 					return;
 				}
 			}
-			p.print(*s);
+			context.print(*s);
 			++s;
 		}
 	}
 };
-template <class... T> constexpr PrintTuple<T...> print_tuple(const T&... t) {
-	return PrintTuple<T...>(t...);
+template <class... T> PrintTuple(T...) -> PrintTuple<T...>;
+template <class... T> constexpr auto print_tuple(T... t) {
+	return PrintTuple(get_printer(t)...);
 }
 
 template <class... T> class Format {
 	PrintTuple<T...> t;
 	const char* s;
 public:
-	constexpr Format(const char* s, const T&... t): t(t...), s(s) {}
-	void print(const Printer& p) const {
-		t.print_formatted(p, s);
+	constexpr Format(const char* s, T... t): t(t...), s(s) {}
+	void print(PrintContext& context) const {
+		t.print_formatted(context, s);
 	}
 };
-template <class... T> constexpr Format<T...> format(const char* s, const T&... t) {
-	return Format<T...>(s, t...);
+template <class... T> constexpr auto format(const char* s, T... t) {
+	return Format(s, get_printer(t)...);
 }
 
 constexpr auto bold = [](const auto& t) {
@@ -128,76 +201,76 @@ constexpr auto yellow = [](const auto& t) {
 	return print_tuple("\x1B[33m", t, "\x1B[39m");
 };
 
-class PrintNumber {
+class NumberPrinter {
 	unsigned int n;
 public:
-	constexpr PrintNumber(unsigned int n): n(n) {}
-	void print(const Printer& p) const {
+	constexpr NumberPrinter(unsigned int n): n(n) {}
+	void print(PrintContext& context) const {
 		if (n >= 10) {
-			p.print(PrintNumber(n / 10));
+			NumberPrinter(n / 10).print(context);
 		}
-		p.print(static_cast<char>('0' + n % 10));
+		context.print(static_cast<char>('0' + n % 10));
 	}
 };
-constexpr PrintNumber print_number(unsigned int n) {
-	return PrintNumber(n);
+constexpr NumberPrinter print_number(unsigned int n) {
+	return NumberPrinter(n);
 }
 
-class PrintHexadecimal {
+class HexadecimalPrinter {
 	unsigned int n;
 	unsigned int digits;
 	static constexpr char get_hex(unsigned int c) {
 		return c < 10 ? '0' + c : 'A' + (c - 10);
 	}
 public:
-	constexpr PrintHexadecimal(unsigned int n, unsigned int digits = 1): n(n), digits(digits) {}
-	void print(const Printer& p) const {
+	constexpr HexadecimalPrinter(unsigned int n, unsigned int digits = 1): n(n), digits(digits) {}
+	void print(PrintContext& context) const {
 		if (n >= 16 || digits > 1) {
-			p.print(PrintHexadecimal(n / 16, digits > 1 ? digits - 1 : digits));
+			HexadecimalPrinter(n / 16, digits > 1 ? digits - 1 : digits).print(context);
 		}
-		p.print(get_hex(n % 16));
+		context.print(get_hex(n % 16));
 	}
 };
-constexpr PrintHexadecimal print_hexadecimal(unsigned int n, unsigned int digits = 1) {
-	return PrintHexadecimal(n, digits);
+constexpr HexadecimalPrinter print_hexadecimal(unsigned int n, unsigned int digits = 1) {
+	return HexadecimalPrinter(n, digits);
 }
-template <class T> constexpr PrintHexadecimal print_pointer(const T* ptr) {
-	return PrintHexadecimal(reinterpret_cast<std::size_t>(ptr));
+template <class T> constexpr HexadecimalPrinter print_pointer(const T* ptr) {
+	return HexadecimalPrinter(reinterpret_cast<std::size_t>(ptr));
 }
 
-class PrintOctal {
+class OctalPrinter {
 	unsigned int n;
 	unsigned int digits;
 public:
-	constexpr PrintOctal(unsigned int n, unsigned int digits = 1): n(n), digits(digits) {}
-	void print(const Printer& p) const {
+	constexpr OctalPrinter(unsigned int n, unsigned int digits = 1): n(n), digits(digits) {}
+	void print(PrintContext& context) const {
 		if (n >= 8 || digits > 1) {
-			p.print(PrintOctal(n / 8, digits > 1 ? digits - 1 : digits));
+			OctalPrinter(n / 8, digits > 1 ? digits - 1 : digits).print(context);
 		}
-		p.print(static_cast<char>('0' + n % 8));
+		context.print(static_cast<char>('0' + n % 8));
 	}
 };
-constexpr PrintOctal print_octal(unsigned int n, unsigned int digits = 1) {
-	return PrintOctal(n, digits);
+constexpr OctalPrinter print_octal(unsigned int n, unsigned int digits = 1) {
+	return OctalPrinter(n, digits);
 }
 
-class PrintPlural {
+class PluralPrinter {
 	const char* word;
 	unsigned int count;
 public:
-	constexpr PrintPlural(const char* word, unsigned int count): word(word), count(count) {}
-	void print(const Printer& p) const {
-		p.print(print_number(count));
-		p.print(' ');
-		p.print(word);
+	constexpr PluralPrinter(const char* word, unsigned int count): word(word), count(count) {}
+	void print(PrintContext& context) const {
+		print_number(count).print(context);
+		context.print(' ');
+		get_printer(word).print(context);
 		if (count != 1) {
-			p.print('s');
+			context.print('s');
 		}
 	}
 };
 
-constexpr PrintPlural print_plural(const char* word, unsigned int count) {
-	return PrintPlural(word, count);
+constexpr PluralPrinter print_plural(const char* word, unsigned int count) {
+	return PluralPrinter(word, count);
 }
 
 class SourceFile {
@@ -273,16 +346,6 @@ template <class T> void print_error(const Printer& printer, const char* path, st
 	print_message(printer, path, source_position, red, "error", t);
 }
 
-class Variable {
-	std::size_t index;
-public:
-	constexpr Variable(std::size_t index): index(index) {}
-	Variable() {}
-	void print(const Printer& printer) const {
-		printer.print(format("v%", print_number(index)));
-	}
-};
-
 class PrintExpression {
 	static const char* print_operation(BinaryOperation operation) {
 		switch (operation) {
@@ -315,25 +378,25 @@ class PrintExpression {
 	const Expression* expression;
 public:
 	PrintExpression(const Expression* expression): expression(expression) {}
-	void print(const Printer& p) const {
+	void print(PrintContext& context) const {
 		class PrintExpressionVisitor: public Visitor<void> {
-			const Printer& p;
+			PrintContext& context;
 		public:
-			PrintExpressionVisitor(const Printer& p): p(p) {}
+			PrintExpressionVisitor(PrintContext& context): context(context) {}
 			void visit_int_literal(const IntLiteral& int_literal) override {
-				p.print(print_number(int_literal.get_value()));
+				print_number(int_literal.get_value()).print(context);
 			}
 			void visit_binary_expression(const BinaryExpression& binary_expression) override {
-				p.print(format("(% % %)", PrintExpression(binary_expression.get_left()), print_operation(binary_expression.get_operation()), PrintExpression(binary_expression.get_right())));
+				format("(% % %)", PrintExpression(binary_expression.get_left()), print_operation(binary_expression.get_operation()), PrintExpression(binary_expression.get_right())).print(context);
 			}
 			void visit_if(const If& if_) override {
-				p.println(format("if (%)", PrintExpression(if_.get_condition())));
-				p.println_indented(PrintExpression(if_.get_then_expression()));
-				p.println("else");
-				p.println_indented(PrintExpression(if_.get_else_expression()));
+				ln(format("if (%)", PrintExpression(if_.get_condition()))).print(context);
+				indented(ln(PrintExpression(if_.get_then_expression()))).print(context);
+				ln("else").print(context);
+				indented(ln(PrintExpression(if_.get_else_expression()))).print(context);
 			}
 		};
-		PrintExpressionVisitor visitor(p);
+		PrintExpressionVisitor visitor(context);
 		expression->accept(visitor);
 	}
 };
