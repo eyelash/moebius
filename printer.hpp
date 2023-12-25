@@ -95,6 +95,14 @@ public:
 	}
 };
 
+template <class P> void print(std::ostream& ostream, const P& p) {
+	PrintContext context(ostream);
+	p.print(context);
+}
+template <class P> void print(const P& p) {
+	print(std::cout, p);
+}
+
 template <class P> class LnPrinter {
 	P p;
 public:
@@ -292,14 +300,14 @@ public:
 	}
 };
 
-template <class T, class C> void print_message(const Printer& printer, const C& color, const char* severity, const T& t) {
-	printer.print(bold(color(format("%: ", severity))));
-	printer.print(t);
-	printer.print('\n');
+template <class P, class C> void print_message(PrintContext& context, const C& color, const char* severity, const P& p) {
+	bold(color(format("%: ", severity))).print(context);
+	p.print(context);
+	context.print('\n');
 }
-template <class T, class C> void print_message(const Printer& printer, const char* path, std::size_t source_position, const C& color, const char* severity, const T& t) {
+template <class P, class C> void print_message(PrintContext& context, const char* path, std::size_t source_position, const C& color, const char* severity, const P& p) {
 	if (path == nullptr) {
-		print_message(printer, color, severity, t);
+		print_message(context, color, severity, p);
 	}
 	else {
 		SourceFile file(path);
@@ -320,31 +328,36 @@ template <class T, class C> void print_message(const Printer& printer, const cha
 		}
 		const unsigned int column = 1 + (c - line_start);
 
-		printer.print(bold(format("%:%:%: ", path, print_number(line_number), print_number(column))));
-		print_message(printer, color, severity, t);
+		bold(format("%:%:%: ", path, print_number(line_number), print_number(column))).print(context);
+		print_message(context, color, severity, p);
 
 		c = line_start;
 		while (c < end && *c != '\n') {
-			printer.print(*c);
+			context.print(*c);
 			++c;
 		}
-		printer.print('\n');
+		context.print('\n');
 
 		c = line_start;
 		while (c < position) {
-			printer.print(*c == '\t' ? '\t' : ' ');
+			context.print(*c == '\t' ? '\t' : ' ');
 			++c;
 		}
-		printer.print(bold(color('^')));
-		printer.print('\n');
+		bold(color('^')).print(context);
+		context.print('\n');
 	}
 }
-template <class T> void print_error(const Printer& printer, const T& t) {
-	print_message(printer, red, "error", t);
-}
-template <class T> void print_error(const Printer& printer, const char* path, std::size_t source_position, const T& t) {
-	print_message(printer, path, source_position, red, "error", t);
-}
+
+template <class P> class Error {
+	const char* path;
+	std::size_t source_position;
+	P p;
+public:
+	constexpr Error(const char* path, std::size_t source_position, P p): path(path), source_position(source_position), p(p) {}
+	void print(PrintContext& context) const {
+		print_message(context, path, source_position, red, "error", p);
+	}
+};
 
 class PrintExpression {
 	static const char* print_operation(BinaryOperation operation) {

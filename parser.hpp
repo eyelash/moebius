@@ -297,12 +297,12 @@ class MoebiusParser: private Parser {
 	template <class... T> static constexpr auto operator_levels(T... t) {
 		return OperatorLevels(t...);
 	}
-	template <class T> [[noreturn]] void error(std::size_t position, const T& t) {
-		print_error(Printer(std::cerr), get_path(), position, t);
+	template <class P> [[noreturn]] void error(std::size_t position, P p) {
+		print(std::cerr, Error(get_path(), position, get_printer(p)));
 		std::exit(EXIT_FAILURE);
 	}
-	template <class T> [[noreturn]] void error(const T& t) {
-		error(get_position(), t);
+	template <class P> [[noreturn]] void error(P p) {
+		error(get_position(), p);
 	}
 	void expect(const StringView& s) {
 		if (!parse(s)) {
