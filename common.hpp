@@ -176,3 +176,5 @@ constexpr CodePoints code_points(const StringView& s) {
 inline CodePoints code_points(const std::string& s) {
 	return CodePoints(StringView(s.data(), s.size()));
 }
+
+#define TRY(x) ({ auto&& v = (x); if (v.index() != 0) return std::get<1>(std::forward<decltype(v)>(v)); std::get<0>(std::forward<decltype(v)>(v)); })
