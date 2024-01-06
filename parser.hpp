@@ -428,23 +428,23 @@ class MoebiusParser: private Parser {
 	Expression* parse_expression() {
 		constexpr auto operators = operator_levels(
 			binary_left_to_right(
-				binary_operator(operator_("=="), BinaryExpression::create<BinaryOperation::EQ>),
-				binary_operator(operator_("!="), BinaryExpression::create<BinaryOperation::NE>)
+				binary_operator("==", BinaryExpression::create<BinaryOperation::EQ>),
+				binary_operator("!=", BinaryExpression::create<BinaryOperation::NE>)
 			),
 			binary_left_to_right(
-				binary_operator(operator_("<"), BinaryExpression::create<BinaryOperation::LT>),
-				binary_operator(operator_("<="), BinaryExpression::create<BinaryOperation::LE>),
-				binary_operator(operator_(">"), BinaryExpression::create<BinaryOperation::GT>),
-				binary_operator(operator_(">="), BinaryExpression::create<BinaryOperation::GE>)
+				binary_operator(sequence('<', not_('=')), BinaryExpression::create<BinaryOperation::LT>),
+				binary_operator("<=", BinaryExpression::create<BinaryOperation::LE>),
+				binary_operator(sequence('>', not_('=')), BinaryExpression::create<BinaryOperation::GT>),
+				binary_operator(">=", BinaryExpression::create<BinaryOperation::GE>)
 			),
 			binary_left_to_right(
-				binary_operator(operator_("+"), BinaryExpression::create<BinaryOperation::ADD>),
-				binary_operator(operator_("-"), BinaryExpression::create<BinaryOperation::SUB>)
+				binary_operator('+', BinaryExpression::create<BinaryOperation::ADD>),
+				binary_operator('-', BinaryExpression::create<BinaryOperation::SUB>)
 			),
 			binary_left_to_right(
-				binary_operator(operator_("*"), BinaryExpression::create<BinaryOperation::MUL>),
-				binary_operator(operator_("/"), BinaryExpression::create<BinaryOperation::DIV>),
-				binary_operator(operator_("%"), BinaryExpression::create<BinaryOperation::REM>)
+				binary_operator('*', BinaryExpression::create<BinaryOperation::MUL>),
+				binary_operator('/', BinaryExpression::create<BinaryOperation::DIV>),
+				binary_operator('%', BinaryExpression::create<BinaryOperation::REM>)
 			)
 		);
 		return parse_expression(operators.tuple);
