@@ -49,8 +49,6 @@ class StringPrinter {
 	StringView s;
 public:
 	constexpr StringPrinter(const StringView& s): s(s) {}
-	constexpr StringPrinter(const char* s): s(s) {}
-	StringPrinter(const std::string& s): s(s.data(), s.size()) {}
 	void print(PrintContext& context) const {
 		for (char c: s) {
 			context.print(c);
@@ -71,29 +69,11 @@ constexpr StringPrinter get_printer(const char* s) {
 	return StringPrinter(s);
 }
 StringPrinter get_printer(const std::string& s) {
-	return StringPrinter(s);
+	return StringPrinter(StringView(s.data(), s.size()));
 }
 template <class P> constexpr std::enable_if_t<is_printer<P>::value, P> get_printer(P p) {
 	return p;
 }
-
-class Printer {
-	mutable PrintContext context;
-public:
-	Printer(std::ostream& ostream = std::cout): context(ostream) {}
-	template <class T> void print(const T& t) const {
-		get_printer(t).print(context);
-	}
-	template <class T> void println(const T& t) const {
-		print(t);
-		print('\n');
-	}
-	template <class T> void println_indented(const T& t) const {
-		context.increase_indentation();
-		println(t);
-		context.decrease_indentation();
-	}
-};
 
 template <class P> void print(std::ostream& ostream, const P& p) {
 	PrintContext context(ostream);
@@ -112,8 +92,8 @@ public:
 		context.print('\n');
 	}
 };
-template <class P> constexpr auto ln(P p) {
-	return LnPrinter(get_printer(p));
+template <class P> constexpr auto ln(P&& p) {
+	return LnPrinter(get_printer(std::forward<P>(p)));
 }
 constexpr CharPrinter ln() {
 	return CharPrinter('\n');
@@ -129,8 +109,8 @@ public:
 		c.decrease_indentation();
 	}
 };
-template <class P> constexpr auto indented(P p) {
-	return IndentPrinter(get_printer(p));
+template <class P> constexpr auto indented(P&& p) {
+	return IndentPrinter(get_printer(std::forward<P>(p)));
 }
 
 template <class F> class PrintFunctor {
@@ -151,7 +131,7 @@ public:
 	constexpr PrintTuple() {}
 	void print(PrintContext& context) const {}
 	void print_formatted(PrintContext& context, const char* s) const {
-		get_printer(s).print(context);
+		StringPrinter(s).print(context);
 	}
 };
 template <class T0, class... T> class PrintTuple<T0, T...> {
@@ -179,8 +159,8 @@ public:
 	}
 };
 template <class... T> PrintTuple(T...) -> PrintTuple<T...>;
-template <class... T> constexpr auto print_tuple(T... t) {
-	return PrintTuple(get_printer(t)...);
+template <class... T> constexpr auto print_tuple(T&&... t) {
+	return PrintTuple(get_printer(std::forward<T>(t))...);
 }
 
 template <class... T> class Format {
@@ -192,8 +172,8 @@ public:
 		t.print_formatted(context, s);
 	}
 };
-template <class... T> constexpr auto format(const char* s, T... t) {
-	return Format(s, get_printer(t)...);
+template <class... T> constexpr auto format(const char* s, T&&... t) {
+	return Format(s, get_printer(std::forward<T>(t))...);
 }
 
 constexpr auto bold = [](const auto& t) {
@@ -270,7 +250,7 @@ public:
 	void print(PrintContext& context) const {
 		print_number(count).print(context);
 		context.print(' ');
-		get_printer(word).print(context);
+		StringPrinter(word).print(context);
 		if (count != 1) {
 			context.print('s');
 		}

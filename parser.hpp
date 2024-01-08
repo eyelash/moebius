@@ -142,73 +142,83 @@ template <class P> struct is_parser<P, decltype(std::declval<P>().parse(std::dec
 template <class F, class = bool> struct is_char_class: std::false_type {};
 template <class F> struct is_char_class<F, decltype(std::declval<F>()(std::declval<char>()))>: std::true_type {};
 
+constexpr auto get_parser(char c) {
+	return CharParser([c](char c2) {
+		return c == c2;
+	});
+}
+constexpr StringParser get_parser(const StringView& s) {
+	return StringParser(s);
+}
+constexpr StringParser get_parser(const char* s) {
+	return StringParser(s);
+}
+template <class P> constexpr std::enable_if_t<is_parser<P>::value, P> get_parser(P p) {
+	return p;
+}
+template <class F> constexpr std::enable_if_t<is_char_class<F>::value, CharParser<F>> get_parser(F f) {
+	return CharParser(f);
+}
+
+constexpr auto range(char first, char last) {
+	return CharParser([first, last](char c) {
+		return c >= first && c <= last;
+	});
+}
+
+template <class P0, class P1> constexpr auto sequence(P0 p0, P1 p1) {
+	return SequenceParser(get_parser(p0), get_parser(p1));
+}
+template <class P0, class P1, class P2, class... P> constexpr auto sequence(P0 p0, P1 p1, P2 p2, P... p) {
+	return sequence(sequence(p0, p1), p2, p...);
+}
+
+template <class P0, class P1> constexpr auto choice(P0 p0, P1 p1) {
+	return ChoiceParser(get_parser(p0), get_parser(p1));
+}
+template <class P0, class P1, class P2, class... P> constexpr auto choice(P0 p0, P1 p1, P2 p2, P... p) {
+	return choice(choice(p0, p1), p2, p...);
+}
+
+template <class P> constexpr auto zero_or_more(P p) {
+	return RepeatParser(get_parser(p));
+}
+
+template <class P> constexpr auto one_or_more(P p) {
+	return sequence(p, zero_or_more(p));
+}
+
+template <class P> constexpr auto not_(P p) {
+	return NotParser(get_parser(p));
+}
+
+template <class P> constexpr auto peek(P p) {
+	return PeekParser(get_parser(p));
+}
+
+constexpr bool any_char(char c) {
+	return true;
+}
+
+constexpr bool white_space(char c) {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+constexpr bool numeric(char c) {
+	return c >= '0' && c <= '9';
+}
+
+constexpr bool alphabetic(char c) {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+constexpr bool alphanumeric(char c) {
+	return alphabetic(c) || numeric(c);
+}
+
 class Parser {
 	ParseContext context;
 public:
-	static constexpr auto get_parser(char c) {
-		return CharParser([c](char c2) {
-			return c == c2;
-		});
-	}
-	static constexpr StringParser get_parser(const StringView& s) {
-		return StringParser(s);
-	}
-	static constexpr StringParser get_parser(const char* s) {
-		return StringParser(s);
-	}
-	template <class P> static constexpr std::enable_if_t<is_parser<P>::value, P> get_parser(P p) {
-		return p;
-	}
-	template <class F> static constexpr std::enable_if_t<is_char_class<F>::value, CharParser<F>> get_parser(F f) {
-		return CharParser(f);
-	}
-	static constexpr auto range(char first, char last) {
-		return CharParser([first, last](char c) {
-			return c >= first && c <= last;
-		});
-	}
-	template <class P0, class P1> static constexpr auto sequence(P0 p0, P1 p1) {
-		return SequenceParser(get_parser(p0), get_parser(p1));
-	}
-	template <class P0, class P1, class P2, class... P> static constexpr auto sequence(P0 p0, P1 p1, P2 p2, P... p) {
-		return sequence(sequence(p0, p1), p2, p...);
-	}
-	template <class P0, class P1> static constexpr auto choice(P0 p0, P1 p1) {
-		return ChoiceParser(get_parser(p0), get_parser(p1));
-	}
-	template <class P0, class P1, class P2, class... P> static constexpr auto choice(P0 p0, P1 p1, P2 p2, P... p) {
-		return choice(choice(p0, p1), p2, p...);
-	}
-	template <class P> static constexpr auto zero_or_more(P p) {
-		return RepeatParser(get_parser(p));
-	}
-	template <class P> static constexpr auto one_or_more(P p) {
-		return sequence(p, zero_or_more(p));
-	}
-	template <class P> static constexpr auto not_(P p) {
-		return NotParser(get_parser(p));
-	}
-	template <class P> static constexpr auto peek(P p) {
-		return PeekParser(get_parser(p));
-	}
-	static constexpr bool any_char(char c) {
-		return true;
-	}
-	static constexpr bool white_space(char c) {
-		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-	}
-	static constexpr bool numeric(char c) {
-		return c >= '0' && c <= '9';
-	}
-	static constexpr bool alphabetic(char c) {
-		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-	}
-	static constexpr bool alphanumeric(char c) {
-		return alphabetic(c) || numeric(c);
-	}
-	static constexpr bool operator_char(char c) {
-		return StringView("+-*/%=<>!&|~^?:").contains(c);
-	}
 	template <class P> StringView parse(P p) {
 		const ParseContext start = context;
 		if (get_parser(p).parse(context)) {
@@ -269,40 +279,66 @@ template <class... T> struct OperatorLevels {
 	constexpr OperatorLevels(T... tuple): tuple(tuple...) {}
 };
 
+template <class P> constexpr auto binary_operator(P p, BinaryCreate create) {
+	return BinaryOperator(get_parser(p), create);
+}
+
+template <class P> constexpr auto unary_operator(P p, UnaryCreate create) {
+	return UnaryOperator(get_parser(p), create);
+}
+
+template <class... T> constexpr auto binary_left_to_right(T... t) {
+	return BinaryLeftToRight(t...);
+}
+
+template <class... T> constexpr auto binary_right_to_left(T... t) {
+	return BinaryRightToLeft(t...);
+}
+
+template <class... T> constexpr auto unary_prefix(T... t) {
+	return UnaryPrefix(t...);
+}
+
+template <class... T> constexpr auto unary_postfix(T... t) {
+	return UnaryPostfix(t...);
+}
+
+template <class... T> constexpr auto operator_levels(T... t) {
+	return OperatorLevels(t...);
+}
+
+constexpr auto operators = operator_levels(
+	binary_left_to_right(
+		binary_operator("==", BinaryExpression::create<BinaryOperation::EQ>),
+		binary_operator("!=", BinaryExpression::create<BinaryOperation::NE>)
+	),
+	binary_left_to_right(
+		binary_operator(sequence('<', not_('=')), BinaryExpression::create<BinaryOperation::LT>),
+		binary_operator("<=", BinaryExpression::create<BinaryOperation::LE>),
+		binary_operator(sequence('>', not_('=')), BinaryExpression::create<BinaryOperation::GT>),
+		binary_operator(">=", BinaryExpression::create<BinaryOperation::GE>)
+	),
+	binary_left_to_right(
+		binary_operator('+', BinaryExpression::create<BinaryOperation::ADD>),
+		binary_operator('-', BinaryExpression::create<BinaryOperation::SUB>)
+	),
+	binary_left_to_right(
+		binary_operator('*', BinaryExpression::create<BinaryOperation::MUL>),
+		binary_operator('/', BinaryExpression::create<BinaryOperation::DIV>),
+		binary_operator('%', BinaryExpression::create<BinaryOperation::REM>)
+	)
+);
+
 class MoebiusParser: private Parser {
 	static constexpr auto keyword(const StringView& s) {
 		return sequence(s, not_(alphanumeric));
 	}
-	static constexpr auto operator_(const StringView& s) {
-		return sequence(s, not_(operator_char));
-	}
-	template <class P> static constexpr auto binary_operator(P p, BinaryCreate create) {
-		return BinaryOperator(get_parser(p), create);
-	}
-	template <class P> static constexpr auto unary_operator(P p, UnaryCreate create) {
-		return UnaryOperator(get_parser(p), create);
-	}
-	template <class... T> static constexpr auto binary_left_to_right(T... t) {
-		return BinaryLeftToRight(t...);
-	}
-	template <class... T> static constexpr auto binary_right_to_left(T... t) {
-		return BinaryRightToLeft(t...);
-	}
-	template <class... T> static constexpr auto unary_prefix(T... t) {
-		return UnaryPrefix(t...);
-	}
-	template <class... T> static constexpr auto unary_postfix(T... t) {
-		return UnaryPostfix(t...);
-	}
-	template <class... T> static constexpr auto operator_levels(T... t) {
-		return OperatorLevels(t...);
-	}
-	template <class P> [[noreturn]] void error(std::size_t position, P p) {
-		print(std::cerr, Error(get_path(), position, get_printer(p)));
+	template <class P> [[noreturn]] void error(std::size_t position, P&& p) {
+		print(std::cerr, Error(get_path(), position, get_printer(std::forward<P>(p))));
 		std::exit(EXIT_FAILURE);
 	}
-	template <class P> [[noreturn]] void error(P p) {
-		error(get_position(), p);
+	template <class P> [[noreturn]] void error(P&& p) {
+		error(get_position(), std::forward<P>(p));
 	}
 	void expect(const StringView& s) {
 		if (!parse(s)) {
@@ -426,27 +462,6 @@ class MoebiusParser: private Parser {
 		return expression;
 	}
 	Expression* parse_expression() {
-		constexpr auto operators = operator_levels(
-			binary_left_to_right(
-				binary_operator("==", BinaryExpression::create<BinaryOperation::EQ>),
-				binary_operator("!=", BinaryExpression::create<BinaryOperation::NE>)
-			),
-			binary_left_to_right(
-				binary_operator(sequence('<', not_('=')), BinaryExpression::create<BinaryOperation::LT>),
-				binary_operator("<=", BinaryExpression::create<BinaryOperation::LE>),
-				binary_operator(sequence('>', not_('=')), BinaryExpression::create<BinaryOperation::GT>),
-				binary_operator(">=", BinaryExpression::create<BinaryOperation::GE>)
-			),
-			binary_left_to_right(
-				binary_operator('+', BinaryExpression::create<BinaryOperation::ADD>),
-				binary_operator('-', BinaryExpression::create<BinaryOperation::SUB>)
-			),
-			binary_left_to_right(
-				binary_operator('*', BinaryExpression::create<BinaryOperation::MUL>),
-				binary_operator('/', BinaryExpression::create<BinaryOperation::DIV>),
-				binary_operator('%', BinaryExpression::create<BinaryOperation::REM>)
-			)
-		);
 		return parse_expression(operators.tuple);
 	}
 	Expression* parse_program() {

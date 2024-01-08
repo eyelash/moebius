@@ -49,7 +49,6 @@ public:
 	static void interpret_program(const Expression* program) {
 		Interpreter interpreter;
 		const std::int32_t result = visit(interpreter, program);
-		Printer printer;
-		printer.println(print_number(result));
+		print(ln(print_number(result)));
 	}
 };
