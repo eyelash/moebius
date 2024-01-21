@@ -3,8 +3,9 @@
 #include "ast.hpp"
 #include <cstddef>
 #include <iostream>
-#include <vector>
+#include <sstream>
 #include <fstream>
+#include <vector>
 #include <iterator>
 
 class PrintContext {
@@ -81,6 +82,11 @@ template <class P> void print(std::ostream& ostream, const P& p) {
 }
 template <class P> void print(const P& p) {
 	print(std::cout, p);
+}
+template <class P> std::string print_to_string(const P& p) {
+	std::ostringstream ostream;
+	print(ostream, p);
+	return ostream.str();
 }
 
 template <class P> class LnPrinter {
@@ -329,13 +335,18 @@ template <class P, class C> void print_message(PrintContext& context, const char
 }
 
 template <class P> class Error {
+public:
 	const char* path;
 	std::size_t source_position;
 	P p;
-public:
 	constexpr Error(const char* path, std::size_t source_position, P p): path(path), source_position(source_position), p(p) {}
+};
+class ErrorPrinter {
+	const Error<std::string>* error;
+public:
+	ErrorPrinter(const Error<std::string>* error): error(error) {}
 	void print(PrintContext& context) const {
-		print_message(context, path, source_position, red, "error", p);
+		print_message(context, error->path, error->source_position, red, "error", get_printer(error->p));
 	}
 };
 
