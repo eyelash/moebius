@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <string>
 
 template <class T> class Reference {
@@ -9,12 +10,17 @@ template <class T> class Reference {
 public:
 	Reference(T* pointer = nullptr): pointer(pointer) {}
 	Reference(const Reference&) = delete;
+	Reference(Reference&& reference): pointer(std::exchange(reference.pointer, nullptr)) {}
 	~Reference() {
 		if (pointer) {
 			delete pointer;
 		}
 	}
 	Reference& operator =(const Reference&) = delete;
+	Reference& operator =(Reference&& reference) {
+		std::swap(pointer, reference.pointer);
+		return *this;
+	}
 	operator T*() const {
 		return pointer;
 	}

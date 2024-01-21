@@ -79,7 +79,7 @@ class BinaryExpression final: public Expression {
 	Reference<Expression> left;
 	Reference<Expression> right;
 public:
-	BinaryExpression(BinaryOperation operation, Expression* left, Expression* right): operation(operation), left(left), right(right) {}
+	BinaryExpression(BinaryOperation operation, Reference<Expression>&& left, Reference<Expression>&& right): operation(operation), left(std::move(left)), right(std::move(right)) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_binary_expression(*this);
 	}
@@ -92,8 +92,8 @@ public:
 	const Expression* get_right() const {
 		return right;
 	}
-	template <BinaryOperation operation> static Expression* create(Expression* left, Expression* right) {
-		return new BinaryExpression(operation, left, right);
+	template <BinaryOperation operation> static Reference<Expression> create(Reference<Expression>&& left, Reference<Expression>&& right) {
+		return new BinaryExpression(operation, std::move(left), std::move(right));
 	}
 };
 
@@ -102,7 +102,7 @@ class If final: public Expression {
 	Reference<Expression> then_expression;
 	Reference<Expression> else_expression;
 public:
-	If(Expression* condition, Expression* then_expression, Expression* else_expression): condition(condition), then_expression(then_expression), else_expression(else_expression) {}
+	If(Reference<Expression>&& condition, Reference<Expression>&& then_expression, Reference<Expression>&& else_expression): condition(std::move(condition)), then_expression(std::move(then_expression)), else_expression(std::move(else_expression)) {}
 	void accept(Visitor<void>& visitor) const override {
 		visitor.visit_if(*this);
 	}
