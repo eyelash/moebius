@@ -330,7 +330,7 @@ constexpr auto operators = operator_levels(
 	)
 );
 
-template <class T> using Result = std::variant<std::conditional_t<std::is_void_v<T>, std::monostate, T>, Error<std::string>>;
+template <class T> using ParseResult = std::variant<std::conditional_t<std::is_void_v<T>, std::monostate, T>, Error<std::string>>;
 
 class MoebiusParser: private Parser {
 	static constexpr auto keyword(const StringView& s) {
@@ -342,19 +342,19 @@ class MoebiusParser: private Parser {
 	template <class P> Error<std::string> error(P&& p) const {
 		return error(get_position(), std::forward<P>(p));
 	}
-	Result<void> expect(const StringView& s) {
+	ParseResult<void> expect(const StringView& s) {
 		if (!parse(s)) {
 			return error(format("expected \"%\"", s));
 		}
 		return {};
 	}
-	Result<void> expect_keyword(const StringView& s) {
+	ParseResult<void> expect_keyword(const StringView& s) {
 		if (!parse(keyword(s))) {
 			return error(format("expected \"%\"", s));
 		}
 		return {};
 	}
-	Result<bool> parse_comment() {
+	ParseResult<bool> parse_comment() {
 		if (parse("//")) {
 			parse(zero_or_more(sequence(not_("\n"), any_char)));
 			return true;
@@ -366,7 +366,7 @@ class MoebiusParser: private Parser {
 		}
 		return false;
 	}
-	Result<void> parse_white_space() {
+	ParseResult<void> parse_white_space() {
 		parse(zero_or_more(white_space));
 		while (TRY(parse_comment())) {
 			parse(zero_or_more(white_space));
@@ -382,7 +382,7 @@ class MoebiusParser: private Parser {
 		}
 		return parse_operator(tuple.tail);
 	}
-	Result<Reference<Expression>> parse_expression_last() {
+	ParseResult<Reference<Expression>> parse_expression_last() {
 		if (parse('(')) {
 			TRY(parse_white_space());
 			Reference<Expression> expression = TRY(parse_expression());
@@ -423,10 +423,10 @@ class MoebiusParser: private Parser {
 			return error("expected an expression");
 		}
 	}
-	Result<Reference<Expression>> parse_expression(const Tuple<>& tuple) {
+	ParseResult<Reference<Expression>> parse_expression(const Tuple<>& tuple) {
 		return parse_expression_last();
 	}
-	template <class... T0, class... T> Result<Reference<Expression>> parse_expression(const Tuple<BinaryLeftToRight<T0...>, T...>& tuple) {
+	template <class... T0, class... T> ParseResult<Reference<Expression>> parse_expression(const Tuple<BinaryLeftToRight<T0...>, T...>& tuple) {
 		Reference<Expression> left = TRY(parse_expression(tuple.tail));
 		TRY(parse_white_space());
 		while (auto create = parse_operator(tuple.head.tuple)) {
@@ -437,7 +437,7 @@ class MoebiusParser: private Parser {
 		}
 		return left;
 	}
-	template <class... T0, class... T> Result<Reference<Expression>> parse_expression(const Tuple<BinaryRightToLeft<T0...>, T...>& tuple) {
+	template <class... T0, class... T> ParseResult<Reference<Expression>> parse_expression(const Tuple<BinaryRightToLeft<T0...>, T...>& tuple) {
 		Reference<Expression> left = TRY(parse_expression(tuple.tail));
 		TRY(parse_white_space());
 		if (auto create = parse_operator(tuple.head.tuple)) {
@@ -447,7 +447,7 @@ class MoebiusParser: private Parser {
 		}
 		return left;
 	}
-	template <class... T0, class... T> Result<Reference<Expression>> parse_expression(const Tuple<UnaryPrefix<T0...>, T...>& tuple) {
+	template <class... T0, class... T> ParseResult<Reference<Expression>> parse_expression(const Tuple<UnaryPrefix<T0...>, T...>& tuple) {
 		if (auto create = parse_operator(tuple.head.tuple)) {
 			TRY(parse_white_space());
 			Reference<Expression> expression = TRY(parse_expression(tuple));
@@ -457,7 +457,7 @@ class MoebiusParser: private Parser {
 			return parse_expression(tuple.tail);
 		}
 	}
-	template <class... T0, class... T> Result<Reference<Expression>> parse_expression(const Tuple<UnaryPostfix<T0...>, T...>& tuple) {
+	template <class... T0, class... T> ParseResult<Reference<Expression>> parse_expression(const Tuple<UnaryPostfix<T0...>, T...>& tuple) {
 		Reference<Expression> expression = TRY(parse_expression(tuple.tail));
 		TRY(parse_white_space());
 		while (auto create = parse_operator(tuple.head.tuple)) {
@@ -466,10 +466,10 @@ class MoebiusParser: private Parser {
 		}
 		return expression;
 	}
-	Result<Reference<Expression>> parse_expression() {
+	ParseResult<Reference<Expression>> parse_expression() {
 		return parse_expression(operators.tuple);
 	}
-	Result<Reference<Expression>> parse_program() {
+	ParseResult<Reference<Expression>> parse_program() {
 		TRY(parse_white_space());
 		Reference<Expression> expression = TRY(parse_expression());
 		TRY(parse_white_space());
@@ -480,7 +480,7 @@ class MoebiusParser: private Parser {
 	}
 	MoebiusParser(const SourceFile* file): Parser(file) {}
 public:
-	static Result<Reference<Expression>> parse_program(const char* path) {
+	static ParseResult<Reference<Expression>> parse_program(const char* path) {
 		SourceFile file(path);
 		MoebiusParser parser(&file);
 		return parser.parse_program();
