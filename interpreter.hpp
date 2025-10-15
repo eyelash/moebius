@@ -47,6 +47,7 @@ public:
 		}
 	}
 	static void interpret_program(const Expression* program) {
+		using namespace printer;
 		Interpreter interpreter;
 		const std::int32_t result = visit(interpreter, program);
 		print(ln(print_number(result)));

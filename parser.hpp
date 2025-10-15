@@ -337,20 +337,20 @@ class MoebiusParser: private Parser {
 		return sequence(s, not_(alphanumeric));
 	}
 	template <class P> Error<std::string> error(std::size_t position, P&& p) const {
-		return Error(get_path(), position, print_to_string(get_printer(std::forward<P>(p))));
+		return Error(get_path(), position, print_to_string(std::forward<P>(p)));
 	}
 	template <class P> Error<std::string> error(P&& p) const {
 		return error(get_position(), std::forward<P>(p));
 	}
 	ParseResult<void> expect(const StringView& s) {
 		if (!parse(s)) {
-			return error(format("expected \"%\"", s));
+			return error(printer::format("expected \"%\"", s));
 		}
 		return {};
 	}
 	ParseResult<void> expect_keyword(const StringView& s) {
 		if (!parse(keyword(s))) {
-			return error(format("expected \"%\"", s));
+			return error(printer::format("expected \"%\"", s));
 		}
 		return {};
 	}
