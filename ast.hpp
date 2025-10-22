@@ -92,9 +92,6 @@ public:
 	const Expression* get_right() const {
 		return right;
 	}
-	template <BinaryOperation operation> static Reference<Expression> create(Reference<Expression>&& left, Reference<Expression>&& right) {
-		return new BinaryExpression(operation, std::move(left), std::move(right));
-	}
 };
 
 class If final: public Expression {
